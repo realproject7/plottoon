@@ -1,9 +1,12 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { registerFsHandlers } from './ipc/fsHandlers'
 import { registerProjectHandlers } from './ipc/projectHandlers'
 import { registerTerminalHandlers } from './ipc/terminalHandlers'
 import { destroyAllSessions } from './services/terminalSession'
+
+const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -12,7 +15,7 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.mjs'),
+      preload: path.join(currentDir, '../preload/index.mjs'),
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -21,7 +24,7 @@ function createWindow(): void {
   if (process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    win.loadFile(path.join(__dirname, '../renderer/index.html'))
+    win.loadFile(path.join(currentDir, '../renderer/index.html'))
   }
 }
 

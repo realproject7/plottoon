@@ -1,9 +1,3 @@
-import fs from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
-import { detectClis } from './cliDetection'
-import type { CapabilityReport as CliReport } from './cliDetection'
-
 export type CheckStatus = 'pass' | 'fail' | 'info'
 
 export interface CapabilityCheck {
@@ -21,30 +15,6 @@ export interface CapabilitySection {
 export interface FirstRunReport {
   generatedAt: string
   sections: CapabilitySection[]
-}
-
-async function checkWriteAccess(dir?: string): Promise<CapabilityCheck> {
-  const target = dir || path.join(os.tmpdir(), `plottoon-write-test-${Date.now()}`)
-  try {
-    await fs.mkdir(target, { recursive: true })
-    const probe = path.join(target, '.plottoon-probe')
-    await fs.writeFile(probe, '', 'utf-8')
-    await fs.unlink(probe)
-    if (!dir) await fs.rmdir(target)
-    return {
-      id: 'write-access',
-      label: 'Project write access',
-      status: 'pass',
-      detail: 'Filesystem is writable'
-    }
-  } catch {
-    return {
-      id: 'write-access',
-      label: 'Project write access',
-      status: 'fail',
-      detail: 'Cannot write to project directory'
-    }
-  }
 }
 
 function checkImageImport(): CapabilityCheck {
@@ -102,15 +72,6 @@ function checkExport(): CapabilityCheck {
   }
 }
 
-function buildCliChecks(cliReport: CliReport): CapabilityCheck[] {
-  return cliReport.clis.map((cli) => ({
-    id: `cli-${cli.command}`,
-    label: cli.name,
-    status: (cli.installed ? 'pass' : 'fail') as CheckStatus,
-    detail: cli.installed ? `Detected: ${cli.version}` : `${cli.command} not found in PATH`
-  }))
-}
-
 function canPublish(checks: CapabilityCheck[]): CapabilityCheck {
   const required = ['cli-claude', 'cli-codex', 'plotlink-endpoint']
   const allPassed = required.every((id) => {
@@ -128,17 +89,21 @@ function canPublish(checks: CapabilityCheck[]): CapabilityCheck {
 }
 
 export interface GenerateReportOptions {
-  projectDir?: string
+  cliChecks?: CapabilityCheck[]
+  writeAccessCheck?: CapabilityCheck
   atlasCloudGuidanceEnabled?: boolean
-  cliLookup?: (cmd: string) => Promise<{ installed: boolean; version: string | null }>
 }
 
-export async function generateReport(options: GenerateReportOptions = {}): Promise<FirstRunReport> {
-  const { projectDir, atlasCloudGuidanceEnabled = false, cliLookup } = options
+export function generateReport(options: GenerateReportOptions = {}): FirstRunReport {
+  const { atlasCloudGuidanceEnabled = false } = options
 
-  const cliReport = await detectClis(cliLookup)
-  const cliChecks = buildCliChecks(cliReport)
-  const writeCheck = await checkWriteAccess(projectDir)
+  const cliChecks = options.cliChecks ?? []
+  const writeCheck = options.writeAccessCheck ?? {
+    id: 'write-access',
+    label: 'Project write access',
+    status: 'fail' as CheckStatus,
+    detail: 'No projects directory configured'
+  }
   const imageCheck = checkImageImport()
   const atlasCheck = checkAtlasCloudGuidance(atlasCloudGuidanceEnabled)
   const plotLinkCheck = checkPlotLink()
