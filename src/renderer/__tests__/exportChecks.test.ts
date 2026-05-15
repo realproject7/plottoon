@@ -1,6 +1,43 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
-import { checkExportCapabilities, checkFormat, checkFontRender } from '../exportChecks'
+import {
+  checkExportCapabilities,
+  checkFormat,
+  checkFontRender,
+  checkExportBlockers
+} from '../exportChecks'
+import type { Overlay } from '../CutList'
+
+describe('checkExportBlockers', () => {
+  it('returns empty when no overlays overflow', () => {
+    const overlays: Overlay[] = [
+      { id: 'ovl-1', type: 'text', content: 'OK', x: 0, y: 0, width: 200, height: 100 }
+    ]
+    expect(checkExportBlockers(overlays)).toEqual([])
+  })
+
+  it('returns text-overflow blocker when overflow exists', () => {
+    const overlays: Overlay[] = [
+      {
+        id: 'ovl-1',
+        type: 'text',
+        content:
+          'This extremely long text will definitely overflow the tiny bounds of this small overlay widget',
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 20
+      }
+    ]
+    const blockers = checkExportBlockers(overlays)
+    expect(blockers).toHaveLength(1)
+    expect(blockers[0].type).toBe('text-overflow')
+  })
+
+  it('returns empty for empty overlay list', () => {
+    expect(checkExportBlockers([])).toEqual([])
+  })
+})
 
 describe('checkExportCapabilities', () => {
   it('returns a result with all expected fields', () => {

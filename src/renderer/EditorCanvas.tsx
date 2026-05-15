@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { Cut } from './CutList'
+import { detectOverflow } from './textLayout'
 
 const DEFAULT_CANVAS_WIDTH = 320
 const DEFAULT_CANVAS_HEIGHT = 480
@@ -222,12 +223,14 @@ export function EditorCanvas({
         {overlays.map((overlay) => {
           const isSelected = selectedOverlayId === overlay.id
           const presetStyle = overlay.style ?? {}
+          const isOverflow = overlay.content ? detectOverflow(overlay) : false
           return (
             <div
               key={overlay.id}
               data-testid={`overlay-${overlay.id}`}
               data-overlay-id={overlay.id}
               data-selected={isSelected}
+              data-overflow={isOverflow}
               onClick={(e) => handleOverlayClick(e, overlay.id)}
               onMouseDown={(e) => handleOverlayMouseDown(e, overlay.id, overlay)}
               style={{
@@ -248,6 +251,11 @@ export function EditorCanvas({
                   ? {
                       outline: '2px solid var(--color-accent, #3b82f6)',
                       outlineOffset: '1px'
+                    }
+                  : {}),
+                ...(isOverflow
+                  ? {
+                      boxShadow: 'inset 0 0 0 2px var(--color-error, #e53e3e)'
                     }
                   : {})
               }}
