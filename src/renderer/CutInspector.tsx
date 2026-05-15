@@ -1,6 +1,8 @@
 import type { Cut } from './CutList'
 import { canTransition, isProtected, isImageProtected } from './cutMutations'
 import type { CutStatus } from './cutMutations'
+import { PRESET_NAMES, getPresetLabel } from './overlayPresets'
+import type { PresetName } from './overlayPresets'
 
 const STATUS_OPTIONS: CutStatus[] = ['planned', 'draft', 'needs_revision', 'approved']
 
@@ -10,6 +12,8 @@ interface CutInspectorProps {
   onImportCleanImage?: (cutId: string) => void
   onSetCurrentRevision?: (cutId: string, version: number) => void
   selectedOverlayId?: string | null
+  onAddOverlay?: (cutId: string, presetName: PresetName) => void
+  onDeleteOverlay?: (cutId: string, overlayId: string) => void
 }
 
 export function CutInspector({
@@ -17,7 +21,9 @@ export function CutInspector({
   onStatusChange,
   onImportCleanImage,
   onSetCurrentRevision,
-  selectedOverlayId
+  selectedOverlayId,
+  onAddOverlay,
+  onDeleteOverlay
 }: CutInspectorProps): JSX.Element {
   if (!cut) {
     return (
@@ -259,9 +265,75 @@ export function CutInspector({
               <Field label="Y" value={String(overlay.y)} mono />
               <Field label="Width" value={String(overlay.width)} mono />
               <Field label="Height" value={String(overlay.height)} mono />
+              {onDeleteOverlay && (
+                <button
+                  type="button"
+                  data-testid="delete-overlay-btn"
+                  onClick={() => onDeleteOverlay(cut.id, overlay.id)}
+                  style={{
+                    all: 'unset',
+                    cursor: 'pointer',
+                    display: 'block',
+                    fontSize: 11,
+                    padding: '4px 8px',
+                    marginTop: 'var(--space-2)',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--color-surface-raised)',
+                    border: '1px solid var(--color-border)',
+                    textAlign: 'center',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    color: 'var(--color-error, #e53e3e)'
+                  }}
+                >
+                  Delete overlay
+                </button>
+              )}
             </>
           )
         })()}
+
+      {onAddOverlay && (
+        <>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 'var(--font-weight-semibold)' as never,
+              color: 'var(--color-text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              marginTop: 'var(--space-4)',
+              marginBottom: 'var(--space-2)',
+              borderTop: '1px solid var(--color-border)',
+              paddingTop: 'var(--space-3)'
+            }}
+          >
+            Add Overlay
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {PRESET_NAMES.map((name) => (
+              <button
+                key={name}
+                type="button"
+                data-testid={`add-overlay-${name}`}
+                onClick={() => onAddOverlay(cut.id, name)}
+                style={{
+                  all: 'unset',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  padding: '4px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--color-surface-raised)',
+                  border: '1px solid var(--color-border)',
+                  textAlign: 'center'
+                }}
+              >
+                {getPresetLabel(name)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
