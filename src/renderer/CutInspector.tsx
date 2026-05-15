@@ -6,6 +6,20 @@ import type { PresetName } from './overlayPresets'
 
 const STATUS_OPTIONS: CutStatus[] = ['planned', 'draft', 'needs_revision', 'approved']
 
+const inspectorBtnStyle: React.CSSProperties = {
+  all: 'unset',
+  cursor: 'pointer',
+  display: 'block',
+  fontSize: 11,
+  padding: '4px 8px',
+  borderRadius: 'var(--radius-sm)',
+  background: 'var(--color-surface-raised)',
+  border: '1px solid var(--color-border)',
+  textAlign: 'center',
+  width: '100%',
+  boxSizing: 'border-box'
+}
+
 interface CutInspectorProps {
   cut: Cut | null
   onStatusChange?: (cutId: string, status: CutStatus) => void
@@ -14,6 +28,10 @@ interface CutInspectorProps {
   selectedOverlayId?: string | null
   onAddOverlay?: (cutId: string, presetName: PresetName) => void
   onDeleteOverlay?: (cutId: string, overlayId: string) => void
+  onDuplicateOverlay?: (cutId: string, overlayId: string) => void
+  onReorderOverlay?: (cutId: string, overlayId: string, direction: 'up' | 'down') => void
+  onResizeOverlay?: (cutId: string, overlayId: string, width: number, height: number) => void
+  onSetTailAnchor?: (cutId: string, overlayId: string, x: number, y: number) => void
 }
 
 export function CutInspector({
@@ -23,7 +41,10 @@ export function CutInspector({
   onSetCurrentRevision,
   selectedOverlayId,
   onAddOverlay,
-  onDeleteOverlay
+  onDeleteOverlay,
+  onDuplicateOverlay,
+  onReorderOverlay,
+  onSetTailAnchor
 }: CutInspectorProps): JSX.Element {
   if (!cut) {
     return (
@@ -265,25 +286,78 @@ export function CutInspector({
               <Field label="Y" value={String(overlay.y)} mono />
               <Field label="Width" value={String(overlay.width)} mono />
               <Field label="Height" value={String(overlay.height)} mono />
+              {overlay.tailAnchor && (
+                <>
+                  <Field label="Tail X" value={String(overlay.tailAnchor.x)} mono />
+                  <Field label="Tail Y" value={String(overlay.tailAnchor.y)} mono />
+                </>
+              )}
+              {onSetTailAnchor && !overlay.tailAnchor && (
+                <button
+                  type="button"
+                  data-testid="add-tail-btn"
+                  onClick={() =>
+                    onSetTailAnchor(
+                      cut.id,
+                      overlay.id,
+                      overlay.x + overlay.width / 2,
+                      overlay.y + overlay.height + 20
+                    )
+                  }
+                  style={inspectorBtnStyle}
+                >
+                  Add tail anchor
+                </button>
+              )}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 4,
+                  marginTop: 'var(--space-2)'
+                }}
+              >
+                {onDuplicateOverlay && (
+                  <button
+                    type="button"
+                    data-testid="duplicate-overlay-btn"
+                    onClick={() => onDuplicateOverlay(cut.id, overlay.id)}
+                    style={{ ...inspectorBtnStyle, flex: 1 }}
+                  >
+                    Duplicate
+                  </button>
+                )}
+                {onReorderOverlay && (
+                  <>
+                    <button
+                      type="button"
+                      data-testid="overlay-z-up"
+                      onClick={() => onReorderOverlay(cut.id, overlay.id, 'up')}
+                      title="Bring forward"
+                      style={{ ...inspectorBtnStyle, flex: 0, width: 28 }}
+                    >
+                      &#x2191;
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="overlay-z-down"
+                      onClick={() => onReorderOverlay(cut.id, overlay.id, 'down')}
+                      title="Send backward"
+                      style={{ ...inspectorBtnStyle, flex: 0, width: 28 }}
+                    >
+                      &#x2193;
+                    </button>
+                  </>
+                )}
+              </div>
               {onDeleteOverlay && (
                 <button
                   type="button"
                   data-testid="delete-overlay-btn"
                   onClick={() => onDeleteOverlay(cut.id, overlay.id)}
                   style={{
-                    all: 'unset',
-                    cursor: 'pointer',
-                    display: 'block',
-                    fontSize: 11,
-                    padding: '4px 8px',
-                    marginTop: 'var(--space-2)',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--color-surface-raised)',
-                    border: '1px solid var(--color-border)',
-                    textAlign: 'center',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    color: 'var(--color-error, #e53e3e)'
+                    ...inspectorBtnStyle,
+                    color: 'var(--color-error, #e53e3e)',
+                    marginTop: 4
                   }}
                 >
                   Delete overlay

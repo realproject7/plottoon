@@ -1,6 +1,11 @@
 import { useEffect, useReducer, useCallback } from 'react'
 import { addCut, deleteCut, duplicateCut, moveCut, isProtected } from './cutMutations'
 
+interface TailAnchor {
+  x: number
+  y: number
+}
+
 interface Overlay {
   id: string
   type: string
@@ -10,6 +15,7 @@ interface Overlay {
   width: number
   height: number
   style?: Record<string, string>
+  tailAnchor?: TailAnchor
 }
 
 interface CanvasOverrides {
@@ -104,7 +110,7 @@ interface CutListProps {
   onPlotsLoaded?: (plots: string[]) => void
 }
 
-export type { Cut, CutsData, Overlay, CanvasOverrides }
+export type { Cut, CutsData, Overlay, CanvasOverrides, TailAnchor }
 
 export function CutList({
   projectId,

@@ -9,7 +9,12 @@ import {
   isImageProtected,
   canTransition,
   addOverlay,
-  deleteOverlay
+  deleteOverlay,
+  moveOverlay,
+  resizeOverlay,
+  duplicateOverlay,
+  reorderOverlay,
+  setOverlayTailAnchor
 } from '../cutMutations'
 import type { Cut } from '../CutList'
 
@@ -274,6 +279,197 @@ describe('cutMutations', () => {
       ]
       const result = deleteOverlay(cuts, 'cut-001', 'nonexistent')
       expect(result[0].overlays).toHaveLength(1)
+    })
+  })
+
+  describe('moveOverlay', () => {
+    it('updates overlay position', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: '', x: 10, y: 20, width: 100, height: 40 }
+          ]
+        }
+      ]
+      const result = moveOverlay(cuts, 'cut-001', 'ovl-1', 50, 60)
+      expect(result[0].overlays![0].x).toBe(50)
+      expect(result[0].overlays![0].y).toBe(60)
+    })
+
+    it('does not mutate original', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: '', x: 10, y: 20, width: 100, height: 40 }
+          ]
+        }
+      ]
+      moveOverlay(cuts, 'cut-001', 'ovl-1', 50, 60)
+      expect(cuts[0].overlays![0].x).toBe(10)
+    })
+  })
+
+  describe('resizeOverlay', () => {
+    it('updates overlay dimensions', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [{ id: 'ovl-1', type: 'text', content: '', x: 0, y: 0, width: 100, height: 40 }]
+        }
+      ]
+      const result = resizeOverlay(cuts, 'cut-001', 'ovl-1', 200, 80)
+      expect(result[0].overlays![0].width).toBe(200)
+      expect(result[0].overlays![0].height).toBe(80)
+    })
+
+    it('enforces minimum dimension of 1', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [{ id: 'ovl-1', type: 'text', content: '', x: 0, y: 0, width: 100, height: 40 }]
+        }
+      ]
+      const result = resizeOverlay(cuts, 'cut-001', 'ovl-1', -5, 0)
+      expect(result[0].overlays![0].width).toBe(1)
+      expect(result[0].overlays![0].height).toBe(1)
+    })
+  })
+
+  describe('duplicateOverlay', () => {
+    it('creates a copy with offset position', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: 'Hi', x: 30, y: 40, width: 100, height: 40 }
+          ]
+        }
+      ]
+      const result = duplicateOverlay(cuts, 'cut-001', 'ovl-1')
+      expect(result[0].overlays).toHaveLength(2)
+      const dup = result[0].overlays![1]
+      expect(dup.id).not.toBe('ovl-1')
+      expect(dup.content).toBe('Hi')
+      expect(dup.x).toBe(40)
+      expect(dup.y).toBe(50)
+    })
+
+    it('returns unchanged when overlay not found', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [{ id: 'ovl-1', type: 'text', content: '', x: 0, y: 0, width: 100, height: 40 }]
+        }
+      ]
+      const result = duplicateOverlay(cuts, 'cut-001', 'nonexistent')
+      expect(result[0].overlays).toHaveLength(1)
+    })
+  })
+
+  describe('reorderOverlay', () => {
+    it('moves overlay up (forward) in z-order', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: 'A', x: 0, y: 0, width: 50, height: 30 },
+            { id: 'ovl-2', type: 'text', content: 'B', x: 0, y: 0, width: 50, height: 30 }
+          ]
+        }
+      ]
+      const result = reorderOverlay(cuts, 'cut-001', 'ovl-1', 'up')
+      expect(result[0].overlays![0].id).toBe('ovl-2')
+      expect(result[0].overlays![1].id).toBe('ovl-1')
+    })
+
+    it('moves overlay down (backward) in z-order', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: 'A', x: 0, y: 0, width: 50, height: 30 },
+            { id: 'ovl-2', type: 'text', content: 'B', x: 0, y: 0, width: 50, height: 30 }
+          ]
+        }
+      ]
+      const result = reorderOverlay(cuts, 'cut-001', 'ovl-2', 'down')
+      expect(result[0].overlays![0].id).toBe('ovl-2')
+      expect(result[0].overlays![1].id).toBe('ovl-1')
+    })
+
+    it('does nothing at boundary', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [{ id: 'ovl-1', type: 'text', content: 'A', x: 0, y: 0, width: 50, height: 30 }]
+        }
+      ]
+      const result = reorderOverlay(cuts, 'cut-001', 'ovl-1', 'up')
+      expect(result[0].overlays![0].id).toBe('ovl-1')
+    })
+  })
+
+  describe('setOverlayTailAnchor', () => {
+    it('sets tail anchor on overlay', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: '', x: 50, y: 50, width: 100, height: 40 }
+          ]
+        }
+      ]
+      const result = setOverlayTailAnchor(cuts, 'cut-001', 'ovl-1', { x: 80, y: 120 })
+      expect(result[0].overlays![0].tailAnchor).toEqual({ x: 80, y: 120 })
+    })
+
+    it('removes tail anchor when set to undefined', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [
+            {
+              id: 'ovl-1',
+              type: 'text',
+              content: '',
+              x: 50,
+              y: 50,
+              width: 100,
+              height: 40,
+              tailAnchor: { x: 80, y: 120 }
+            }
+          ]
+        }
+      ]
+      const result = setOverlayTailAnchor(cuts, 'cut-001', 'ovl-1', undefined)
+      expect(result[0].overlays![0].tailAnchor).toBeUndefined()
+    })
+
+    it('persists across other overlay fields', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [
+            {
+              id: 'ovl-1',
+              type: 'text',
+              content: 'Hello',
+              x: 10,
+              y: 20,
+              width: 100,
+              height: 40,
+              style: { background: '#fff' }
+            }
+          ]
+        }
+      ]
+      const result = setOverlayTailAnchor(cuts, 'cut-001', 'ovl-1', { x: 50, y: 80 })
+      const ovl = result[0].overlays![0]
+      expect(ovl.content).toBe('Hello')
+      expect(ovl.style).toEqual({ background: '#fff' })
+      expect(ovl.tailAnchor).toEqual({ x: 50, y: 80 })
     })
   })
 
