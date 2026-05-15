@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import { registerFsHandlers } from './ipc/fsHandlers'
+import { registerProjectHandlers } from './ipc/projectHandlers'
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -24,6 +25,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   registerFsHandlers()
+  registerProjectHandlers()
   createWindow()
 
   app.on('activate', () => {
