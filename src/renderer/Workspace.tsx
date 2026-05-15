@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { TerminalPanel } from './TerminalPanel'
 import { CutList } from './CutList'
 import { CutInspector } from './CutInspector'
@@ -10,6 +10,22 @@ interface Props {
 
 export function Workspace({ projectId }: Props): JSX.Element {
   const [activeCut, setActiveCut] = useState<Cut | null>(null)
+  const [cwd, setCwd] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    async function fetchCwd() {
+      const session = await window.plottoon.terminal.findByProject(projectId!)
+      if (!cancelled && session) {
+        setCwd(session.cwd)
+      }
+    }
+    fetchCwd()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
 
   const handleSelectCut = useCallback((cut: Cut) => {
     setActiveCut(cut)
@@ -32,6 +48,21 @@ export function Workspace({ projectId }: Props): JSX.Element {
         overflow: 'hidden'
       }}
     >
+      {cwd && (
+        <div
+          data-testid="workspace-cwd"
+          style={{
+            fontSize: 12,
+            color: 'var(--color-text-muted)',
+            fontFamily: 'var(--font-mono, monospace)',
+            padding: 'var(--space-2) var(--space-3)',
+            borderBottom: '1px solid var(--color-border)',
+            flexShrink: 0
+          }}
+        >
+          cwd: {cwd}
+        </div>
+      )}
       <div
         style={{
           display: 'flex',

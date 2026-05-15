@@ -202,6 +202,87 @@ describe('App', () => {
     })
   })
 
+  it('shows cwd in workspace when terminal session exists', async () => {
+    ;(window.plottoon.terminal.findByProject as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'sess_1',
+      projectId: 'proj_1',
+      cwd: '/home/user/my-webtoon',
+      state: 'connected',
+      createdAt: '2026-01-01T00:00:00Z',
+      exitCode: null
+    })
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          description: 'A cool story'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    await waitFor(() => {
+      expect(screen.getByText(/cwd:/)).toBeDefined()
+    })
+  })
+
+  it('renders cut list and inspector from mocked cuts.json', async () => {
+    ;(window.plottoon.fs.listProjectDir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      'chapter-1'
+    ])
+    ;(window.plottoon.fs.projectFileExists as ReturnType<typeof vi.fn>).mockResolvedValue(true)
+    ;(window.plottoon.fs.readProjectFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        cuts: [
+          {
+            id: 'cut-001',
+            direction: 'Wide shot of the city skyline',
+            dialogue: 'Welcome home.',
+            imageState: { status: 'done', path: 'plots/chapter-1/assets/cut-001/clean-v001.webp' }
+          },
+          {
+            id: 'cut-002',
+            direction: 'Close-up on protagonist',
+            narration: 'It had been years.'
+          }
+        ]
+      })
+    )
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          description: 'A cool story'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    await waitFor(() => {
+      expect(screen.getAllByText('chapter-1').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('cut-001').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('cut-002').length).toBeGreaterThan(0)
+    })
+    await waitFor(() => {
+      expect(screen.getAllByText('Wide shot of the city skyline').length).toBeGreaterThan(0)
+      expect(screen.getByText('Welcome home.')).toBeDefined()
+    })
+  })
+
   it('shows error state for projects with invalid metadata', async () => {
     mockDiscover.mockResolvedValue([
       {
