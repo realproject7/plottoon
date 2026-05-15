@@ -57,20 +57,7 @@ function EmptyState(): JSX.Element {
       >
         Create or open a project folder to start building your webtoon.
       </p>
-      <button
-        type="button"
-        style={{
-          background: 'var(--color-accent)',
-          color: 'var(--color-accent-text)',
-          border: 'none',
-          borderRadius: 'var(--radius-sm)',
-          padding: 'var(--space-2) var(--space-4)',
-          fontSize: 13,
-          fontWeight: 'var(--font-weight-medium)' as never,
-          cursor: 'pointer',
-          letterSpacing: '0.01em'
-        }}
-      >
+      <button type="button" className="btn-primary">
         Open Project
       </button>
     </div>
