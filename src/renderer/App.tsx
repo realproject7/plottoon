@@ -1,9 +1,17 @@
+import { useState } from 'react'
+import { AppShell } from './AppShell'
+import { ProjectList } from './ProjectList'
+import { Workspace } from './Workspace'
+
+export type View = 'projects' | 'workspace'
+
 function App(): JSX.Element {
+  const [view, setView] = useState<View>('projects')
+
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: 48 }}>
-      <h1>PlotToon</h1>
-      <p>Desktop studio for webtoon-style visual stories.</p>
-    </div>
+    <AppShell view={view} onNavigate={setView}>
+      {view === 'projects' ? <ProjectList /> : <Workspace />}
+    </AppShell>
   )
 }
 
