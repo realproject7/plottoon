@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { generateProjectAgentsMd } from './agentsTemplate'
 
 const DIRS = ['characters', 'plots']
 
@@ -26,8 +27,7 @@ const FILES: TemplateFile[] = [
   },
   {
     name: 'AGENTS.md',
-    content: (name) =>
-      `# ${name} — Agent Instructions\n\nInstructions for AI agents working on this project.\n\n## Project Context\n\nThis is a webtoon project managed by PlotToon.\n\n## Conventions\n\n- Keep cuts.json as the canonical source of truth for each plot.\n- Place generated images in the plot assets folder.\n- Do not modify exported files directly.\n`
+    content: (name) => generateProjectAgentsMd(name)
   },
   {
     name: '.publish-status.json',
