@@ -1,5 +1,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import cutsJsonSchema from '../schemas/cuts.schema.json'
+
+export { cutsJsonSchema as CUTS_JSON_SCHEMA }
 
 export class CutsValidationError extends Error {
   constructor(

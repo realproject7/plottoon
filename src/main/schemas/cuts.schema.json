@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plottoon://schemas/cuts.json",
+  "title": "PlotToon cuts.json",
+  "description": "Canonical schema for a webtoon plot's cuts file — the source of truth for each plot.",
+  "type": "object",
+  "required": ["version", "plotTitle", "synopsis", "cuts", "publishState"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version for forward-compatible migrations."
+    },
+    "plotTitle": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable title of this plot."
+    },
+    "synopsis": {
+      "type": "string",
+      "description": "Brief summary of the plot."
+    },
+    "cuts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/cut" },
+      "description": "Ordered list of cuts (panels) in this plot."
+    },
+    "publishState": { "$ref": "#/$defs/publishState" }
+  },
+  "$defs": {
+    "cut": {
+      "type": "object",
+      "required": ["id", "order", "dialogue", "direction", "imageState", "overlays"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique identifier for this cut."
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Display order (zero-based)."
+        },
+        "dialogue": {
+          "type": "string",
+          "description": "Spoken text or narration for this cut."
+        },
+        "direction": {
+          "type": "string",
+          "description": "Art/camera direction notes."
+        },
+        "imageState": { "$ref": "#/$defs/imageState" },
+        "overlays": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/overlay" }
+        },
+        "canvasOverrides": { "$ref": "#/$defs/canvasOverrides" }
+      }
+    },
+    "imageState": {
+      "type": "object",
+      "required": ["status", "path", "prompt", "seed"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pending", "generating", "done", "failed"]
+        },
+        "path": {
+          "type": ["string", "null"],
+          "description": "Relative path to the generated image, or null."
+        },
+        "prompt": {
+          "type": ["string", "null"],
+          "description": "Generation prompt, or null."
+        },
+        "seed": {
+          "type": ["number", "null"],
+          "description": "RNG seed for reproducibility, or null."
+        },
+        "errorMessage": {
+          "type": "string",
+          "description": "Error detail when status is 'failed'."
+        }
+      }
+    },
+    "overlay": {
+      "type": "object",
+      "required": ["id", "type", "content", "x", "y", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": ["text", "sfx"]
+        },
+        "content": {
+          "type": "string"
+        },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "style": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Optional CSS-like style overrides."
+        }
+      }
+    },
+    "canvasOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "backgroundColor": {
+          "type": "string"
+        }
+      }
+    },
+    "publishState": {
+      "type": "object",
+      "required": ["published", "exportedAt", "format"],
+      "additionalProperties": false,
+      "properties": {
+        "published": { "type": "boolean" },
+        "exportedAt": { "type": ["string", "null"] },
+        "format": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

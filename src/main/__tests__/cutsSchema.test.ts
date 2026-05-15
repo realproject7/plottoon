@@ -8,7 +8,8 @@ import {
   writeCutsFile,
   createEmptyCutsFile,
   resolveCutsPath,
-  CutsValidationError
+  CutsValidationError,
+  CUTS_JSON_SCHEMA
 } from '../services/cutsSchema'
 import type { CutsFile } from '../services/cutsSchema'
 
@@ -286,5 +287,57 @@ describe('resolveCutsPath', () => {
   it('returns correct path', () => {
     const result = resolveCutsPath('/projects/my-webtoon', 'episode-1')
     expect(result).toBe(path.join('/projects/my-webtoon', 'plots', 'episode-1', 'cuts.json'))
+  })
+})
+
+describe('CUTS_JSON_SCHEMA', () => {
+  const schema = CUTS_JSON_SCHEMA as Record<string, unknown>
+
+  it('is a valid JSON Schema draft-2020-12 object', () => {
+    expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema')
+    expect(schema.type).toBe('object')
+  })
+
+  it('requires top-level fields: version, plotTitle, synopsis, cuts, publishState', () => {
+    expect(schema.required).toEqual(
+      expect.arrayContaining(['version', 'plotTitle', 'synopsis', 'cuts', 'publishState'])
+    )
+  })
+
+  it('defines properties for all top-level fields', () => {
+    const props = schema.properties as Record<string, unknown>
+    expect(props).toHaveProperty('version')
+    expect(props).toHaveProperty('plotTitle')
+    expect(props).toHaveProperty('synopsis')
+    expect(props).toHaveProperty('cuts')
+    expect(props).toHaveProperty('publishState')
+  })
+
+  it('defines $defs for cut, imageState, overlay, canvasOverrides, publishState', () => {
+    const defs = schema.$defs as Record<string, unknown>
+    expect(defs).toHaveProperty('cut')
+    expect(defs).toHaveProperty('imageState')
+    expect(defs).toHaveProperty('overlay')
+    expect(defs).toHaveProperty('canvasOverrides')
+    expect(defs).toHaveProperty('publishState')
+  })
+
+  it('imageState schema enumerates all valid statuses', () => {
+    const defs = schema.$defs as Record<string, Record<string, unknown>>
+    const imageProps = defs.imageState.properties as Record<string, Record<string, unknown>>
+    expect(imageProps.status.enum).toEqual(['pending', 'generating', 'done', 'failed'])
+  })
+
+  it('overlay schema enumerates text and sfx types', () => {
+    const defs = schema.$defs as Record<string, Record<string, unknown>>
+    const overlayProps = defs.overlay.properties as Record<string, Record<string, unknown>>
+    expect(overlayProps.type.enum).toEqual(['text', 'sfx'])
+  })
+
+  it('cut schema requires imageState and overlays', () => {
+    const defs = schema.$defs as Record<string, Record<string, unknown>>
+    expect(defs.cut.required).toEqual(
+      expect.arrayContaining(['id', 'order', 'imageState', 'overlays'])
+    )
   })
 })
