@@ -1,0 +1,65 @@
+PlotToon License
+Version 0.1 - Draft
+
+Copyright (c) 2026 realproject7
+
+IMPORTANT: This is a source-available license, not an open source license
+under the Open Source Initiative definition.
+
+1. Definitions
+
+"PlotToon" means the software, source code, documentation, examples, and
+related materials in this repository.
+
+"PlotLink" means the PlotLink publishing platform and its official
+associated services.
+
+"Permitted Purpose" means using PlotToon to create, edit, prepare, upload,
+or publish cartoon, webtoon, or related visual story content to PlotLink.
+
+"Non-Permitted Purpose" means any use outside the Permitted Purpose,
+including but not limited to:
+
+- operating PlotToon as a hosted service for a non-PlotLink platform;
+- integrating PlotToon into a competing publishing platform;
+- using PlotToon to publish or prepare content primarily for a non-PlotLink
+  platform;
+- selling, sublicensing, or white-labeling PlotToon;
+- offering PlotToon as a paid managed service without separate written
+  permission.
+
+2. Grant
+
+You may view, fork, modify, build, and use PlotToon for the Permitted Purpose.
+
+You may publish cartoon, webtoon, or related visual story content created
+with PlotToon to PlotLink for free.
+
+3. Restrictions
+
+You may not use PlotToon for any Non-Permitted Purpose without prior written
+permission from the copyright holder.
+
+You may not remove or obscure this license notice.
+
+You may not use PlotToon in a way that exposes private keys, API keys,
+wallet secrets, or other credentials in public repositories, issues, pull
+requests, logs, or examples.
+
+4. Contributions
+
+Unless otherwise agreed in writing, contributions submitted to this
+repository are licensed under this same PlotToon License.
+
+5. No Warranty
+
+PlotToon is provided "as is", without warranty of any kind, express or
+implied, including but not limited to the warranties of merchantability,
+fitness for a particular purpose, and noninfringement.
+
+6. Separate Permission
+
+For commercial use outside the Permitted Purpose, hosted service use,
+competing platform use, white-label redistribution, or resale, contact the
+copyright holder for separate written permission.
+
