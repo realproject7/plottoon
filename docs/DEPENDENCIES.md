@@ -28,8 +28,11 @@ Used during development and CI only. Not shipped to end users.
 | @testing-library/react    | 16.x    | MIT        | Component test utils   |
 | @testing-library/jest-dom | 6.x     | MIT        | DOM test matchers      |
 | jsdom                     | 29.x    | MIT        | DOM environment        |
+| @types/react              | 19.x    | MIT        | React type definitions |
+| @types/react-dom          | 19.x    | MIT        | ReactDOM type defs     |
 | typescript-eslint         | 8.x     | MIT        | TS ESLint rules        |
 | eslint-plugin-react-hooks | 7.x     | MIT        | React hooks lint rules |
+| @eslint/js                | 10.x    | MIT        | ESLint core rules      |
 
 ## Planned Runtime Dependencies
 
