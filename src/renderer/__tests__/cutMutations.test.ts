@@ -7,7 +7,9 @@ import {
   setStatus,
   isProtected,
   isImageProtected,
-  canTransition
+  canTransition,
+  addOverlay,
+  deleteOverlay
 } from '../cutMutations'
 import type { Cut } from '../CutList'
 
@@ -191,6 +193,87 @@ describe('cutMutations', () => {
 
     it.each(['planned', 'draft', 'needs_revision', undefined])('returns false for %s', (status) => {
       expect(isImageProtected(makeCut('c', status))).toBe(false)
+    })
+  })
+
+  describe('addOverlay', () => {
+    it('adds an overlay to a cut', () => {
+      const cuts = [makeCut('cut-001')]
+      const overlay = {
+        id: 'ovl-1',
+        type: 'text',
+        content: 'Hello',
+        x: 10,
+        y: 20,
+        width: 100,
+        height: 40
+      }
+      const result = addOverlay(cuts, 'cut-001', overlay)
+      expect(result[0].overlays).toHaveLength(1)
+      expect(result[0].overlays![0].id).toBe('ovl-1')
+    })
+
+    it('appends to existing overlays', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [{ id: 'ovl-1', type: 'text', content: 'A', x: 0, y: 0, width: 50, height: 30 }]
+        }
+      ]
+      const overlay = {
+        id: 'ovl-2',
+        type: 'sfx',
+        content: 'BOOM',
+        x: 10,
+        y: 10,
+        width: 80,
+        height: 30
+      }
+      const result = addOverlay(cuts, 'cut-001', overlay)
+      expect(result[0].overlays).toHaveLength(2)
+    })
+
+    it('does not modify other cuts', () => {
+      const cuts = [makeCut('cut-001'), makeCut('cut-002')]
+      const overlay = {
+        id: 'ovl-1',
+        type: 'text',
+        content: '',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 40
+      }
+      const result = addOverlay(cuts, 'cut-001', overlay)
+      expect(result[1].overlays).toBeUndefined()
+    })
+  })
+
+  describe('deleteOverlay', () => {
+    it('removes an overlay from a cut', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: 'A', x: 0, y: 0, width: 50, height: 30 },
+            { id: 'ovl-2', type: 'sfx', content: 'B', x: 0, y: 0, width: 50, height: 30 }
+          ]
+        }
+      ]
+      const result = deleteOverlay(cuts, 'cut-001', 'ovl-1')
+      expect(result[0].overlays).toHaveLength(1)
+      expect(result[0].overlays![0].id).toBe('ovl-2')
+    })
+
+    it('returns unchanged cut when overlay not found', () => {
+      const cuts: Cut[] = [
+        {
+          ...makeCut('cut-001'),
+          overlays: [{ id: 'ovl-1', type: 'text', content: 'A', x: 0, y: 0, width: 50, height: 30 }]
+        }
+      ]
+      const result = deleteOverlay(cuts, 'cut-001', 'nonexistent')
+      expect(result[0].overlays).toHaveLength(1)
     })
   })
 

@@ -1,4 +1,4 @@
-import type { Cut } from './CutList'
+import type { Cut, Overlay } from './CutList'
 
 export type CutStatus =
   | 'planned'
@@ -88,6 +88,20 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 export function canTransition(from: string, to: string): boolean {
   return VALID_TRANSITIONS[from]?.includes(to) ?? false
+}
+
+export function addOverlay(cuts: Cut[], cutId: string, overlay: Overlay): Cut[] {
+  return cuts.map((c) => {
+    if (c.id !== cutId) return c
+    return { ...c, overlays: [...(c.overlays ?? []), overlay] }
+  })
+}
+
+export function deleteOverlay(cuts: Cut[], cutId: string, overlayId: string): Cut[] {
+  return cuts.map((c) => {
+    if (c.id !== cutId || !c.overlays) return c
+    return { ...c, overlays: c.overlays.filter((o) => o.id !== overlayId) }
+  })
 }
 
 export function setStatus(cuts: Cut[], cutId: string, status: CutStatus): Cut[] {

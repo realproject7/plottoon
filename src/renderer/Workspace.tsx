@@ -3,9 +3,11 @@ import { TerminalPanel } from './TerminalPanel'
 import { CutList } from './CutList'
 import { CutInspector } from './CutInspector'
 import { EditorCanvas } from './EditorCanvas'
-import { setStatus, isImageProtected } from './cutMutations'
+import { setStatus, isImageProtected, addOverlay, deleteOverlay } from './cutMutations'
 import type { CutStatus } from './cutMutations'
 import type { Cut } from './CutList'
+import { createOverlayFromPreset } from './overlayPresets'
+import type { PresetName } from './overlayPresets'
 
 interface Props {
   projectId?: string
@@ -147,6 +149,37 @@ export function Workspace({ projectId }: Props): JSX.Element {
     [saveCuts, activeCut]
   )
 
+  const handleAddOverlay = useCallback(
+    (cutId: string, presetName: PresetName) => {
+      const overlay = createOverlayFromPreset(presetName, 20, 20)
+      const next = addOverlay(cutsRef.current, cutId, overlay)
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) {
+        setActiveCut(updated)
+      }
+      setSelectedOverlayId(overlay.id)
+    },
+    [saveCuts, activeCut]
+  )
+
+  const handleDeleteOverlay = useCallback(
+    (cutId: string, overlayId: string) => {
+      const next = deleteOverlay(cutsRef.current, cutId, overlayId)
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) {
+        setActiveCut(updated)
+      }
+      if (selectedOverlayId === overlayId) {
+        setSelectedOverlayId(null)
+      }
+    },
+    [saveCuts, activeCut, selectedOverlayId]
+  )
+
   if (!projectId) {
     return (
       <div style={{ padding: 'var(--space-4)' }}>
@@ -242,6 +275,8 @@ export function Workspace({ projectId }: Props): JSX.Element {
             onImportCleanImage={handleImportCleanImage}
             onSetCurrentRevision={handleSetCurrentRevision}
             selectedOverlayId={selectedOverlayId}
+            onAddOverlay={handleAddOverlay}
+            onDeleteOverlay={handleDeleteOverlay}
           />
         </div>
       </div>
