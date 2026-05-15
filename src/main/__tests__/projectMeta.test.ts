@@ -6,6 +6,7 @@ import {
   readProjectMeta,
   writeProjectMeta,
   createProjectMeta,
+  validateMeta,
   ProjectMetaError
 } from '../services/projectMeta'
 
@@ -125,5 +126,51 @@ describe('readProjectMeta validation', () => {
       expect(err).toBeInstanceOf(ProjectMetaError)
       expect((err as ProjectMetaError).projectPath).toBe(tmpDir)
     }
+  })
+})
+
+describe('validateMeta rejects invalid write data', () => {
+  it('rejects non-object', () => {
+    expect(() => validateMeta('string', '/test')).toThrow(ProjectMetaError)
+  })
+
+  it('rejects missing name', () => {
+    expect(() => validateMeta({ version: 1, createdAt: 'x', updatedAt: 'x' }, '/test')).toThrow(
+      '"name"'
+    )
+  })
+
+  it('rejects empty name', () => {
+    expect(() =>
+      validateMeta({ name: '', version: 1, createdAt: 'x', updatedAt: 'x' }, '/test')
+    ).toThrow('"name"')
+  })
+
+  it('rejects invalid version', () => {
+    expect(() =>
+      validateMeta({ name: 'a', version: -1, createdAt: 'x', updatedAt: 'x' }, '/test')
+    ).toThrow('"version"')
+  })
+
+  it('accepts valid meta object', () => {
+    const result = validateMeta(
+      { name: 'Good', version: 1, createdAt: 'x', updatedAt: 'x' },
+      '/test'
+    )
+    expect(result.name).toBe('Good')
+  })
+})
+
+describe('writeProjectMeta validates before writing', () => {
+  it('does not corrupt project.json with invalid data written via validated path', async () => {
+    const validMeta = createProjectMeta('Original')
+    await writeProjectMeta(tmpDir, validMeta)
+
+    expect(() =>
+      validateMeta({ name: '', version: 1, createdAt: 'x', updatedAt: 'x' }, tmpDir)
+    ).toThrow(ProjectMetaError)
+
+    const read = await readProjectMeta(tmpDir)
+    expect(read.name).toBe('Original')
   })
 })

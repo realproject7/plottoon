@@ -21,7 +21,7 @@ export class ProjectMetaError extends Error {
 
 const CURRENT_VERSION = 1
 
-function validateMeta(data: unknown, projectPath: string): ProjectMeta {
+export function validateMeta(data: unknown, projectPath: string): ProjectMeta {
   if (typeof data !== 'object' || data === null) {
     throw new ProjectMetaError('project.json must be a JSON object', projectPath)
   }

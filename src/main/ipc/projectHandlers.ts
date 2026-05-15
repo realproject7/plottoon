@@ -6,7 +6,8 @@ import {
   readProjectMeta,
   writeProjectMeta,
   createProjectMeta,
-  type ProjectMeta
+  validateMeta,
+  ProjectMetaError
 } from '../services/projectMeta'
 import { discoverProjects } from '../services/projectDiscovery'
 import { resolveAppConfigPath } from '../services/safePaths'
@@ -41,12 +42,29 @@ export function registerProjectHandlers(): void {
     return readProjectMeta(root)
   })
 
-  ipcMain.handle('project:writeMeta', async (_event, projectId: string, meta: ProjectMeta) => {
+  ipcMain.handle('project:writeMeta', async (_event, projectId: string, meta: unknown) => {
     const root = getProjectRoot(projectId)
-    await writeProjectMeta(root, meta)
+    const validated = validateMeta(meta, root)
+    await writeProjectMeta(root, validated)
   })
 
   ipcMain.handle('project:create', async (event, name: string, description?: string) => {
+    const trimmed = typeof name === 'string' ? name.trim() : ''
+    if (trimmed.length === 0) {
+      throw new ProjectMetaError('Project name must be a non-empty string', '')
+    }
+
+    const slug = trimmed
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    if (slug.length === 0) {
+      throw new ProjectMetaError(
+        'Project name must contain at least one alphanumeric character',
+        ''
+      )
+    }
+
     let projectsDir = await getProjectsDir()
 
     if (!projectsDir) {
@@ -60,14 +78,10 @@ export function registerProjectHandlers(): void {
       await setProjectsDir(projectsDir)
     }
 
-    const slug = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
     const projectPath = path.join(projectsDir, slug)
     await fs.mkdir(projectPath, { recursive: true })
 
-    const meta = createProjectMeta(name, description)
+    const meta = createProjectMeta(trimmed, description)
     await writeProjectMeta(projectPath, meta)
 
     const id = registerProject(projectPath)
