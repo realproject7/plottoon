@@ -23,10 +23,10 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
     if (!needsAsyncLoad(cut)) return
 
     const imagePath = cut.imageState!.path!
-    setAsyncState({ type: 'loading', cutId: cut.id, path: imagePath })
 
     let cancelled = false
     async function resolve() {
+      setAsyncState({ type: 'loading', cutId: cut.id, path: imagePath })
       try {
         const segments = imagePath.split('/')
         const exists = await window.plottoon.fs.projectFileExists(projectId, ...segments)
