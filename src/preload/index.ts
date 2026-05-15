@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('plottoon', {
     create: (name: string, description?: string) =>
       ipcRenderer.invoke('project:create', name, description),
     setProjectsDir: () => ipcRenderer.invoke('project:setProjectsDir'),
-    getProjectsDir: () => ipcRenderer.invoke('project:getProjectsDir')
+    getProjectsDir: () => ipcRenderer.invoke('project:getProjectsDir'),
+    detectClis: () => ipcRenderer.invoke('project:detectClis')
   }
 })

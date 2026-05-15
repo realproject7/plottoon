@@ -32,6 +32,18 @@ interface PlottoonFs {
   writeAppConfig(filename: string, content: string): Promise<void>
 }
 
+interface CliStatus {
+  name: string
+  command: string
+  installed: boolean
+  version: string | null
+}
+
+interface CapabilityReport {
+  detectedAt: string
+  clis: CliStatus[]
+}
+
 interface PlottoonProject {
   discover(): Promise<DiscoveredProject[]>
   readMeta(projectId: string): Promise<ProjectMeta>
@@ -39,6 +51,7 @@ interface PlottoonProject {
   create(name: string, description?: string): Promise<CreatedProject | null>
   setProjectsDir(): Promise<string | null>
   getProjectsDir(): Promise<string | null>
+  detectClis(): Promise<CapabilityReport>
 }
 
 interface TerminalSessionMeta {

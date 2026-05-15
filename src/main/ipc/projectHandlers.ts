@@ -12,6 +12,7 @@ import {
 import { discoverProjects } from '../services/projectDiscovery'
 import { scaffoldProjectTemplate } from '../services/projectTemplate'
 import { resolveAppConfigPath } from '../services/safePaths'
+import { detectClis } from '../services/cliDetection'
 
 const PROJECTS_DIR_KEY = 'projectsDir'
 
@@ -102,4 +103,6 @@ export function registerProjectHandlers(): void {
   })
 
   ipcMain.handle('project:getProjectsDir', () => getProjectsDir())
+
+  ipcMain.handle('project:detectClis', () => detectClis())
 }
