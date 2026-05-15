@@ -15,6 +15,7 @@ import { resolveAppConfigPath } from '../services/safePaths'
 import { detectClis } from '../services/cliDetection'
 import { generateReport } from '../services/capabilityReport'
 import type { CapabilityCheck, CheckStatus } from '../services/capabilityReport'
+import { logAction, getLog } from '../services/actionLog'
 
 const PROJECTS_DIR_KEY = 'projectsDir'
 
@@ -80,6 +81,7 @@ export function registerProjectHandlers(): void {
     const root = getProjectRoot(projectId)
     const validated = validateMeta(meta, root)
     await writeProjectMeta(root, validated)
+    logAction('project:writeMeta', `Updated metadata for project`, projectId)
   })
 
   ipcMain.handle('project:create', async (event, name: string, description?: string) => {
@@ -120,6 +122,7 @@ export function registerProjectHandlers(): void {
     await scaffoldProjectTemplate(projectPath, trimmed)
 
     const id = registerProject(projectPath)
+    logAction('project:create', `Created project "${trimmed}"`, id)
     return { id, path: projectPath, meta }
   })
 
@@ -131,6 +134,7 @@ export function registerProjectHandlers(): void {
     })
     if (result.canceled || result.filePaths.length === 0) return null
     await setProjectsDir(result.filePaths[0])
+    logAction('project:setProjectsDir', `Set projects directory`)
     return result.filePaths[0]
   })
 
@@ -152,4 +156,12 @@ export function registerProjectHandlers(): void {
 
     return generateReport({ cliChecks, writeAccessCheck })
   })
+
+  ipcMain.handle(
+    'actionLog:log',
+    (_event, action: string, detail: string, projectId?: string, plotId?: string) =>
+      logAction(action, detail, projectId ?? null, plotId ?? null)
+  )
+
+  ipcMain.handle('actionLog:get', (_event, projectId?: string) => getLog(projectId))
 }

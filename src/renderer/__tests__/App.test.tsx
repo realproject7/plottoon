@@ -112,6 +112,10 @@ beforeEach(() => {
           }
         ]
       })
+    },
+    actionLog: {
+      log: vi.fn(),
+      get: vi.fn().mockResolvedValue([])
     }
   }
 })
@@ -159,6 +163,38 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByText('My Webtoon')).toBeDefined()
       expect(screen.getByText('A cool story')).toBeDefined()
+    })
+  })
+
+  it('navigates to workspace with projectId when clicking a project card', async () => {
+    ;(window.plottoon.terminal.findByProject as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'sess_1',
+      projectId: 'proj_1',
+      cwd: '/home/user/my-webtoon',
+      state: 'connected',
+      createdAt: '2026-01-01T00:00:00Z',
+      exitCode: null
+    })
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          description: 'A cool story'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    await waitFor(() => {
+      expect(screen.queryByText('No projects yet')).toBeNull()
+      expect(screen.getByText(/cwd:/)).toBeDefined()
     })
   })
 

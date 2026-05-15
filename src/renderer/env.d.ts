@@ -99,6 +99,19 @@ interface PlottoonCapability {
   getReport(): Promise<FirstRunReport>
 }
 
+interface ActionEntry {
+  timestamp: string
+  action: string
+  projectId: string | null
+  plotId: string | null
+  detail: string
+}
+
+interface PlottoonActionLog {
+  log(action: string, detail: string, projectId?: string, plotId?: string): Promise<ActionEntry>
+  get(projectId?: string): Promise<ActionEntry[]>
+}
+
 interface Window {
   plottoon: {
     version: string
@@ -106,5 +119,6 @@ interface Window {
     fs: PlottoonFs
     project: PlottoonProject
     capability: PlottoonCapability
+    actionLog: PlottoonActionLog
   }
 }
