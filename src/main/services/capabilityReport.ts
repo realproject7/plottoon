@@ -71,7 +71,7 @@ function checkAtlasCloudGuidance(guidanceEnabled: boolean): CapabilityCheck {
     label: 'AtlasCloud guidance',
     status: 'info',
     detail:
-      'AtlasCloud backend guidance is not configured. Enable it in your Claude/Codex environment.'
+      'AtlasCloud backend guidance is not configured. PlotToon does not store API keys — enable it in your Claude/Codex environment.'
   }
 }
 

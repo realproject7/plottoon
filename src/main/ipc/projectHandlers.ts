@@ -107,5 +107,8 @@ export function registerProjectHandlers(): void {
 
   ipcMain.handle('project:detectClis', () => detectClis())
 
-  ipcMain.handle('capability:getReport', () => generateReport())
+  ipcMain.handle('capability:getReport', async () => {
+    const projectDir = await getProjectsDir()
+    return generateReport({ projectDir: projectDir ?? undefined })
+  })
 }

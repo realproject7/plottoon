@@ -102,13 +102,14 @@ describe('AtlasCloud guidance', () => {
     expect(atlas.detail).toContain('enabled')
   })
 
-  it('shows disabled state', async () => {
+  it('shows disabled state with no-key-storage policy', async () => {
     const report = await generateReport(opts({ atlasCloudGuidanceEnabled: false }))
     const atlas = report.sections
       .flatMap((s) => s.checks)
       .find((c) => c.id === 'atlascloud-guidance')!
     expect(atlas.status).toBe('info')
     expect(atlas.detail).toContain('not configured')
+    expect(atlas.detail).toContain('does not store API keys')
   })
 
   it('does not expose API key storage in report JSON', async () => {

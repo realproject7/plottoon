@@ -78,7 +78,7 @@ beforeEach(() => {
                 label: 'AtlasCloud guidance',
                 status: 'info',
                 detail:
-                  'AtlasCloud backend guidance is not configured. Enable it in your Claude/Codex environment.'
+                  'AtlasCloud backend guidance is not configured. PlotToon does not store API keys — enable it in your Claude/Codex environment.'
               }
             ]
           },
@@ -233,7 +233,7 @@ describe('App', () => {
     await waitFor(() => screen.getByRole('button', { name: 'Status' }))
     fireEvent.click(screen.getByRole('button', { name: 'Status' }))
     await waitFor(() => {
-      expect(screen.getByText(/Enable it in your Claude\/Codex environment/)).toBeDefined()
+      expect(screen.getByText(/does not store API keys/)).toBeDefined()
     })
   })
 
