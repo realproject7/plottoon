@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { Cut } from './CutList'
+import { computeLayout } from './textLayout'
 
 const DEFAULT_CANVAS_WIDTH = 320
 const DEFAULT_CANVAS_HEIGHT = 480
@@ -222,12 +223,15 @@ export function EditorCanvas({
         {overlays.map((overlay) => {
           const isSelected = selectedOverlayId === overlay.id
           const presetStyle = overlay.style ?? {}
+          const layout = overlay.content ? computeLayout(overlay) : null
+          const isOverflow = layout?.overflow ?? false
           return (
             <div
               key={overlay.id}
               data-testid={`overlay-${overlay.id}`}
               data-overlay-id={overlay.id}
               data-selected={isSelected}
+              data-overflow={isOverflow}
               onClick={(e) => handleOverlayClick(e, overlay.id)}
               onMouseDown={(e) => handleOverlayMouseDown(e, overlay.id, overlay)}
               style={{
@@ -249,19 +253,49 @@ export function EditorCanvas({
                       outline: '2px solid var(--color-accent, #3b82f6)',
                       outlineOffset: '1px'
                     }
+                  : {}),
+                ...(isOverflow
+                  ? {
+                      boxShadow: 'inset 0 0 0 2px var(--color-error, #e53e3e)'
+                    }
                   : {})
               }}
             >
-              <span
-                style={{
-                  padding: '0 4px',
-                  textOverflow: 'ellipsis',
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {overlay.content || overlay.id}
-              </span>
+              {layout && layout.lines.length > 0 ? (
+                layout.lines.map((line, i) => (
+                  <span
+                    key={i}
+                    data-testid={`overlay-line-${overlay.id}-${i}`}
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top:
+                        line.y -
+                        (overlay.style?.fontSize ? parseFloat(overlay.style.fontSize) : 13),
+                      width: '100%',
+                      textAlign:
+                        (overlay.style?.textAlign as 'left' | 'center' | 'right') ?? 'center',
+                      padding: '0 ' + (overlay.style?.padding?.split(/\s+/)[1] ?? '12') + 'px',
+                      boxSizing: 'border-box',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
+                    {line.text}
+                  </span>
+                ))
+              ) : (
+                <span
+                  style={{
+                    padding: '0 4px',
+                    color: 'var(--color-text-muted)',
+                    fontSize: 10
+                  }}
+                >
+                  {overlay.id}
+                </span>
+              )}
             </div>
           )
         })}

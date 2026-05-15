@@ -3,6 +3,7 @@ import { canTransition, isProtected, isImageProtected } from './cutMutations'
 import type { CutStatus } from './cutMutations'
 import { PRESET_NAMES, getPresetLabel } from './overlayPresets'
 import type { PresetName } from './overlayPresets'
+import { checkExportBlockers } from './exportChecks'
 
 const STATUS_OPTIONS: CutStatus[] = ['planned', 'draft', 'needs_revision', 'approved']
 
@@ -463,6 +464,41 @@ export function CutInspector({
           </div>
         </>
       )}
+
+      {(() => {
+        const blockers = checkExportBlockers(cut.overlays ?? [])
+        if (blockers.length === 0) return null
+        return (
+          <div
+            data-testid="export-blockers"
+            style={{
+              marginTop: 'var(--space-4)',
+              padding: 'var(--space-2) var(--space-3)',
+              borderTop: '1px solid var(--color-border)',
+              background: 'var(--color-surface-raised)',
+              borderRadius: 'var(--radius-sm)'
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 'var(--font-weight-semibold)' as never,
+                color: 'var(--color-error, #e53e3e)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                marginBottom: 4
+              }}
+            >
+              Export blocked
+            </div>
+            {blockers.map((b) => (
+              <div key={b.type} style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                {b.message}
+              </div>
+            ))}
+          </div>
+        )
+      })()}
     </div>
   )
 }

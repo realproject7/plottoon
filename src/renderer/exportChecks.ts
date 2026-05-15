@@ -1,8 +1,27 @@
+import type { Overlay } from './CutList'
+import { hasUnresolvedOverflow } from './textLayout'
+
 export interface ExportCheckResult {
   webp: boolean
   jpeg: boolean
   fontRender: boolean
   fontSample: string
+}
+
+export interface ExportBlocker {
+  type: string
+  message: string
+}
+
+export function checkExportBlockers(overlays: Overlay[]): ExportBlocker[] {
+  const blockers: ExportBlocker[] = []
+  if (hasUnresolvedOverflow(overlays)) {
+    blockers.push({
+      type: 'text-overflow',
+      message: 'One or more overlays have text that overflows their bounds'
+    })
+  }
+  return blockers
 }
 
 export function checkExportCapabilities(): ExportCheckResult {
