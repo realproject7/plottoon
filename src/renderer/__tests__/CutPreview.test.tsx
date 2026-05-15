@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, waitFor, cleanup } from '@testing-library/react'
 import { CutPreview } from '../CutPreview'
 import type { Cut } from '../CutList'
-import type { PlottoonFs, PlottoonTerminal } from '../env'
+import type { PlottoonTerminal } from '../env'
 
 beforeEach(() => {
   window.plottoon = {

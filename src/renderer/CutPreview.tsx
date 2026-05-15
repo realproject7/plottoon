@@ -6,54 +6,52 @@ interface CutPreviewProps {
   projectId: string
 }
 
-type PreviewState =
-  | { type: 'empty' }
-  | { type: 'blank'; cutId: string }
+type AsyncState =
+  | { type: 'idle' }
   | { type: 'loading'; cutId: string; path: string }
   | { type: 'ready'; cutId: string; src: string }
   | { type: 'error'; cutId: string; path: string; message: string }
 
+function needsAsyncLoad(cut: Cut | null): cut is Cut {
+  return cut !== null && cut.imageState?.status === 'done' && !!cut.imageState?.path
+}
+
 export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
-  const [state, setState] = useState<PreviewState>({ type: 'empty' })
+  const [asyncState, setAsyncState] = useState<AsyncState>({ type: 'idle' })
 
   useEffect(() => {
-    if (!cut) {
-      setState({ type: 'empty' })
+    if (!needsAsyncLoad(cut)) {
+      setAsyncState({ type: 'idle' })
       return
     }
 
-    const imagePath = cut.imageState?.path
-    if (!imagePath || cut.imageState?.status !== 'done') {
-      setState({ type: 'blank', cutId: cut.id })
-      return
-    }
-
-    setState({ type: 'loading', cutId: cut.id, path: imagePath })
+    const imagePath = cut.imageState!.path!
+    setAsyncState({ type: 'loading', cutId: cut.id, path: imagePath })
 
     let cancelled = false
     async function resolve() {
       try {
-        const segments = imagePath!.split('/')
+        const segments = imagePath.split('/')
         const exists = await window.plottoon.fs.projectFileExists(projectId, ...segments)
         if (cancelled) return
         if (!exists) {
-          setState({
+          setAsyncState({
             type: 'error',
-            cutId: cut!.id,
-            path: imagePath!,
+            cutId: cut.id,
+            path: imagePath,
             message: 'Asset not found'
           })
           return
         }
         const absPath = await window.plottoon.fs.resolveProjectFilePath(projectId, ...segments)
         if (cancelled) return
-        setState({ type: 'ready', cutId: cut!.id, src: `file://${absPath}` })
+        setAsyncState({ type: 'ready', cutId: cut.id, src: `file://${absPath}` })
       } catch (err) {
         if (!cancelled) {
-          setState({
+          setAsyncState({
             type: 'error',
-            cutId: cut!.id,
-            path: imagePath!,
+            cutId: cut.id,
+            path: imagePath,
             message: err instanceof Error ? err.message : 'Failed to load asset'
           })
         }
@@ -65,7 +63,8 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
     }
   }, [cut, projectId])
 
-  if (state.type === 'empty') {
+  // Derive sync states from props
+  if (!cut) {
     return (
       <div
         data-testid="preview-empty"
@@ -83,7 +82,7 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
     )
   }
 
-  if (state.type === 'blank') {
+  if (!needsAsyncLoad(cut)) {
     return (
       <div
         data-testid="preview-blank"
@@ -109,13 +108,12 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
           }}
         >
           <div style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
-            <div style={{ fontSize: 24, marginBottom: 'var(--space-2)' }}>&#x1F5BC;</div>
             <div style={{ fontSize: 12 }}>No image</div>
             <div style={{ fontSize: 11, marginTop: 'var(--space-1)' }}>320 &times; 480</div>
           </div>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{cut?.id}</div>
-        {cut?.direction && (
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{cut.id}</div>
+        {cut.direction && (
           <div
             style={{
               fontSize: 11,
@@ -131,7 +129,7 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
     )
   }
 
-  if (state.type === 'loading') {
+  if (asyncState.type === 'loading' || asyncState.type === 'idle') {
     return (
       <div
         data-testid="preview-loading"
@@ -149,7 +147,7 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
     )
   }
 
-  if (state.type === 'error') {
+  if (asyncState.type === 'error') {
     return (
       <div
         data-testid="preview-error"
@@ -162,7 +160,9 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
           gap: 'var(--space-2)'
         }}
       >
-        <div style={{ fontSize: 13, color: 'var(--color-error, #e53e3e)' }}>{state.message}</div>
+        <div style={{ fontSize: 13, color: 'var(--color-error, #e53e3e)' }}>
+          {asyncState.message}
+        </div>
         <div
           style={{
             fontSize: 11,
@@ -173,13 +173,13 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
             wordBreak: 'break-all'
           }}
         >
-          {state.path}
+          {asyncState.path}
         </div>
       </div>
     )
   }
 
-  // state.type === 'ready'
+  // asyncState.type === 'ready'
   return (
     <div
       data-testid="preview-image"
@@ -195,13 +195,13 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
       }}
     >
       <img
-        src={state.src}
-        alt={cut?.direction ?? cut?.id ?? 'Cut preview'}
+        src={asyncState.src}
+        alt={cut.direction ?? cut.id ?? 'Cut preview'}
         onError={() => {
-          setState({
+          setAsyncState({
             type: 'error',
-            cutId: state.cutId,
-            path: cut?.imageState?.path ?? '',
+            cutId: asyncState.cutId,
+            path: cut.imageState?.path ?? '',
             message: 'Failed to load image'
           })
         }}
@@ -212,7 +212,7 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
           borderRadius: 'var(--radius-sm)'
         }}
       />
-      <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{cut?.id}</div>
+      <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{cut.id}</div>
     </div>
   )
 }
