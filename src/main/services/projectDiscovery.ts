@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { readProjectMeta, type ProjectMeta } from './projectMeta'
+import { registerProject } from './projectRegistry'
 
 export interface DiscoveredProject {
+  id: string | null
   path: string
   meta: ProjectMeta | null
   error: string | null
@@ -31,9 +33,11 @@ export async function discoverProjects(parentDir: string): Promise<DiscoveredPro
 
     try {
       const meta = await readProjectMeta(fullPath)
-      results.push({ path: fullPath, meta, error: null })
+      const id = registerProject(fullPath)
+      results.push({ id, path: fullPath, meta, error: null })
     } catch (err) {
       results.push({
+        id: null,
         path: fullPath,
         meta: null,
         error: err instanceof Error ? err.message : 'Unknown error reading project.json'

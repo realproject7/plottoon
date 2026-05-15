@@ -48,6 +48,7 @@ describe('App', () => {
   it('shows project cards when projects are discovered', async () => {
     mockDiscover.mockResolvedValue([
       {
+        id: 'proj_1',
         path: '/home/user/my-webtoon',
         meta: {
           name: 'My Webtoon',
@@ -69,6 +70,7 @@ describe('App', () => {
   it('shows error state for projects with invalid metadata', async () => {
     mockDiscover.mockResolvedValue([
       {
+        id: null,
         path: '/home/user/broken',
         meta: null,
         error: 'project.json contains invalid JSON'

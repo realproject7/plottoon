@@ -9,6 +9,7 @@ interface ProjectMeta {
 }
 
 interface DiscoveredProject {
+  id: string | null
   path: string
   meta: ProjectMeta | null
   error: string | null
