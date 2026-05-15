@@ -52,6 +52,14 @@
           "type": "string",
           "description": "Art/camera direction notes."
         },
+        "narration": {
+          "type": "string",
+          "description": "Narrator voice-over or internal monologue text."
+        },
+        "continuityNotes": {
+          "type": "string",
+          "description": "Notes for maintaining visual/story continuity across cuts."
+        },
         "imageState": { "$ref": "#/$defs/imageState" },
         "overlays": {
           "type": "array",

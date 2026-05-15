@@ -44,6 +44,8 @@ export interface Cut {
   order: number
   dialogue: string
   direction: string
+  narration?: string
+  continuityNotes?: string
   imageState: ImageState
   overlays: Overlay[]
   canvasOverrides?: CanvasOverrides
@@ -193,6 +195,12 @@ function validateCut(data: unknown, index: number, filePath: string): Cut {
   if (typeof c.direction !== 'string') {
     fail(`cut "${cutId}": "direction" must be a string`, filePath)
   }
+  if (c.narration !== undefined && typeof c.narration !== 'string') {
+    fail(`cut "${cutId}": "narration" must be a string if present`, filePath)
+  }
+  if (c.continuityNotes !== undefined && typeof c.continuityNotes !== 'string') {
+    fail(`cut "${cutId}": "continuityNotes" must be a string if present`, filePath)
+  }
 
   const imageState = validateImageState(c.imageState, cutId, filePath)
 
@@ -211,6 +219,8 @@ function validateCut(data: unknown, index: number, filePath: string): Cut {
     order: c.order as number,
     dialogue: c.dialogue as string,
     direction: c.direction as string,
+    narration: c.narration as string | undefined,
+    continuityNotes: c.continuityNotes as string | undefined,
     imageState,
     overlays,
     canvasOverrides
