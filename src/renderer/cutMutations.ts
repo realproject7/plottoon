@@ -1,4 +1,4 @@
-import type { Cut, Overlay } from './CutList'
+import type { Cut, Overlay, TailAnchor } from './CutList'
 
 export type CutStatus =
   | 'planned'
@@ -101,6 +101,96 @@ export function deleteOverlay(cuts: Cut[], cutId: string, overlayId: string): Cu
   return cuts.map((c) => {
     if (c.id !== cutId || !c.overlays) return c
     return { ...c, overlays: c.overlays.filter((o) => o.id !== overlayId) }
+  })
+}
+
+export function moveOverlay(
+  cuts: Cut[],
+  cutId: string,
+  overlayId: string,
+  x: number,
+  y: number
+): Cut[] {
+  return cuts.map((c) => {
+    if (c.id !== cutId || !c.overlays) return c
+    return {
+      ...c,
+      overlays: c.overlays.map((o) => (o.id === overlayId ? { ...o, x, y } : o))
+    }
+  })
+}
+
+export function resizeOverlay(
+  cuts: Cut[],
+  cutId: string,
+  overlayId: string,
+  width: number,
+  height: number
+): Cut[] {
+  return cuts.map((c) => {
+    if (c.id !== cutId || !c.overlays) return c
+    return {
+      ...c,
+      overlays: c.overlays.map((o) =>
+        o.id === overlayId ? { ...o, width: Math.max(1, width), height: Math.max(1, height) } : o
+      )
+    }
+  })
+}
+
+export function duplicateOverlay(
+  cuts: Cut[],
+  cutId: string,
+  overlayId: string
+): { cuts: Cut[]; newId: string | null } {
+  let newId: string | null = null
+  const result = cuts.map((c) => {
+    if (c.id !== cutId || !c.overlays) return c
+    const source = c.overlays.find((o) => o.id === overlayId)
+    if (!source) return c
+    const dupId = `ovl-${Date.now()}-dup`
+    newId = dupId
+    const dup: Overlay = {
+      ...structuredClone(source),
+      id: dupId,
+      x: source.x + 10,
+      y: source.y + 10
+    }
+    return { ...c, overlays: [...c.overlays, dup] }
+  })
+  return { cuts: result, newId }
+}
+
+export function reorderOverlay(
+  cuts: Cut[],
+  cutId: string,
+  overlayId: string,
+  direction: 'up' | 'down'
+): Cut[] {
+  return cuts.map((c) => {
+    if (c.id !== cutId || !c.overlays) return c
+    const idx = c.overlays.findIndex((o) => o.id === overlayId)
+    if (idx === -1) return c
+    const targetIdx = direction === 'up' ? idx + 1 : idx - 1
+    if (targetIdx < 0 || targetIdx >= c.overlays.length) return c
+    const next = [...c.overlays]
+    ;[next[idx], next[targetIdx]] = [next[targetIdx], next[idx]]
+    return { ...c, overlays: next }
+  })
+}
+
+export function setOverlayTailAnchor(
+  cuts: Cut[],
+  cutId: string,
+  overlayId: string,
+  tailAnchor: TailAnchor | undefined
+): Cut[] {
+  return cuts.map((c) => {
+    if (c.id !== cutId || !c.overlays) return c
+    return {
+      ...c,
+      overlays: c.overlays.map((o) => (o.id === overlayId ? { ...o, tailAnchor } : o))
+    }
   })
 }
 

@@ -6,6 +6,20 @@ import type { PresetName } from './overlayPresets'
 
 const STATUS_OPTIONS: CutStatus[] = ['planned', 'draft', 'needs_revision', 'approved']
 
+const inspectorBtnStyle: React.CSSProperties = {
+  all: 'unset',
+  cursor: 'pointer',
+  display: 'block',
+  fontSize: 11,
+  padding: '4px 8px',
+  borderRadius: 'var(--radius-sm)',
+  background: 'var(--color-surface-raised)',
+  border: '1px solid var(--color-border)',
+  textAlign: 'center',
+  width: '100%',
+  boxSizing: 'border-box'
+}
+
 interface CutInspectorProps {
   cut: Cut | null
   onStatusChange?: (cutId: string, status: CutStatus) => void
@@ -14,6 +28,11 @@ interface CutInspectorProps {
   selectedOverlayId?: string | null
   onAddOverlay?: (cutId: string, presetName: PresetName) => void
   onDeleteOverlay?: (cutId: string, overlayId: string) => void
+  onDuplicateOverlay?: (cutId: string, overlayId: string) => void
+  onReorderOverlay?: (cutId: string, overlayId: string, direction: 'up' | 'down') => void
+  onResizeOverlay?: (cutId: string, overlayId: string, width: number, height: number) => void
+  onSetTailAnchor?: (cutId: string, overlayId: string, x: number, y: number) => void
+  onRemoveTailAnchor?: (cutId: string, overlayId: string) => void
 }
 
 export function CutInspector({
@@ -23,7 +42,12 @@ export function CutInspector({
   onSetCurrentRevision,
   selectedOverlayId,
   onAddOverlay,
-  onDeleteOverlay
+  onDeleteOverlay,
+  onDuplicateOverlay,
+  onReorderOverlay,
+  onResizeOverlay,
+  onSetTailAnchor,
+  onRemoveTailAnchor
 }: CutInspectorProps): JSX.Element {
   if (!cut) {
     return (
@@ -263,27 +287,132 @@ export function CutInspector({
               <Field label="Content" value={overlay.content} />
               <Field label="X" value={String(overlay.x)} mono />
               <Field label="Y" value={String(overlay.y)} mono />
-              <Field label="Width" value={String(overlay.width)} mono />
-              <Field label="Height" value={String(overlay.height)} mono />
+              {onResizeOverlay ? (
+                <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--space-2)' }}>
+                  <NumberInput
+                    label="W"
+                    testId="overlay-width"
+                    value={overlay.width}
+                    onChange={(v) => onResizeOverlay(cut.id, overlay.id, v, overlay.height)}
+                  />
+                  <NumberInput
+                    label="H"
+                    testId="overlay-height"
+                    value={overlay.height}
+                    onChange={(v) => onResizeOverlay(cut.id, overlay.id, overlay.width, v)}
+                  />
+                </div>
+              ) : (
+                <>
+                  <Field label="Width" value={String(overlay.width)} mono />
+                  <Field label="Height" value={String(overlay.height)} mono />
+                </>
+              )}
+              {overlay.tailAnchor && (
+                <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--space-2)' }}>
+                  {onSetTailAnchor ? (
+                    <>
+                      <NumberInput
+                        label="Tail X"
+                        testId="tail-x"
+                        value={overlay.tailAnchor.x}
+                        onChange={(v) =>
+                          onSetTailAnchor(cut.id, overlay.id, v, overlay.tailAnchor!.y)
+                        }
+                      />
+                      <NumberInput
+                        label="Tail Y"
+                        testId="tail-y"
+                        value={overlay.tailAnchor.y}
+                        onChange={(v) =>
+                          onSetTailAnchor(cut.id, overlay.id, overlay.tailAnchor!.x, v)
+                        }
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Field label="Tail X" value={String(overlay.tailAnchor.x)} mono />
+                      <Field label="Tail Y" value={String(overlay.tailAnchor.y)} mono />
+                    </>
+                  )}
+                </div>
+              )}
+              {onRemoveTailAnchor && overlay.tailAnchor && (
+                <button
+                  type="button"
+                  data-testid="remove-tail-btn"
+                  onClick={() => onRemoveTailAnchor(cut.id, overlay.id)}
+                  style={{ ...inspectorBtnStyle, marginBottom: 4 }}
+                >
+                  Remove tail anchor
+                </button>
+              )}
+              {onSetTailAnchor && !overlay.tailAnchor && (
+                <button
+                  type="button"
+                  data-testid="add-tail-btn"
+                  onClick={() =>
+                    onSetTailAnchor(
+                      cut.id,
+                      overlay.id,
+                      overlay.x + overlay.width / 2,
+                      overlay.y + overlay.height + 20
+                    )
+                  }
+                  style={inspectorBtnStyle}
+                >
+                  Add tail anchor
+                </button>
+              )}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 4,
+                  marginTop: 'var(--space-2)'
+                }}
+              >
+                {onDuplicateOverlay && (
+                  <button
+                    type="button"
+                    data-testid="duplicate-overlay-btn"
+                    onClick={() => onDuplicateOverlay(cut.id, overlay.id)}
+                    style={{ ...inspectorBtnStyle, flex: 1 }}
+                  >
+                    Duplicate
+                  </button>
+                )}
+                {onReorderOverlay && (
+                  <>
+                    <button
+                      type="button"
+                      data-testid="overlay-z-up"
+                      onClick={() => onReorderOverlay(cut.id, overlay.id, 'up')}
+                      title="Bring forward"
+                      style={{ ...inspectorBtnStyle, flex: 0, width: 28 }}
+                    >
+                      &#x2191;
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="overlay-z-down"
+                      onClick={() => onReorderOverlay(cut.id, overlay.id, 'down')}
+                      title="Send backward"
+                      style={{ ...inspectorBtnStyle, flex: 0, width: 28 }}
+                    >
+                      &#x2193;
+                    </button>
+                  </>
+                )}
+              </div>
               {onDeleteOverlay && (
                 <button
                   type="button"
                   data-testid="delete-overlay-btn"
                   onClick={() => onDeleteOverlay(cut.id, overlay.id)}
                   style={{
-                    all: 'unset',
-                    cursor: 'pointer',
-                    display: 'block',
-                    fontSize: 11,
-                    padding: '4px 8px',
-                    marginTop: 'var(--space-2)',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--color-surface-raised)',
-                    border: '1px solid var(--color-border)',
-                    textAlign: 'center',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    color: 'var(--color-error, #e53e3e)'
+                    ...inspectorBtnStyle,
+                    color: 'var(--color-error, #e53e3e)',
+                    marginTop: 4
                   }}
                 >
                   Delete overlay
@@ -370,5 +499,43 @@ function Field({
         {value}
       </div>
     </div>
+  )
+}
+
+function NumberInput({
+  label,
+  testId,
+  value,
+  onChange
+}: {
+  label: string
+  testId: string
+  value: number
+  onChange: (v: number) => void
+}): JSX.Element {
+  return (
+    <label style={{ flex: 1 }}>
+      <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginBottom: 1 }}>{label}</div>
+      <input
+        data-testid={testId}
+        type="number"
+        value={value}
+        onChange={(e) => {
+          const v = Number(e.target.value)
+          if (Number.isFinite(v)) onChange(v)
+        }}
+        style={{
+          width: '100%',
+          fontSize: 11,
+          fontFamily: 'var(--font-mono, monospace)',
+          padding: '2px 4px',
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--color-surface)',
+          color: 'inherit',
+          boxSizing: 'border-box'
+        }}
+      />
+    </label>
   )
 }

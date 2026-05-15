@@ -3,7 +3,17 @@ import { TerminalPanel } from './TerminalPanel'
 import { CutList } from './CutList'
 import { CutInspector } from './CutInspector'
 import { EditorCanvas } from './EditorCanvas'
-import { setStatus, isImageProtected, addOverlay, deleteOverlay } from './cutMutations'
+import {
+  setStatus,
+  isImageProtected,
+  addOverlay,
+  deleteOverlay,
+  moveOverlay,
+  resizeOverlay,
+  duplicateOverlay,
+  reorderOverlay,
+  setOverlayTailAnchor
+} from './cutMutations'
 import type { CutStatus } from './cutMutations'
 import type { Cut } from './CutList'
 import { createOverlayFromPreset } from './overlayPresets'
@@ -180,6 +190,74 @@ export function Workspace({ projectId }: Props): JSX.Element {
     [saveCuts, activeCut, selectedOverlayId]
   )
 
+  const handleMoveOverlay = useCallback(
+    (overlayId: string, x: number, y: number) => {
+      if (!activeCut) return
+      const next = moveOverlay(cutsRef.current, activeCut.id, overlayId, x, y)
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === activeCut.id)
+      if (updated) setActiveCut(updated)
+    },
+    [saveCuts, activeCut]
+  )
+
+  const handleResizeOverlay = useCallback(
+    (cutId: string, overlayId: string, width: number, height: number) => {
+      const next = resizeOverlay(cutsRef.current, cutId, overlayId, width, height)
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+    },
+    [saveCuts, activeCut]
+  )
+
+  const handleDuplicateOverlay = useCallback(
+    (cutId: string, overlayId: string) => {
+      const { cuts: next, newId } = duplicateOverlay(cutsRef.current, cutId, overlayId)
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+      if (newId) setSelectedOverlayId(newId)
+    },
+    [saveCuts, activeCut]
+  )
+
+  const handleReorderOverlay = useCallback(
+    (cutId: string, overlayId: string, direction: 'up' | 'down') => {
+      const next = reorderOverlay(cutsRef.current, cutId, overlayId, direction)
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+    },
+    [saveCuts, activeCut]
+  )
+
+  const handleSetTailAnchor = useCallback(
+    (cutId: string, overlayId: string, x: number, y: number) => {
+      const next = setOverlayTailAnchor(cutsRef.current, cutId, overlayId, { x, y })
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+    },
+    [saveCuts, activeCut]
+  )
+
+  const handleRemoveTailAnchor = useCallback(
+    (cutId: string, overlayId: string) => {
+      const next = setOverlayTailAnchor(cutsRef.current, cutId, overlayId, undefined)
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+    },
+    [saveCuts, activeCut]
+  )
+
   if (!projectId) {
     return (
       <div style={{ padding: 'var(--space-4)' }}>
@@ -255,6 +333,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             projectId={projectId}
             selectedOverlayId={selectedOverlayId}
             onSelectOverlay={setSelectedOverlayId}
+            onMoveOverlay={handleMoveOverlay}
           />
         </div>
 
@@ -277,6 +356,11 @@ export function Workspace({ projectId }: Props): JSX.Element {
             selectedOverlayId={selectedOverlayId}
             onAddOverlay={handleAddOverlay}
             onDeleteOverlay={handleDeleteOverlay}
+            onDuplicateOverlay={handleDuplicateOverlay}
+            onReorderOverlay={handleReorderOverlay}
+            onResizeOverlay={handleResizeOverlay}
+            onSetTailAnchor={handleSetTailAnchor}
+            onRemoveTailAnchor={handleRemoveTailAnchor}
           />
         </div>
       </div>

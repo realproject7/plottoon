@@ -167,7 +167,20 @@
           "type": "object",
           "additionalProperties": { "type": "string" },
           "description": "Optional CSS-like style overrides."
+        },
+        "tailAnchor": {
+          "$ref": "#/$defs/tailAnchor",
+          "description": "Bubble tail anchor point relative to the overlay."
         }
+      }
+    },
+    "tailAnchor": {
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number", "description": "X coordinate of tail anchor point." },
+        "y": { "type": "number", "description": "Y coordinate of tail anchor point." }
       }
     },
     "canvasOverrides": {

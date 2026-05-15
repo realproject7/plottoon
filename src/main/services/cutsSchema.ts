@@ -14,6 +14,11 @@ export class CutsValidationError extends Error {
   }
 }
 
+export interface TailAnchor {
+  x: number
+  y: number
+}
+
 export interface Overlay {
   id: string
   type: 'text' | 'sfx'
@@ -23,6 +28,7 @@ export interface Overlay {
   width: number
   height: number
   style?: Record<string, string>
+  tailAnchor?: TailAnchor
 }
 
 export interface ImageRevision {
@@ -114,6 +120,21 @@ function validateOverlay(data: unknown, index: number, cutId: string, filePath: 
     }
   }
 
+  let tailAnchor: TailAnchor | undefined
+  if (o.tailAnchor !== undefined) {
+    if (typeof o.tailAnchor !== 'object' || o.tailAnchor === null || Array.isArray(o.tailAnchor)) {
+      fail(`cut "${cutId}" overlay[${index}]: "tailAnchor" must be an object if present`, filePath)
+    }
+    const ta = o.tailAnchor as Record<string, unknown>
+    if (typeof ta.x !== 'number' || !Number.isFinite(ta.x)) {
+      fail(`cut "${cutId}" overlay[${index}]: tailAnchor.x must be a finite number`, filePath)
+    }
+    if (typeof ta.y !== 'number' || !Number.isFinite(ta.y)) {
+      fail(`cut "${cutId}" overlay[${index}]: tailAnchor.y must be a finite number`, filePath)
+    }
+    tailAnchor = { x: ta.x as number, y: ta.y as number }
+  }
+
   return {
     id: o.id as string,
     type: o.type as 'text' | 'sfx',
@@ -122,7 +143,8 @@ function validateOverlay(data: unknown, index: number, cutId: string, filePath: 
     y: o.y as number,
     width: o.width as number,
     height: o.height as number,
-    style: o.style as Record<string, string> | undefined
+    style: o.style as Record<string, string> | undefined,
+    tailAnchor
   }
 }
 

@@ -9,6 +9,7 @@ export interface EditorCanvasProps {
   projectId: string
   selectedOverlayId: string | null
   onSelectOverlay: (overlayId: string | null) => void
+  onMoveOverlay?: (overlayId: string, x: number, y: number) => void
 }
 
 type ImageLoadState =
@@ -27,10 +28,18 @@ export function EditorCanvas({
   cut,
   projectId,
   selectedOverlayId,
-  onSelectOverlay
+  onSelectOverlay,
+  onMoveOverlay
 }: EditorCanvasProps): JSX.Element {
   const [imageState, setImageState] = useState<ImageLoadState>({ type: 'none' })
   const canvasRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{
+    overlayId: string
+    startX: number
+    startY: number
+    origX: number
+    origY: number
+  } | null>(null)
 
   const hasDoneImage = cut?.imageState?.status === 'done' && !!cut?.imageState?.path
 
@@ -85,6 +94,38 @@ export function EditorCanvas({
       onSelectOverlay(overlayId)
     },
     [onSelectOverlay]
+  )
+
+  const handleOverlayMouseDown = useCallback(
+    (e: React.MouseEvent, overlayId: string, overlay: { x: number; y: number }) => {
+      if (!onMoveOverlay) return
+      e.preventDefault()
+      dragRef.current = {
+        overlayId,
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: overlay.x,
+        origY: overlay.y
+      }
+      const handleMouseMove = (ev: MouseEvent) => {
+        if (!dragRef.current) return
+        const dx = ev.clientX - dragRef.current.startX
+        const dy = ev.clientY - dragRef.current.startY
+        onMoveOverlay(
+          dragRef.current.overlayId,
+          dragRef.current.origX + dx,
+          dragRef.current.origY + dy
+        )
+      }
+      const handleMouseUp = () => {
+        dragRef.current = null
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    },
+    [onMoveOverlay]
   )
 
   if (!cut) {
@@ -188,6 +229,7 @@ export function EditorCanvas({
               data-overlay-id={overlay.id}
               data-selected={isSelected}
               onClick={(e) => handleOverlayClick(e, overlay.id)}
+              onMouseDown={(e) => handleOverlayMouseDown(e, overlay.id, overlay)}
               style={{
                 position: 'absolute',
                 left: overlay.x,
