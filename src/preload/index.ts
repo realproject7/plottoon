@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('plottoon', {
     writeAppConfig: (filename: string, content: string) =>
       ipcRenderer.invoke('fs:writeAppConfig', filename, content)
   },
+  capability: {
+    getReport: () => ipcRenderer.invoke('capability:getReport')
+  },
   project: {
     discover: () => ipcRenderer.invoke('project:discover'),
     readMeta: (projectId: string) => ipcRenderer.invoke('project:readMeta', projectId),
