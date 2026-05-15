@@ -47,4 +47,3 @@ When known, image generation metadata should be stored in `cuts.json`:
 ## Future
 
 A first-class provider adapter can be added later if demand justifies account, billing, model, error, and support maintenance.
-

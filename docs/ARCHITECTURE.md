@@ -92,4 +92,3 @@ PlotToon should upload final flattened images, not live overlay metadata. PlotLi
 - Built-in model training.
 - First-class management of every image backend.
 - One giant episode strip as the publish artifact.
-
