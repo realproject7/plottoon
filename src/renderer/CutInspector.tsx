@@ -1,5 +1,5 @@
 import type { Cut } from './CutList'
-import { canTransition, isProtected } from './cutMutations'
+import { canTransition, isProtected, isImageProtected } from './cutMutations'
 import type { CutStatus } from './cutMutations'
 
 const STATUS_OPTIONS: CutStatus[] = ['planned', 'draft', 'needs_revision', 'approved']
@@ -8,12 +8,14 @@ interface CutInspectorProps {
   cut: Cut | null
   onStatusChange?: (cutId: string, status: CutStatus) => void
   onImportCleanImage?: (cutId: string) => void
+  onSetCurrentRevision?: (cutId: string, version: number) => void
 }
 
 export function CutInspector({
   cut,
   onStatusChange,
-  onImportCleanImage
+  onImportCleanImage,
+  onSetCurrentRevision
 }: CutInspectorProps): JSX.Element {
   if (!cut) {
     return (
@@ -125,7 +127,7 @@ export function CutInspector({
             value={cut.imageState.attempts != null ? String(cut.imageState.attempts) : undefined}
           />
           <Field label="Revision Notes" value={cut.imageState.revisionNotes} />
-          {onImportCleanImage && (
+          {onImportCleanImage && !isImageProtected(cut) && (
             <button
               type="button"
               data-testid="import-clean-btn"
@@ -148,6 +150,81 @@ export function CutInspector({
               Import clean image
             </button>
           )}
+        </>
+      )}
+
+      {cut.imageState?.revisions && cut.imageState.revisions.length > 0 && (
+        <>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 'var(--font-weight-semibold)' as never,
+              color: 'var(--color-text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              marginTop: 'var(--space-4)',
+              marginBottom: 'var(--space-2)',
+              borderTop: '1px solid var(--color-border)',
+              paddingTop: 'var(--space-3)'
+            }}
+          >
+            Revisions
+          </div>
+          {cut.imageState.revisions.map((rev) => {
+            const isCurrent = cut.imageState?.path === rev.path
+            const cutProtected = isImageProtected(cut)
+            return (
+              <div
+                key={rev.version}
+                data-testid={`revision-${rev.version}`}
+                style={{
+                  marginBottom: 'var(--space-2)',
+                  padding: 'var(--space-1) var(--space-2)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: isCurrent ? 'var(--color-surface-raised)' : 'transparent',
+                  border: isCurrent ? '1px solid var(--color-border)' : '1px solid transparent'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                  <span style={{ fontWeight: 'var(--font-weight-medium)' as never }}>
+                    v{rev.version}
+                    {isCurrent ? ' (current)' : ''}
+                  </span>
+                  {!isCurrent && onSetCurrentRevision && !cutProtected && (
+                    <button
+                      type="button"
+                      data-testid={`set-current-${rev.version}`}
+                      onClick={() => onSetCurrentRevision(cut.id, rev.version)}
+                      style={{
+                        all: 'unset',
+                        cursor: 'pointer',
+                        fontSize: 10,
+                        color: 'var(--color-text-muted)',
+                        textDecoration: 'underline'
+                      }}
+                    >
+                      Set as current
+                    </button>
+                  )}
+                </div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontFamily: 'var(--font-mono, monospace)',
+                    color: 'var(--color-text-muted)',
+                    wordBreak: 'break-all'
+                  }}
+                >
+                  {rev.path}
+                </div>
+                {rev.revisionNotes && (
+                  <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                    {rev.revisionNotes}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </>
       )}
     </div>

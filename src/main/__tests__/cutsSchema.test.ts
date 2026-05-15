@@ -112,6 +112,137 @@ describe('validateCutsFile', () => {
     expect(result.cuts[0].imageState.errorMessage).toBe('GPU out of memory')
   })
 
+  it('accepts imageState with generation metadata fields', () => {
+    const data = validFixture()
+    data.cuts[0].imageState = {
+      ...data.cuts[0].imageState,
+      generationBackend: 'manual',
+      model: 'sdxl-turbo',
+      attempts: 3,
+      revisionNotes: 'Adjusted lighting in v3'
+    }
+    const result = validateCutsFile(data, 'test.json')
+    expect(result.cuts[0].imageState.generationBackend).toBe('manual')
+    expect(result.cuts[0].imageState.model).toBe('sdxl-turbo')
+    expect(result.cuts[0].imageState.attempts).toBe(3)
+    expect(result.cuts[0].imageState.revisionNotes).toBe('Adjusted lighting in v3')
+  })
+
+  it('accepts imageState with revisions array', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).revisions = [
+      {
+        version: 1,
+        path: 'assets/cut-001/clean-v001.png',
+        createdAt: '2026-05-01T10:00:00.000Z',
+        revisionNotes: 'First draft'
+      },
+      {
+        version: 2,
+        path: 'assets/cut-001/clean-v002.webp',
+        createdAt: '2026-05-02T14:00:00.000Z'
+      }
+    ]
+    const result = validateCutsFile(data, 'test.json')
+    expect(result.cuts[0].imageState.revisions).toHaveLength(2)
+    expect(result.cuts[0].imageState.revisions![0].version).toBe(1)
+    expect(result.cuts[0].imageState.revisions![0].revisionNotes).toBe('First draft')
+    expect(result.cuts[0].imageState.revisions![1].revisionNotes).toBeUndefined()
+  })
+
+  it('rejects non-array revisions', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).revisions = 'not-array'
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'imageState.revisions must be an array if present'
+    )
+  })
+
+  it('rejects revision with missing version', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).revisions = [
+      { path: 'assets/cut.png', createdAt: '2026-05-01T10:00:00.000Z' }
+    ]
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'revisions[0].version must be a positive integer'
+    )
+  })
+
+  it('rejects revision with zero version', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).revisions = [
+      { version: 0, path: 'assets/cut.png', createdAt: '2026-05-01T10:00:00.000Z' }
+    ]
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'revisions[0].version must be a positive integer'
+    )
+  })
+
+  it('rejects revision with empty path', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).revisions = [
+      { version: 1, path: '', createdAt: '2026-05-01T10:00:00.000Z' }
+    ]
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'revisions[0].path must be a non-empty string'
+    )
+  })
+
+  it('rejects revision with non-string revisionNotes', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).revisions = [
+      {
+        version: 1,
+        path: 'assets/cut.png',
+        createdAt: '2026-05-01T10:00:00.000Z',
+        revisionNotes: 42
+      }
+    ]
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'revisions[0].revisionNotes must be a string if present'
+    )
+  })
+
+  it('rejects non-string generationBackend', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).generationBackend = 42
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'imageState.generationBackend must be a string if present'
+    )
+  })
+
+  it('rejects non-string model', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).model = true
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'imageState.model must be a string if present'
+    )
+  })
+
+  it('rejects negative attempts', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).attempts = -1
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'imageState.attempts must be a non-negative integer if present'
+    )
+  })
+
+  it('rejects non-integer attempts', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).attempts = 1.5
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'imageState.attempts must be a non-negative integer if present'
+    )
+  })
+
+  it('rejects non-string revisionNotes', () => {
+    const data = validFixture()
+    ;(data.cuts[0].imageState as Record<string, unknown>).revisionNotes = 123
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      'imageState.revisionNotes must be a string if present'
+    )
+  })
+
   it('rejects non-object input', () => {
     expect(() => validateCutsFile('string', 'f')).toThrow(CutsValidationError)
     expect(() => validateCutsFile(null, 'f')).toThrow('must be a JSON object')

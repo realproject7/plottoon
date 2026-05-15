@@ -25,6 +25,13 @@ export interface Overlay {
   style?: Record<string, string>
 }
 
+export interface ImageRevision {
+  version: number
+  path: string
+  createdAt: string
+  revisionNotes?: string
+}
+
 export interface ImageState {
   status: 'pending' | 'generating' | 'done' | 'failed'
   path: string | null
@@ -35,6 +42,7 @@ export interface ImageState {
   model?: string
   attempts?: number
   revisionNotes?: string
+  revisions?: ImageRevision[]
 }
 
 export interface CanvasOverrides {
@@ -158,6 +166,46 @@ function validateImageState(data: unknown, cutId: string, filePath: string): Ima
     fail(`cut "${cutId}": imageState.revisionNotes must be a string if present`, filePath)
   }
 
+  let revisions: ImageRevision[] | undefined
+  if (s.revisions !== undefined) {
+    if (!Array.isArray(s.revisions)) {
+      fail(`cut "${cutId}": imageState.revisions must be an array if present`, filePath)
+    }
+    revisions = (s.revisions as unknown[]).map((r, i) => {
+      if (typeof r !== 'object' || r === null) {
+        fail(`cut "${cutId}": imageState.revisions[${i}] must be an object`, filePath)
+      }
+      const rev = r as Record<string, unknown>
+      if (typeof rev.version !== 'number' || !Number.isInteger(rev.version) || rev.version < 1) {
+        fail(
+          `cut "${cutId}": imageState.revisions[${i}].version must be a positive integer`,
+          filePath
+        )
+      }
+      if (typeof rev.path !== 'string' || rev.path.length === 0) {
+        fail(`cut "${cutId}": imageState.revisions[${i}].path must be a non-empty string`, filePath)
+      }
+      if (typeof rev.createdAt !== 'string' || rev.createdAt.length === 0) {
+        fail(
+          `cut "${cutId}": imageState.revisions[${i}].createdAt must be a non-empty string`,
+          filePath
+        )
+      }
+      if (rev.revisionNotes !== undefined && typeof rev.revisionNotes !== 'string') {
+        fail(
+          `cut "${cutId}": imageState.revisions[${i}].revisionNotes must be a string if present`,
+          filePath
+        )
+      }
+      return {
+        version: rev.version as number,
+        path: rev.path as string,
+        createdAt: rev.createdAt as string,
+        revisionNotes: rev.revisionNotes as string | undefined
+      }
+    })
+  }
+
   return {
     status: s.status as ImageState['status'],
     path: (s.path as string) ?? null,
@@ -167,7 +215,8 @@ function validateImageState(data: unknown, cutId: string, filePath: string): Ima
     generationBackend: s.generationBackend as string | undefined,
     model: s.model as string | undefined,
     attempts: s.attempts as number | undefined,
-    revisionNotes: s.revisionNotes as string | undefined
+    revisionNotes: s.revisionNotes as string | undefined,
+    revisions
   }
 }
 

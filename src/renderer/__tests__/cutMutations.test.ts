@@ -6,6 +6,7 @@ import {
   moveCut,
   setStatus,
   isProtected,
+  isImageProtected,
   canTransition
 } from '../cutMutations'
 import type { Cut } from '../CutList'
@@ -181,6 +182,16 @@ describe('cutMutations', () => {
         expect(isProtected(makeCut('c', status))).toBe(false)
       }
     )
+  })
+
+  describe('isImageProtected', () => {
+    it.each(['approved', 'exported', 'uploaded', 'published'])('returns true for %s', (status) => {
+      expect(isImageProtected(makeCut('c', status))).toBe(true)
+    })
+
+    it.each(['planned', 'draft', 'needs_revision', undefined])('returns false for %s', (status) => {
+      expect(isImageProtected(makeCut('c', status))).toBe(false)
+    })
   })
 
   describe('canTransition', () => {

@@ -15,6 +15,12 @@ interface Cut {
     prompt?: string
     attempts?: number
     revisionNotes?: string
+    revisions?: Array<{
+      version: number
+      path: string
+      createdAt: string
+      revisionNotes?: string
+    }>
   }
   continuityNotes?: string
 }

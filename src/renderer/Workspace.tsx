@@ -3,7 +3,7 @@ import { TerminalPanel } from './TerminalPanel'
 import { CutList } from './CutList'
 import { CutInspector } from './CutInspector'
 import { CutPreview } from './CutPreview'
-import { setStatus } from './cutMutations'
+import { setStatus, isImageProtected } from './cutMutations'
 import type { CutStatus } from './cutMutations'
 import type { Cut } from './CutList'
 
@@ -77,12 +77,52 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const handleImportCleanImage = useCallback(
     async (cutId: string) => {
       if (!projectId || !activePlotRef.current) return
+      const cut = cutsRef.current.find((c) => c.id === cutId)
+      if (cut && isImageProtected(cut)) return
       const result = await window.plottoon.fs.importCleanImage(
         projectId,
         activePlotRef.current,
         cutId
       )
       if (!result) return
+      const next = cutsRef.current.map((c) => {
+        if (c.id !== cutId) return c
+        const existing = c.imageState?.revisions ?? []
+        const nextVersion =
+          existing.length > 0 ? Math.max(...existing.map((r) => r.version)) + 1 : 1
+        const revision = {
+          version: nextVersion,
+          path: result.relativePath,
+          createdAt: new Date().toISOString()
+        }
+        return {
+          ...c,
+          imageState: {
+            ...c.imageState,
+            status: 'done' as const,
+            path: result.relativePath,
+            generationBackend: 'manual',
+            revisions: [...existing, revision]
+          }
+        }
+      })
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) {
+        setActiveCut(updated)
+      }
+    },
+    [projectId, saveCuts, activeCut]
+  )
+
+  const handleSetCurrentRevision = useCallback(
+    (cutId: string, version: number) => {
+      const cut = cutsRef.current.find((c) => c.id === cutId)
+      if (!cut || isImageProtected(cut)) return
+      const revisions = cut.imageState?.revisions ?? []
+      const target = revisions.find((r) => r.version === version)
+      if (!target) return
       const next = cutsRef.current.map((c) =>
         c.id === cutId
           ? {
@@ -90,8 +130,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
               imageState: {
                 ...c.imageState,
                 status: 'done' as const,
-                path: result.relativePath,
-                generationBackend: 'manual'
+                path: target.path
               }
             }
           : c
@@ -103,7 +142,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
         setActiveCut(updated)
       }
     },
-    [projectId, saveCuts, activeCut]
+    [saveCuts, activeCut]
   )
 
   if (!projectId) {
@@ -198,6 +237,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             cut={activeCut}
             onStatusChange={handleStatusChange}
             onImportCleanImage={handleImportCleanImage}
+            onSetCurrentRevision={handleSetCurrentRevision}
           />
         </div>
       </div>
