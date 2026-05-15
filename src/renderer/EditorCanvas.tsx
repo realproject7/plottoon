@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { Cut } from './CutList'
-import { detectOverflow } from './textLayout'
+import { computeLayout } from './textLayout'
 
 const DEFAULT_CANVAS_WIDTH = 320
 const DEFAULT_CANVAS_HEIGHT = 480
@@ -223,7 +223,8 @@ export function EditorCanvas({
         {overlays.map((overlay) => {
           const isSelected = selectedOverlayId === overlay.id
           const presetStyle = overlay.style ?? {}
-          const isOverflow = overlay.content ? detectOverflow(overlay) : false
+          const layout = overlay.content ? computeLayout(overlay) : null
+          const isOverflow = layout?.overflow ?? false
           return (
             <div
               key={overlay.id}
@@ -260,16 +261,41 @@ export function EditorCanvas({
                   : {})
               }}
             >
-              <span
-                style={{
-                  padding: '0 4px',
-                  textOverflow: 'ellipsis',
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {overlay.content || overlay.id}
-              </span>
+              {layout && layout.lines.length > 0 ? (
+                layout.lines.map((line, i) => (
+                  <span
+                    key={i}
+                    data-testid={`overlay-line-${overlay.id}-${i}`}
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top:
+                        line.y -
+                        (overlay.style?.fontSize ? parseFloat(overlay.style.fontSize) : 13),
+                      width: '100%',
+                      textAlign:
+                        (overlay.style?.textAlign as 'left' | 'center' | 'right') ?? 'center',
+                      padding: '0 ' + (overlay.style?.padding?.split(/\s+/)[1] ?? '12') + 'px',
+                      boxSizing: 'border-box',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
+                    {line.text}
+                  </span>
+                ))
+              ) : (
+                <span
+                  style={{
+                    padding: '0 4px',
+                    color: 'var(--color-text-muted)',
+                    fontSize: 10
+                  }}
+                >
+                  {overlay.id}
+                </span>
+              )}
             </div>
           )
         })}
