@@ -109,6 +109,37 @@
         "revisionNotes": {
           "type": "string",
           "description": "Free-form notes about revisions to the image."
+        },
+        "revisions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/imageRevision" },
+          "description": "Ordered list of clean image revisions for this cut."
+        }
+      }
+    },
+    "imageRevision": {
+      "type": "object",
+      "required": ["version", "path", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Revision version number (1-based)."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative path to the revision image file."
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1,
+          "description": "ISO 8601 timestamp when this revision was created."
+        },
+        "revisionNotes": {
+          "type": "string",
+          "description": "Free-form notes about this specific revision."
         }
       }
     },
