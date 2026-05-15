@@ -13,6 +13,8 @@ import { discoverProjects } from '../services/projectDiscovery'
 import { scaffoldProjectTemplate } from '../services/projectTemplate'
 import { resolveAppConfigPath } from '../services/safePaths'
 import { detectClis } from '../services/cliDetection'
+import { generateReport } from '../services/capabilityReport'
+import type { CapabilityCheck, CheckStatus } from '../services/capabilityReport'
 
 const PROJECTS_DIR_KEY = 'projectsDir'
 
@@ -30,6 +32,36 @@ async function setProjectsDir(dir: string): Promise<void> {
   const configDir = path.dirname(configPath)
   await fs.mkdir(configDir, { recursive: true })
   await fs.writeFile(configPath, dir, 'utf-8')
+}
+
+async function probeWriteAccess(dir: string | null): Promise<CapabilityCheck> {
+  if (!dir) {
+    return {
+      id: 'write-access',
+      label: 'Project write access',
+      status: 'fail',
+      detail: 'No projects directory configured'
+    }
+  }
+  try {
+    await fs.mkdir(dir, { recursive: true })
+    const probe = path.join(dir, '.plottoon-probe')
+    await fs.writeFile(probe, '', 'utf-8')
+    await fs.unlink(probe)
+    return {
+      id: 'write-access',
+      label: 'Project write access',
+      status: 'pass',
+      detail: 'Filesystem is writable'
+    }
+  } catch {
+    return {
+      id: 'write-access',
+      label: 'Project write access',
+      status: 'fail',
+      detail: 'Cannot write to project directory'
+    }
+  }
 }
 
 export function registerProjectHandlers(): void {
@@ -105,4 +137,19 @@ export function registerProjectHandlers(): void {
   ipcMain.handle('project:getProjectsDir', () => getProjectsDir())
 
   ipcMain.handle('project:detectClis', () => detectClis())
+
+  ipcMain.handle('capability:getReport', async () => {
+    const [cliReport, projectDir] = await Promise.all([detectClis(), getProjectsDir()])
+
+    const cliChecks: CapabilityCheck[] = cliReport.clis.map((cli) => ({
+      id: `cli-${cli.command}`,
+      label: cli.name,
+      status: (cli.installed ? 'pass' : 'fail') as CheckStatus,
+      detail: cli.installed ? `Detected: ${cli.version}` : `${cli.command} not found in PATH`
+    }))
+
+    const writeAccessCheck = await probeWriteAccess(projectDir)
+
+    return generateReport({ cliChecks, writeAccessCheck })
+  })
 }

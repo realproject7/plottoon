@@ -76,11 +76,35 @@ interface PlottoonTerminal {
   onExit(callback: (sessionId: string, code: number | null) => void): () => void
 }
 
+type CheckStatus = 'pass' | 'fail' | 'info'
+
+interface CapabilityCheck {
+  id: string
+  label: string
+  status: CheckStatus
+  detail: string
+}
+
+interface CapabilitySection {
+  title: string
+  checks: CapabilityCheck[]
+}
+
+interface FirstRunReport {
+  generatedAt: string
+  sections: CapabilitySection[]
+}
+
+interface PlottoonCapability {
+  getReport(): Promise<FirstRunReport>
+}
+
 interface Window {
   plottoon: {
     version: string
     terminal: PlottoonTerminal
     fs: PlottoonFs
     project: PlottoonProject
+    capability: PlottoonCapability
   }
 }
