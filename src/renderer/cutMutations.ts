@@ -138,19 +138,27 @@ export function resizeOverlay(
   })
 }
 
-export function duplicateOverlay(cuts: Cut[], cutId: string, overlayId: string): Cut[] {
-  return cuts.map((c) => {
+export function duplicateOverlay(
+  cuts: Cut[],
+  cutId: string,
+  overlayId: string
+): { cuts: Cut[]; newId: string | null } {
+  let newId: string | null = null
+  const result = cuts.map((c) => {
     if (c.id !== cutId || !c.overlays) return c
     const source = c.overlays.find((o) => o.id === overlayId)
     if (!source) return c
+    const dupId = `ovl-${Date.now()}-dup`
+    newId = dupId
     const dup: Overlay = {
       ...structuredClone(source),
-      id: `ovl-${Date.now()}-dup`,
+      id: dupId,
       x: source.x + 10,
       y: source.y + 10
     }
     return { ...c, overlays: [...c.overlays, dup] }
   })
+  return { cuts: result, newId }
 }
 
 export function reorderOverlay(

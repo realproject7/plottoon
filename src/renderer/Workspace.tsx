@@ -215,17 +215,12 @@ export function Workspace({ projectId }: Props): JSX.Element {
 
   const handleDuplicateOverlay = useCallback(
     (cutId: string, overlayId: string) => {
-      const next = duplicateOverlay(cutsRef.current, cutId, overlayId)
+      const { cuts: next, newId } = duplicateOverlay(cutsRef.current, cutId, overlayId)
       cutsRef.current = next
       saveCuts(next)
       const updated = next.find((c) => c.id === cutId)
       if (updated && activeCut?.id === cutId) setActiveCut(updated)
-      const newOverlay = updated?.overlays?.find(
-        (o) =>
-          o.id !== overlayId &&
-          !cutsRef.current.find((c) => c.id === cutId)?.overlays?.some((old) => old.id === o.id)
-      )
-      if (newOverlay) setSelectedOverlayId(newOverlay.id)
+      if (newId) setSelectedOverlayId(newId)
     },
     [saveCuts, activeCut]
   )
@@ -244,6 +239,17 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const handleSetTailAnchor = useCallback(
     (cutId: string, overlayId: string, x: number, y: number) => {
       const next = setOverlayTailAnchor(cutsRef.current, cutId, overlayId, { x, y })
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+    },
+    [saveCuts, activeCut]
+  )
+
+  const handleRemoveTailAnchor = useCallback(
+    (cutId: string, overlayId: string) => {
+      const next = setOverlayTailAnchor(cutsRef.current, cutId, overlayId, undefined)
       cutsRef.current = next
       saveCuts(next)
       const updated = next.find((c) => c.id === cutId)
@@ -354,6 +360,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             onReorderOverlay={handleReorderOverlay}
             onResizeOverlay={handleResizeOverlay}
             onSetTailAnchor={handleSetTailAnchor}
+            onRemoveTailAnchor={handleRemoveTailAnchor}
           />
         </div>
       </div>

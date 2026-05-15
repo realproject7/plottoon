@@ -347,10 +347,11 @@ describe('cutMutations', () => {
           ]
         }
       ]
-      const result = duplicateOverlay(cuts, 'cut-001', 'ovl-1')
+      const { cuts: result, newId } = duplicateOverlay(cuts, 'cut-001', 'ovl-1')
       expect(result[0].overlays).toHaveLength(2)
       const dup = result[0].overlays![1]
       expect(dup.id).not.toBe('ovl-1')
+      expect(dup.id).toBe(newId)
       expect(dup.content).toBe('Hi')
       expect(dup.x).toBe(40)
       expect(dup.y).toBe(50)
@@ -363,8 +364,9 @@ describe('cutMutations', () => {
           overlays: [{ id: 'ovl-1', type: 'text', content: '', x: 0, y: 0, width: 100, height: 40 }]
         }
       ]
-      const result = duplicateOverlay(cuts, 'cut-001', 'nonexistent')
+      const { cuts: result, newId } = duplicateOverlay(cuts, 'cut-001', 'nonexistent')
       expect(result[0].overlays).toHaveLength(1)
+      expect(newId).toBeNull()
     })
   })
 
