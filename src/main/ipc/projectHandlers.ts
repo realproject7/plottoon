@@ -10,6 +10,7 @@ import {
   ProjectMetaError
 } from '../services/projectMeta'
 import { discoverProjects } from '../services/projectDiscovery'
+import { scaffoldProjectTemplate } from '../services/projectTemplate'
 import { resolveAppConfigPath } from '../services/safePaths'
 
 const PROJECTS_DIR_KEY = 'projectsDir'
@@ -83,6 +84,7 @@ export function registerProjectHandlers(): void {
 
     const meta = createProjectMeta(trimmed, description)
     await writeProjectMeta(projectPath, meta)
+    await scaffoldProjectTemplate(projectPath, trimmed)
 
     const id = registerProject(projectPath)
     return { id, path: projectPath, meta }
