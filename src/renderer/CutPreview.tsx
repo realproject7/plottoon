@@ -20,10 +20,7 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
   const [asyncState, setAsyncState] = useState<AsyncState>({ type: 'idle' })
 
   useEffect(() => {
-    if (!needsAsyncLoad(cut)) {
-      setAsyncState({ type: 'idle' })
-      return
-    }
+    if (!needsAsyncLoad(cut)) return
 
     const imagePath = cut.imageState!.path!
     setAsyncState({ type: 'loading', cutId: cut.id, path: imagePath })
