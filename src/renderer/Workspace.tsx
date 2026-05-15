@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { TerminalPanel } from './TerminalPanel'
 import { CutList } from './CutList'
 import { CutInspector } from './CutInspector'
-import { CutPreview } from './CutPreview'
+import { EditorCanvas } from './EditorCanvas'
 import { setStatus, isImageProtected } from './cutMutations'
 import type { CutStatus } from './cutMutations'
 import type { Cut } from './CutList'
@@ -13,6 +13,7 @@ interface Props {
 
 export function Workspace({ projectId }: Props): JSX.Element {
   const [activeCut, setActiveCut] = useState<Cut | null>(null)
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
   const [cwd, setCwd] = useState<string | null>(null)
   const activePlotRef = useRef<string | null>(null)
   const cutsRef = useRef<Cut[]>([])
@@ -34,6 +35,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
 
   const handleSelectCut = useCallback((cut: Cut | null) => {
     setActiveCut(cut)
+    setSelectedOverlayId(null)
   }, [])
 
   const saveCuts = useCallback(
@@ -215,10 +217,11 @@ export function Workspace({ projectId }: Props): JSX.Element {
             overflow: 'hidden'
           }}
         >
-          <CutPreview
+          <EditorCanvas
             cut={activeCut}
             projectId={projectId}
-            onImportCleanImage={handleImportCleanImage}
+            selectedOverlayId={selectedOverlayId}
+            onSelectOverlay={setSelectedOverlayId}
           />
         </div>
 
@@ -238,6 +241,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             onStatusChange={handleStatusChange}
             onImportCleanImage={handleImportCleanImage}
             onSetCurrentRevision={handleSetCurrentRevision}
+            selectedOverlayId={selectedOverlayId}
           />
         </div>
       </div>
