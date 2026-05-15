@@ -199,6 +199,17 @@ export function markCutUploaded(
   url: string,
   fileHash: string
 ): PublishStatusFile {
+  const entry = status.cuts.find((c) => c.cutId === cutId)
+  if (
+    entry &&
+    entry.state === 'uploaded' &&
+    entry.cid === cid &&
+    entry.url === url &&
+    entry.fileHash === fileHash &&
+    entry.error === null
+  ) {
+    return status
+  }
   const now = nowIso()
   const cuts = status.cuts.map((c) =>
     c.cutId === cutId
@@ -213,6 +224,10 @@ export function markCutFailed(
   cutId: string,
   error: string
 ): PublishStatusFile {
+  const entry = status.cuts.find((c) => c.cutId === cutId)
+  if (entry && entry.state === 'failed' && entry.error === error) {
+    return status
+  }
   const now = nowIso()
   const cuts = status.cuts.map((c) =>
     c.cutId === cutId ? { ...c, state: 'failed' as CutState, error, updatedAt: now } : c
@@ -221,21 +236,34 @@ export function markCutFailed(
 }
 
 export function markPlotPublished(status: PublishStatusFile): PublishStatusFile {
+  if (status.plotState === 'published' && status.error === null) {
+    return status
+  }
   const now = nowIso()
   return { ...status, plotState: 'published', publishedAt: now, error: null, updatedAt: now }
 }
 
 export function markPlotFailed(status: PublishStatusFile, error: string): PublishStatusFile {
+  if (status.plotState === 'failed' && status.error === error) {
+    return status
+  }
   const now = nowIso()
   return { ...status, plotState: 'failed', error, updatedAt: now }
 }
 
 export function setPlotState(status: PublishStatusFile, state: PlotState): PublishStatusFile {
+  if (status.plotState === state) {
+    return status
+  }
   const now = nowIso()
   return { ...status, plotState: state, updatedAt: now }
 }
 
 export function protectCut(status: PublishStatusFile, cutId: string): PublishStatusFile {
+  const entry = status.cuts.find((c) => c.cutId === cutId)
+  if (entry && entry.protected) {
+    return status
+  }
   const now = nowIso()
   const cuts = status.cuts.map((c) =>
     c.cutId === cutId ? { ...c, protected: true, updatedAt: now } : c

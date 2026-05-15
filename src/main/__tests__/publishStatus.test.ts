@@ -179,26 +179,51 @@ describe('state transitions', () => {
 })
 
 describe('idempotency', () => {
-  it('markCutUploaded is idempotent', () => {
+  it('markCutUploaded returns same reference on no-op', () => {
     const status = fixture()
     const first = markCutUploaded(status, 'cut-001', 'cid', 'url', 'hash')
     const second = markCutUploaded(first, 'cut-001', 'cid', 'url', 'hash')
-    expect(second.cuts.find((c) => c.cutId === 'cut-001')!.state).toBe('uploaded')
-    expect(second.cuts.find((c) => c.cutId === 'cut-001')!.cid).toBe('cid')
+    expect(second).toBe(first)
+    expect(second.updatedAt).toBe(first.updatedAt)
   })
 
-  it('markPlotPublished is idempotent', () => {
+  it('markCutFailed returns same reference on no-op', () => {
+    const status = fixture()
+    const first = markCutFailed(status, 'cut-001', 'timeout')
+    const second = markCutFailed(first, 'cut-001', 'timeout')
+    expect(second).toBe(first)
+    expect(second.updatedAt).toBe(first.updatedAt)
+  })
+
+  it('markPlotPublished returns same reference on no-op', () => {
     const status = fixture()
     const first = markPlotPublished(status)
     const second = markPlotPublished(first)
-    expect(second.plotState).toBe('published')
+    expect(second).toBe(first)
+    expect(second.updatedAt).toBe(first.updatedAt)
   })
 
-  it('protectCut is idempotent', () => {
+  it('markPlotFailed returns same reference on no-op', () => {
+    const status = fixture()
+    const first = markPlotFailed(status, 'network error')
+    const second = markPlotFailed(first, 'network error')
+    expect(second).toBe(first)
+    expect(second.updatedAt).toBe(first.updatedAt)
+  })
+
+  it('setPlotState returns same reference on no-op', () => {
+    const status = fixture()
+    const same = setPlotState(status, 'draft')
+    expect(same).toBe(status)
+    expect(same.updatedAt).toBe(status.updatedAt)
+  })
+
+  it('protectCut returns same reference on no-op', () => {
     const status = fixture()
     const first = protectCut(status, 'cut-001')
     const second = protectCut(first, 'cut-001')
-    expect(isProtected(second, 'cut-001')).toBe(true)
+    expect(second).toBe(first)
+    expect(second.updatedAt).toBe(first.updatedAt)
   })
 })
 
