@@ -9,6 +9,18 @@ beforeEach(() => {
   mockDiscover.mockResolvedValue([])
   window.plottoon = {
     version: '42.0.0',
+    terminal: {
+      create: vi.fn(),
+      getSession: vi.fn(),
+      findByProject: vi.fn().mockResolvedValue(null),
+      connect: vi.fn(),
+      write: vi.fn(),
+      disconnect: vi.fn(),
+      restart: vi.fn(),
+      destroy: vi.fn(),
+      onData: vi.fn().mockReturnValue(() => {}),
+      onExit: vi.fn().mockReturnValue(() => {})
+    } as unknown as PlottoonTerminal,
     fs: {} as PlottoonFs,
     project: {
       discover: mockDiscover,
