@@ -94,6 +94,9 @@ export async function registerAgentFile(
   cutId: string,
   filename: string
 ): Promise<ImportResult> {
+  if (filename.includes('/') || filename.includes('\\') || filename !== path.basename(filename)) {
+    throw new Error('Filename must not contain path separators')
+  }
   if (!isAllowedExtension(filename)) {
     const ext = path.extname(filename).toLowerCase()
     throw new Error(

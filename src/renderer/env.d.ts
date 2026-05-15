@@ -31,6 +31,22 @@ interface PlottoonFs {
   resolveProjectFilePath(projectId: string, ...segments: string[]): Promise<string>
   readAppConfig(filename: string): Promise<string>
   writeAppConfig(filename: string, content: string): Promise<void>
+  importCleanImage(
+    projectId: string,
+    plotSlug: string,
+    cutId: string
+  ): Promise<{ relativePath: string; absolutePath: string; filename: string } | null>
+  detectCleanImages(
+    projectId: string,
+    plotSlug: string,
+    cutId: string
+  ): Promise<Array<{ relativePath: string; filename: string }>>
+  registerAgentFile(
+    projectId: string,
+    plotSlug: string,
+    cutId: string,
+    filename: string
+  ): Promise<{ relativePath: string; absolutePath: string; filename: string }>
 }
 
 interface CliStatus {

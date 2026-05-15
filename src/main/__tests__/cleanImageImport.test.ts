@@ -160,4 +160,18 @@ describe('registerAgentFile', () => {
       'Unsupported image format'
     )
   })
+
+  it('rejects filenames with path separators', async () => {
+    await expect(
+      registerAgentFile(projectId, 'episode-1', 'cut-001', '../other-cut/clean.webp')
+    ).rejects.toThrow('Filename must not contain path separators')
+
+    await expect(
+      registerAgentFile(projectId, 'episode-1', 'cut-001', 'sub/clean.webp')
+    ).rejects.toThrow('Filename must not contain path separators')
+
+    await expect(
+      registerAgentFile(projectId, 'episode-1', 'cut-001', 'sub\\clean.webp')
+    ).rejects.toThrow('Filename must not contain path separators')
+  })
 })
