@@ -55,6 +55,7 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
   const [state, dispatch] = useReducer(reducer, { phase: 'init' })
   const inputRef = useRef<HTMLInputElement>(null)
   const outputRef = useRef<HTMLPreElement>(null)
+  const sessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -65,6 +66,7 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
           session = await window.plottoon.terminal.create(projectId)
         }
         if (!cancelled) {
+          sessionIdRef.current = session.id
           dispatch({
             type: 'session-created',
             sessionId: session.id,
@@ -83,11 +85,15 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
   }, [projectId])
 
   useEffect(() => {
-    const cleanupData = window.plottoon.terminal.onData((_sid, data) => {
-      dispatch({ type: 'data', text: data })
+    const cleanupData = window.plottoon.terminal.onData((sid, data) => {
+      if (sid === sessionIdRef.current) {
+        dispatch({ type: 'data', text: data })
+      }
     })
-    const cleanupExit = window.plottoon.terminal.onExit((_sid, code) => {
-      dispatch({ type: 'exited', code })
+    const cleanupExit = window.plottoon.terminal.onExit((sid, code) => {
+      if (sid === sessionIdRef.current) {
+        dispatch({ type: 'exited', code })
+      }
     })
     return () => {
       cleanupData()

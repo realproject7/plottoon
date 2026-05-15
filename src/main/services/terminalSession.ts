@@ -16,6 +16,7 @@ let nextId = 1
 
 const sessions = new Map<string, SessionMeta>()
 const processes = new Map<string, ChildProcess>()
+const generations = new Map<string, number>()
 
 function defaultShell(): string {
   if (platform() === 'win32') return 'cmd.exe'
@@ -38,6 +39,7 @@ export function createSession(projectId: string, cwd: string): SessionMeta {
     exitCode: null
   }
   sessions.set(id, meta)
+  generations.set(id, 0)
   return meta
 }
 
@@ -58,6 +60,17 @@ export function listSessions(): SessionMeta[] {
   return [...sessions.values()]
 }
 
+function killProcess(id: string): void {
+  const child = processes.get(id)
+  if (child) {
+    child.removeAllListeners('exit')
+    child.stdout?.removeAllListeners('data')
+    child.stderr?.removeAllListeners('data')
+    child.kill()
+    processes.delete(id)
+  }
+}
+
 export function connectSession(
   id: string,
   onData: (data: string) => void,
@@ -65,6 +78,9 @@ export function connectSession(
 ): boolean {
   const meta = sessions.get(id)
   if (!meta || meta.state === 'connected') return false
+
+  const gen = (generations.get(id) ?? 0) + 1
+  generations.set(id, gen)
 
   const shell = defaultShell()
   const child = spawn(shell, [], {
@@ -81,12 +97,13 @@ export function connectSession(
   child.stderr?.on('data', (chunk: Buffer) => onData(chunk.toString('utf-8')))
 
   child.on('exit', (code) => {
+    if (generations.get(id) !== gen) return
     processes.delete(id)
     const current = sessions.get(id)
-    if (current) {
+    if (current && current.state === 'connected') {
       sessions.set(id, { ...current, state: 'exited', exitCode: code })
+      onExit(code)
     }
-    onExit(code)
   })
 
   return true
@@ -104,8 +121,10 @@ export function disconnectSession(id: string): boolean {
   const meta = sessions.get(id)
   if (!child || !meta) return false
 
-  child.kill()
-  processes.delete(id)
+  const gen = (generations.get(id) ?? 0) + 1
+  generations.set(id, gen)
+
+  killProcess(id)
   sessions.set(id, { ...meta, state: 'disconnected' })
   return true
 }
@@ -119,7 +138,7 @@ export function restartSession(
   if (!meta) return false
 
   if (meta.state === 'connected') {
-    disconnectSession(id)
+    killProcess(id)
   }
 
   sessions.set(id, { ...meta, state: 'disconnected', exitCode: null })
@@ -127,11 +146,8 @@ export function restartSession(
 }
 
 export function destroySession(id: string): boolean {
-  const child = processes.get(id)
-  if (child) {
-    child.kill()
-    processes.delete(id)
-  }
+  killProcess(id)
+  generations.delete(id)
   return sessions.delete(id)
 }
 
