@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { TerminalPanel } from './TerminalPanel'
 import { CutList } from './CutList'
 import { CutInspector } from './CutInspector'
+import { setStatus } from './cutMutations'
+import type { CutStatus } from './cutMutations'
 import type { Cut } from './CutList'
 
 interface Props {
@@ -11,6 +13,8 @@ interface Props {
 export function Workspace({ projectId }: Props): JSX.Element {
   const [activeCut, setActiveCut] = useState<Cut | null>(null)
   const [cwd, setCwd] = useState<string | null>(null)
+  const activePlotRef = useRef<string | null>(null)
+  const cutsRef = useRef<Cut[]>([])
 
   useEffect(() => {
     if (!projectId) return
@@ -30,6 +34,44 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const handleSelectCut = useCallback((cut: Cut | null) => {
     setActiveCut(cut)
   }, [])
+
+  const saveCuts = useCallback(
+    (cuts: Cut[]) => {
+      if (!projectId || !activePlotRef.current) return
+      const data = JSON.stringify({ cuts }, null, 2)
+      window.plottoon.fs.writeProjectFile(
+        projectId,
+        ['plots', activePlotRef.current, 'cuts.json'],
+        data
+      )
+    },
+    [projectId]
+  )
+
+  const handleCutsChanged = useCallback(
+    (cuts: Cut[]) => {
+      cutsRef.current = cuts
+      saveCuts(cuts)
+    },
+    [saveCuts]
+  )
+
+  const handlePlotChanged = useCallback((plot: string | null) => {
+    activePlotRef.current = plot
+  }, [])
+
+  const handleStatusChange = useCallback(
+    (cutId: string, status: CutStatus) => {
+      const next = setStatus(cutsRef.current, cutId, status)
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) {
+        setActiveCut(updated)
+      }
+    },
+    [saveCuts, activeCut]
+  )
 
   if (!projectId) {
     return (
@@ -86,6 +128,8 @@ export function Workspace({ projectId }: Props): JSX.Element {
             projectId={projectId}
             activeCutId={activeCut?.id ?? null}
             onSelectCut={handleSelectCut}
+            onCutsChanged={handleCutsChanged}
+            onPlotChanged={handlePlotChanged}
           />
         </div>
 
@@ -147,7 +191,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             overflow: 'auto'
           }}
         >
-          <CutInspector cut={activeCut} />
+          <CutInspector cut={activeCut} onStatusChange={handleStatusChange} />
         </div>
       </div>
 

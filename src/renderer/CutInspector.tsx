@@ -1,10 +1,15 @@
 import type { Cut } from './CutList'
+import { canTransition, isProtected } from './cutMutations'
+import type { CutStatus } from './cutMutations'
+
+const STATUS_OPTIONS: CutStatus[] = ['planned', 'draft', 'needs_revision', 'approved']
 
 interface CutInspectorProps {
   cut: Cut | null
+  onStatusChange?: (cutId: string, status: CutStatus) => void
 }
 
-export function CutInspector({ cut }: CutInspectorProps): JSX.Element {
+export function CutInspector({ cut, onStatusChange }: CutInspectorProps): JSX.Element {
   if (!cut) {
     return (
       <div
@@ -35,6 +40,54 @@ export function CutInspector({ cut }: CutInspectorProps): JSX.Element {
       </div>
 
       <Field label="Cut ID" value={cut.id} />
+
+      <div style={{ marginBottom: 'var(--space-2)' }}>
+        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 1 }}>
+          Status
+        </div>
+        {isProtected(cut) ? (
+          <div
+            data-testid="status-protected"
+            style={{ fontSize: 12, fontWeight: 'var(--font-weight-medium)' as never }}
+          >
+            {cut.status} (protected)
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {STATUS_OPTIONS.map((s) => {
+              const current = cut.status ?? 'planned'
+              const active = current === s
+              const allowed = active || canTransition(current, s)
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  data-testid={`status-btn-${s}`}
+                  disabled={!allowed}
+                  onClick={() => {
+                    if (!active && allowed) onStatusChange?.(cut.id, s)
+                  }}
+                  style={{
+                    all: 'unset',
+                    cursor: allowed ? 'pointer' : 'default',
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: active ? 'var(--color-surface-raised)' : 'transparent',
+                    border: `1px solid ${active ? 'var(--color-border)' : 'transparent'}`,
+                    opacity: allowed ? 1 : 0.35,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.03em'
+                  }}
+                >
+                  {s.replace('_', ' ')}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       <Field label="Direction" value={cut.direction} />
       <Field label="Dialogue" value={cut.dialogue} />
       <Field label="Narration" value={cut.narration} />
