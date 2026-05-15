@@ -172,3 +172,20 @@ describe('projectRegistry', () => {
     expect(() => getProjectRoot('../../../')).toThrow(UnregisteredProjectError)
   })
 })
+
+describe('renderer cannot register arbitrary roots', () => {
+  it('preload does not expose registerProject', async () => {
+    const preloadSource = await import('node:fs/promises').then((fs) =>
+      fs.readFile(path.resolve(__dirname, '../../preload/index.ts'), 'utf-8')
+    )
+    expect(preloadSource).not.toContain('registerProject')
+    expect(preloadSource).not.toContain("'fs:registerProject'")
+  })
+
+  it('IPC handlers do not expose fs:registerProject channel', async () => {
+    const handlersSource = await import('node:fs/promises').then((fs) =>
+      fs.readFile(path.resolve(__dirname, '../ipc/fsHandlers.ts'), 'utf-8')
+    )
+    expect(handlersSource).not.toContain("'fs:registerProject'")
+  })
+})

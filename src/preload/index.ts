@@ -3,8 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('plottoon', {
   version: process.versions.electron,
   fs: {
-    registerProject: (absolutePath: string) =>
-      ipcRenderer.invoke('fs:registerProject', absolutePath),
+    openProject: () => ipcRenderer.invoke('fs:openProject'),
     listProjects: () => ipcRenderer.invoke('fs:listProjects'),
     readProjectFile: (projectId: string, ...segments: string[]) =>
       ipcRenderer.invoke('fs:readProjectFile', projectId, ...segments),

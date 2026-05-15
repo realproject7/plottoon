@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, BrowserWindow } from 'electron'
 import {
   readProjectFile,
   writeProjectFile,
@@ -10,9 +10,14 @@ import {
 import { registerProject, listProjects } from '../services/projectRegistry'
 
 export function registerFsHandlers(): void {
-  ipcMain.handle('fs:registerProject', (_event, absolutePath: string) =>
-    registerProject(absolutePath)
-  )
+  ipcMain.handle('fs:openProject', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(win ?? BrowserWindow.getFocusedWindow()!, {
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return registerProject(result.filePaths[0])
+  })
 
   ipcMain.handle('fs:listProjects', () => listProjects())
 

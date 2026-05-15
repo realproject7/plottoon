@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface PlottoonFs {
-  registerProject(absolutePath: string): Promise<string>
+  openProject(): Promise<string | null>
   listProjects(): Promise<Array<{ id: string; root: string }>>
   readProjectFile(projectId: string, ...segments: string[]): Promise<string>
   writeProjectFile(projectId: string, segments: string[], content: string): Promise<void>
