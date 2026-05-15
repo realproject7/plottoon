@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { renderCut } from '../flattenRenderer'
+import { renderCut, coverFit } from '../flattenRenderer'
 import type { Cut } from '../CutList'
 
 function createMockCtx() {
@@ -70,16 +70,41 @@ describe('renderCut', () => {
     expect(ctx.fillStyle).not.toBe('')
   })
 
-  it('draws background image when provided', () => {
+  it('draws background image with cover-fit crop', () => {
     const { ctx, calls } = createMockCtx()
     const cut: Cut = { id: 'cut-001' }
-    const img = {} as HTMLImageElement
+    const img = { naturalWidth: 640, naturalHeight: 480 } as HTMLImageElement
 
     renderCut(ctx, cut, { backgroundImage: img })
 
     const drawImages = calls.filter((c) => c.method === 'drawImage')
     expect(drawImages).toHaveLength(1)
+    // drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh) — 9 args for cover-fit
+    expect(drawImages[0].args).toHaveLength(9)
     expect(drawImages[0].args[0]).toBe(img)
+    // Destination should fill canvas
+    expect(drawImages[0].args[5]).toBe(0)
+    expect(drawImages[0].args[6]).toBe(0)
+    expect(drawImages[0].args[7]).toBe(320)
+    expect(drawImages[0].args[8]).toBe(480)
+  })
+
+  it('cover-fits wide image by cropping sides', () => {
+    const { ctx, calls } = createMockCtx()
+    // Wide image (800x400) into portrait canvas (320x480)
+    const cut: Cut = { id: 'cut-001' }
+    const img = { naturalWidth: 800, naturalHeight: 400 } as HTMLImageElement
+
+    renderCut(ctx, cut, { backgroundImage: img })
+
+    const drawImages = calls.filter((c) => c.method === 'drawImage')
+    const [, sx, sy, sw, sh] = drawImages[0].args as number[]
+    // Canvas aspect = 320/480 = 0.667, image is wider (800/400=2)
+    // Should crop sides: sw = 400 * (320/480) ≈ 266.67
+    expect(sw).toBeCloseTo(266.67, 0)
+    expect(sh).toBe(400)
+    expect(sy).toBe(0)
+    expect(sx).toBeGreaterThan(0) // Centered crop
   })
 
   it('does not draw background image when null', () => {
@@ -270,5 +295,37 @@ describe('renderCut', () => {
     // roundRect uses arcTo
     const arcTos = calls.filter((c) => c.method === 'arcTo')
     expect(arcTos.length).toBeGreaterThanOrEqual(4) // 4 corners x 2 (fill + stroke)
+  })
+})
+
+describe('coverFit', () => {
+  it('returns identity crop when aspect ratios match', () => {
+    const result = coverFit(320, 480, 320, 480)
+    expect(result).toEqual({ sx: 0, sy: 0, sw: 320, sh: 480 })
+  })
+
+  it('crops sides for wide image into portrait canvas', () => {
+    const result = coverFit(800, 400, 320, 480)
+    // Canvas aspect = 320/480 = 0.667
+    // sw = 400 * 0.667 = 266.67, sx = (800 - 266.67) / 2 = 266.67
+    expect(result.sh).toBe(400)
+    expect(result.sy).toBe(0)
+    expect(result.sw).toBeCloseTo(266.67, 0)
+    expect(result.sx).toBeCloseTo(266.67, 0)
+  })
+
+  it('crops top/bottom for tall image into landscape canvas', () => {
+    const result = coverFit(400, 800, 640, 480)
+    // Canvas aspect = 640/480 = 1.333
+    // sh = 400 / 1.333 = 300, sy = (800 - 300) / 2 = 250
+    expect(result.sw).toBe(400)
+    expect(result.sx).toBe(0)
+    expect(result.sh).toBeCloseTo(300, 0)
+    expect(result.sy).toBeCloseTo(250, 0)
+  })
+
+  it('handles square image into square canvas', () => {
+    const result = coverFit(500, 500, 200, 200)
+    expect(result).toEqual({ sx: 0, sy: 0, sw: 500, sh: 500 })
   })
 })

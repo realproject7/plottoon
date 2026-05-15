@@ -13,6 +13,28 @@ export interface DrawCall {
   args: unknown[]
 }
 
+export function coverFit(
+  imgW: number,
+  imgH: number,
+  canvasW: number,
+  canvasH: number
+): { sx: number; sy: number; sw: number; sh: number } {
+  const imgAspect = imgW / imgH
+  const canvasAspect = canvasW / canvasH
+
+  if (imgAspect > canvasAspect) {
+    // Image is wider — crop sides
+    const sw = imgH * canvasAspect
+    const sx = (imgW - sw) / 2
+    return { sx, sy: 0, sw, sh: imgH }
+  } else {
+    // Image is taller — crop top/bottom
+    const sh = imgW / canvasAspect
+    const sy = (imgH - sh) / 2
+    return { sx: 0, sy, sw: imgW, sh }
+  }
+}
+
 function getCanvasSize(cut: Cut): { width: number; height: number } {
   return {
     width: cut.canvasOverrides?.width ?? DEFAULT_WIDTH,
@@ -32,9 +54,11 @@ export function renderCut(
   ctx.fillStyle = bgColor
   ctx.fillRect(0, 0, width, height)
 
-  // Clean image
+  // Clean image (cover-fit to match editor preview)
   if (options.backgroundImage) {
-    ctx.drawImage(options.backgroundImage, 0, 0, width, height)
+    const img = options.backgroundImage
+    const { sx, sy, sw, sh } = coverFit(img.naturalWidth, img.naturalHeight, width, height)
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
   }
 
   // Overlays in array order (z-index)
