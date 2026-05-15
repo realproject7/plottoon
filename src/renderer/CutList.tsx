@@ -119,7 +119,7 @@ export function CutList({
     return () => {
       cancelled = true
     }
-  }, [projectId, onPlotsLoaded])
+  }, [projectId, onPlotChanged, onPlotsLoaded])
 
   useEffect(() => {
     if (!state.activePlot) return
@@ -166,7 +166,7 @@ export function CutList({
     return () => {
       cancelled = true
     }
-  }, [projectId, state.activePlot, onSelectCut])
+  }, [projectId, state.activePlot, onSelectCut, onCutsChanged])
 
   const mutateCuts = useCallback(
     (next: Cut[]) => {
