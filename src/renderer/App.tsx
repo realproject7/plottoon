@@ -8,11 +8,17 @@ export type View = 'projects' | 'workspace' | 'status'
 
 function App(): JSX.Element {
   const [view, setView] = useState<View>('projects')
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+
+  const handleSelectProject = (projectId: string): void => {
+    setActiveProjectId(projectId)
+    setView('workspace')
+  }
 
   let content: JSX.Element
-  if (view === 'projects') content = <ProjectList />
+  if (view === 'projects') content = <ProjectList onSelectProject={handleSelectProject} />
   else if (view === 'status') content = <CapabilityReport />
-  else content = <Workspace />
+  else content = <Workspace projectId={activeProjectId ?? undefined} />
 
   return (
     <AppShell view={view} onNavigate={setView}>

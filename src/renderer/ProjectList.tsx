@@ -26,7 +26,11 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-export function ProjectList(): JSX.Element {
+interface ProjectListProps {
+  onSelectProject?: (projectId: string) => void
+}
+
+export function ProjectList({ onSelectProject }: ProjectListProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, {
     projects: [],
     loading: true,
@@ -110,7 +114,7 @@ export function ProjectList(): JSX.Element {
         <EmptyState onCreate={handleCreate} />
       )}
       {!state.loading && !state.error && state.projects.length > 0 && (
-        <ProjectGrid projects={state.projects} />
+        <ProjectGrid projects={state.projects} onSelectProject={onSelectProject} />
       )}
     </div>
   )
@@ -192,7 +196,13 @@ function EmptyState({ onCreate }: { onCreate: () => void }): JSX.Element {
   )
 }
 
-function ProjectGrid({ projects }: { projects: DiscoveredProject[] }): JSX.Element {
+function ProjectGrid({
+  projects,
+  onSelectProject
+}: {
+  projects: DiscoveredProject[]
+  onSelectProject?: (projectId: string) => void
+}): JSX.Element {
   return (
     <div
       style={{
@@ -202,17 +212,35 @@ function ProjectGrid({ projects }: { projects: DiscoveredProject[] }): JSX.Eleme
       }}
     >
       {projects.map((project) => (
-        <ProjectCard key={project.path} project={project} />
+        <ProjectCard key={project.path} project={project} onSelect={onSelectProject} />
       ))}
     </div>
   )
 }
 
-function ProjectCard({ project }: { project: DiscoveredProject }): JSX.Element {
+function ProjectCard({
+  project,
+  onSelect
+}: {
+  project: DiscoveredProject
+  onSelect?: (projectId: string) => void
+}): JSX.Element {
   const hasError = project.error !== null
+
+  const handleClick = (): void => {
+    if (!hasError && project.id && onSelect) {
+      onSelect(project.id)
+    }
+  }
 
   return (
     <div
+      role={!hasError && project.id ? 'button' : undefined}
+      tabIndex={!hasError && project.id ? 0 : undefined}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') handleClick()
+      }}
       style={{
         border: `1px solid ${hasError ? 'var(--color-error)' : 'var(--color-border)'}`,
         borderRadius: 'var(--radius-md)',
