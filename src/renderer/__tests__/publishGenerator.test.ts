@@ -121,6 +121,24 @@ describe('generatePublishMarkdown', () => {
     )
   })
 
+  it('throws when URL is empty string', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = [{ cutId: 'cut-001', url: '' }]
+
+    expect(() => generatePublishMarkdown({ cuts, urls, plotTitle: 'Test' })).toThrow(
+      'Missing required URLs for cuts: cut-001'
+    )
+  })
+
+  it('throws when URL is whitespace only', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = [{ cutId: 'cut-001', url: '   ' }]
+
+    expect(() => generatePublishMarkdown({ cuts, urls, plotTitle: 'Test' })).toThrow(
+      'Missing required URLs for cuts: cut-001'
+    )
+  })
+
   it('uses placeholders in dry-run mode', () => {
     const cuts = [makeCut('cut-001', 'Hi'), makeCut('cut-002')]
     const urls: { cutId: string; url: string }[] = []

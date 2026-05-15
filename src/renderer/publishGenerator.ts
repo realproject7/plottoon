@@ -55,7 +55,12 @@ export function generatePublishMarkdown(options: GenerateOptions): string {
 
   // Validate URLs unless dry-run
   if (!dryRun) {
-    const missing = cuts.filter((c) => !urlMap.has(c.id)).map((c) => c.id)
+    const missing = cuts
+      .filter((c) => {
+        const url = urlMap.get(c.id)
+        return !url || url.trim().length === 0
+      })
+      .map((c) => c.id)
     if (missing.length > 0) {
       throw new Error(`Missing required URLs for cuts: ${missing.join(', ')}`)
     }
