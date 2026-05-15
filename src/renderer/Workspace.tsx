@@ -29,6 +29,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
   const [cwd, setCwd] = useState<string | null>(null)
   const [exportMetas, setExportMetas] = useState<ExportMeta[]>([])
+  const [activePlot, setActivePlot] = useState<string | null>(null)
   const activePlotRef = useRef<string | null>(null)
   const cutsRef = useRef<Cut[]>([])
 
@@ -48,14 +49,14 @@ export function Workspace({ projectId }: Props): JSX.Element {
   }, [projectId])
 
   useEffect(() => {
-    if (!projectId || !activePlotRef.current) return
+    if (!projectId || !activePlot) return
     let cancelled = false
     async function loadMetas() {
       try {
         const raw = await window.plottoon.fs.readProjectFile(
           projectId!,
           'plots',
-          activePlotRef.current!,
+          activePlot!,
           'exports',
           'manifest.json'
         )
@@ -70,7 +71,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [projectId])
+  }, [projectId, activePlot])
 
   const handleSelectCut = useCallback((cut: Cut | null) => {
     setActiveCut(cut)
@@ -100,6 +101,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
 
   const handlePlotChanged = useCallback((plot: string | null) => {
     activePlotRef.current = plot
+    setActivePlot(plot)
   }, [])
 
   const handleStatusChange = useCallback(
