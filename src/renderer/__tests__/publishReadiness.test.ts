@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest'
 import {
   checkCutStatus,
   checkImagesExported,
+  checkImageSize,
   checkTextOverflow,
   checkTranscript,
   checkAltText,
   validatePublishReadiness
 } from '../publishReadiness'
 import type { Cut } from '../CutList'
+import type { ExportMeta } from '../exportMetadata'
 
 function makeCut(
   id: string,
@@ -125,6 +127,39 @@ describe('checkTextOverflow', () => {
   })
 })
 
+function makeExportMeta(cutId: string, byteSize: number): ExportMeta {
+  return {
+    cutId,
+    exportedAt: '2026-05-16T12:00:00.000Z',
+    width: 320,
+    height: 480,
+    mimeType: 'image/webp',
+    byteSize,
+    hash: 'abcd1234',
+    fonts: ['sans-serif'],
+    path: `exports/${cutId}.webp`
+  }
+}
+
+describe('checkImageSize', () => {
+  it('passes when all images are under 1MB', () => {
+    const metas = [makeExportMeta('c1', 500_000), makeExportMeta('c2', 900_000)]
+    expect(checkImageSize(metas).level).toBe('pass')
+  })
+
+  it('blocks when any image exceeds 1MB', () => {
+    const metas = [makeExportMeta('c1', 500_000), makeExportMeta('c2', 1_200_000)]
+    const result = checkImageSize(metas)
+    expect(result.level).toBe('block')
+    expect(result.message).toContain('c2')
+    expect(result.message).toContain('1MB')
+  })
+
+  it('passes for empty metas', () => {
+    expect(checkImageSize([]).level).toBe('pass')
+  })
+})
+
 describe('checkTranscript', () => {
   it('passes when all cuts have dialogue or narration', () => {
     const cuts = [makeCut('c1', { dialogue: 'Hello' }), makeCut('c2', { narration: 'Scene opens' })]
@@ -200,12 +235,13 @@ describe('validatePublishReadiness', () => {
     expect(report.checks.some((c) => c.level === 'warn')).toBe(true)
   })
 
-  it('includes all five checks', () => {
+  it('includes all six checks', () => {
     const report = validatePublishReadiness([makeCut('c1')])
-    expect(report.checks).toHaveLength(5)
+    expect(report.checks).toHaveLength(6)
     const ids = report.checks.map((c) => c.id)
     expect(ids).toContain('cut-status')
     expect(ids).toContain('images-exported')
+    expect(ids).toContain('image-size')
     expect(ids).toContain('text-overflow')
     expect(ids).toContain('transcript')
     expect(ids).toContain('alt-text')

@@ -1,6 +1,8 @@
 import type { Cut } from './CutList'
+import type { ExportMeta } from './exportMetadata'
 import { hasUnresolvedOverflow } from './textLayout'
 import { generateAltText } from './publishGenerator'
+import { getMaxSizeBytes } from './imageExport'
 
 export type ReadinessLevel = 'pass' | 'warn' | 'block'
 
@@ -72,6 +74,25 @@ export function checkTextOverflow(cuts: Cut[]): ReadinessCheck {
   }
 }
 
+export function checkImageSize(exportMetas: ExportMeta[]): ReadinessCheck {
+  const maxBytes = getMaxSizeBytes()
+  const oversized = exportMetas.filter((m) => m.byteSize > maxBytes)
+  if (oversized.length === 0) {
+    return {
+      id: 'image-size',
+      label: 'Image Size',
+      level: 'pass',
+      message: 'All exported images are under 1MB'
+    }
+  }
+  return {
+    id: 'image-size',
+    label: 'Image Size',
+    level: 'block',
+    message: `${oversized.length} image(s) exceed 1MB: ${oversized.map((m) => `${m.cutId} (${Math.round(m.byteSize / 1024)}KB)`).join(', ')}`
+  }
+}
+
 export function checkTranscript(cuts: Cut[]): ReadinessCheck {
   const noContent = cuts.filter((c) => !c.dialogue && !c.narration)
   if (noContent.length === 0) {
@@ -116,10 +137,14 @@ export function checkAltText(cuts: Cut[]): ReadinessCheck {
   }
 }
 
-export function validatePublishReadiness(cuts: Cut[]): ReadinessReport {
+export function validatePublishReadiness(
+  cuts: Cut[],
+  exportMetas: ExportMeta[] = []
+): ReadinessReport {
   const checks = [
     checkCutStatus(cuts),
     checkImagesExported(cuts),
+    checkImageSize(exportMetas),
     checkTextOverflow(cuts),
     checkTranscript(cuts),
     checkAltText(cuts)
