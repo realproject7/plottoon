@@ -23,4 +23,3 @@ Current gates:
 - #8: Initial repo and QuadWork run assumptions.
 - #42: Integration inputs before real upload/publish work.
 - #52: Real publish target approval.
-

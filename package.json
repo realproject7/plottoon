@@ -2,6 +2,7 @@
   "name": "plottoon",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Local desktop studio for creating webtoon-style visual stories",
   "main": "dist/main/index.js",
   "scripts": {
@@ -9,6 +10,12 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "npm run typecheck && npm run build",
     "postinstall": "node node_modules/electron/install.js"
   },
   "dependencies": {
@@ -16,12 +23,18 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
     "electron": "^42.1.0",
     "electron-vite": "^3.1.0",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.8.3",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "typescript-eslint": "^8.59.3",
+    "vite": "^6.3.5",
+    "vitest": "^4.1.6"
   }
 }
