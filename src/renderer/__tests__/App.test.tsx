@@ -283,6 +283,58 @@ describe('App', () => {
     })
   })
 
+  it('changes cut status via inspector status buttons', async () => {
+    ;(window.plottoon.fs.listProjectDir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      'chapter-1'
+    ])
+    ;(window.plottoon.fs.projectFileExists as ReturnType<typeof vi.fn>).mockResolvedValue(true)
+    ;(window.plottoon.fs.readProjectFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        cuts: [
+          {
+            id: 'cut-001',
+            status: 'planned',
+            direction: 'Wide shot'
+          }
+        ]
+      })
+    )
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          description: 'A cool story'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    // Wait for cut to load and be selected
+    await waitFor(() => {
+      expect(screen.getAllByText('cut-001').length).toBeGreaterThan(0)
+    })
+    // Status should show planned initially; click draft to transition
+    const draftBtn = document.querySelector('[data-testid="status-btn-draft"]') as HTMLButtonElement
+    expect(draftBtn).toBeTruthy()
+    expect(draftBtn.disabled).toBe(false)
+    fireEvent.click(draftBtn)
+    // writeProjectFile should have been called with updated status
+    await waitFor(() => {
+      const writeMock = window.plottoon.fs.writeProjectFile as ReturnType<typeof vi.fn>
+      expect(writeMock).toHaveBeenCalled()
+      const lastCall = writeMock.mock.calls[writeMock.mock.calls.length - 1]
+      const written = JSON.parse(lastCall[2])
+      expect(written.cuts[0].status).toBe('draft')
+    })
+  })
+
   it('clears preview and inspector when switching to a plot with no cuts', async () => {
     let callCount = 0
     ;(window.plottoon.fs.listProjectDir as ReturnType<typeof vi.fn>).mockResolvedValue([

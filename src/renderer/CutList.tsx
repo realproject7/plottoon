@@ -1,7 +1,9 @@
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useCallback } from 'react'
+import { addCut, deleteCut, duplicateCut, moveCut, isProtected } from './cutMutations'
 
 interface Cut {
   id: string
+  status?: string
   direction?: string
   dialogue?: string
   narration?: string
@@ -33,6 +35,7 @@ interface State {
 type Action =
   | { type: 'plots-loaded'; plots: string[] }
   | { type: 'cuts-loaded'; cuts: Cut[] }
+  | { type: 'update-cuts'; cuts: Cut[] }
   | { type: 'select-plot'; plot: string }
   | { type: 'select-cut'; cutId: string }
   | { type: 'no-plots' }
@@ -54,6 +57,8 @@ function reducer(state: State, action: Action): State {
         cuts: action.cuts,
         activeCutId: action.cuts[0]?.id ?? null
       }
+    case 'update-cuts':
+      return { ...state, cuts: action.cuts }
     case 'select-plot':
       return { ...state, activePlot: action.plot, cuts: [], activeCutId: null }
     case 'select-cut':
@@ -69,6 +74,7 @@ interface CutListProps {
   projectId: string
   activeCutId: string | null
   onSelectCut: (cut: Cut | null) => void
+  onCutsChanged?: (cuts: Cut[]) => void
   onPlotsLoaded?: (plots: string[]) => void
 }
 
@@ -78,6 +84,7 @@ export function CutList({
   projectId,
   activeCutId,
   onSelectCut,
+  onCutsChanged,
   onPlotsLoaded
 }: CutListProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, {
@@ -139,6 +146,7 @@ export function CutList({
         if (!cancelled) {
           const cuts = Array.isArray(data.cuts) ? data.cuts : []
           dispatch({ type: 'cuts-loaded', cuts })
+          onCutsChanged?.(cuts)
           if (cuts.length > 0) onSelectCut(cuts[0])
         }
       } catch (err) {
@@ -156,6 +164,40 @@ export function CutList({
       cancelled = true
     }
   }, [projectId, state.activePlot, onSelectCut])
+
+  const mutateCuts = useCallback(
+    (next: Cut[]) => {
+      dispatch({ type: 'update-cuts', cuts: next })
+      onCutsChanged?.(next)
+    },
+    [onCutsChanged]
+  )
+
+  const handleAdd = useCallback(() => {
+    mutateCuts(addCut(state.cuts, activeCutId ?? undefined))
+  }, [state.cuts, activeCutId, mutateCuts])
+
+  const handleDelete = useCallback(() => {
+    if (!activeCutId) return
+    const cut = state.cuts.find((c) => c.id === activeCutId)
+    if (cut && isProtected(cut)) return
+    const next = deleteCut(state.cuts, activeCutId)
+    mutateCuts(next)
+    onSelectCut(null)
+  }, [state.cuts, activeCutId, mutateCuts, onSelectCut])
+
+  const handleDuplicate = useCallback(() => {
+    if (!activeCutId) return
+    mutateCuts(duplicateCut(state.cuts, activeCutId))
+  }, [state.cuts, activeCutId, mutateCuts])
+
+  const handleMove = useCallback(
+    (direction: 'up' | 'down') => {
+      if (!activeCutId) return
+      mutateCuts(moveCut(state.cuts, activeCutId, direction))
+    },
+    [state.cuts, activeCutId, mutateCuts]
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -224,6 +266,44 @@ export function CutList({
         Cuts
       </div>
 
+      {state.phase === 'ready' && (
+        <div
+          data-testid="cut-toolbar"
+          style={{
+            display: 'flex',
+            gap: 2,
+            padding: '0 var(--space-2) var(--space-1)',
+            flexShrink: 0
+          }}
+        >
+          <ToolBtn label="+" title="Add cut" onClick={handleAdd} />
+          <ToolBtn
+            label="\u2212"
+            title="Delete cut"
+            onClick={handleDelete}
+            disabled={!activeCutId}
+          />
+          <ToolBtn
+            label="\u2398"
+            title="Duplicate cut"
+            onClick={handleDuplicate}
+            disabled={!activeCutId}
+          />
+          <ToolBtn
+            label="\u2191"
+            title="Move up"
+            onClick={() => handleMove('up')}
+            disabled={!activeCutId}
+          />
+          <ToolBtn
+            label="\u2193"
+            title="Move down"
+            onClick={() => handleMove('down')}
+            disabled={!activeCutId}
+          />
+        </div>
+      )}
+
       <div style={{ flex: 1, overflow: 'auto', padding: '0 var(--space-2)' }}>
         {state.phase === 'loading' && (
           <div
@@ -272,7 +352,25 @@ export function CutList({
               marginBottom: 1
             }}
           >
-            <div>{cut.id}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{cut.id}</span>
+              {cut.status && (
+                <span
+                  data-testid={`status-${cut.id}`}
+                  style={{
+                    fontSize: 9,
+                    padding: '1px 4px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--color-surface-raised)',
+                    color: 'var(--color-text-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.03em'
+                  }}
+                >
+                  {cut.status}
+                </span>
+              )}
+            </div>
             {cut.direction && (
               <div
                 style={{
@@ -290,5 +388,41 @@ export function CutList({
         ))}
       </div>
     </div>
+  )
+}
+
+function ToolBtn({
+  label,
+  title,
+  onClick,
+  disabled
+}: {
+  label: string
+  title: string
+  onClick: () => void
+  disabled?: boolean
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        all: 'unset',
+        cursor: disabled ? 'default' : 'pointer',
+        fontSize: 13,
+        width: 22,
+        height: 22,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 'var(--radius-sm)',
+        opacity: disabled ? 0.3 : 1,
+        background: 'var(--color-surface-raised)'
+      }}
+    >
+      {label}
+    </button>
   )
 }
