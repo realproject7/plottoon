@@ -9,13 +9,15 @@ interface CutInspectorProps {
   onStatusChange?: (cutId: string, status: CutStatus) => void
   onImportCleanImage?: (cutId: string) => void
   onSetCurrentRevision?: (cutId: string, version: number) => void
+  selectedOverlayId?: string | null
 }
 
 export function CutInspector({
   cut,
   onStatusChange,
   onImportCleanImage,
-  onSetCurrentRevision
+  onSetCurrentRevision,
+  selectedOverlayId
 }: CutInspectorProps): JSX.Element {
   if (!cut) {
     return (
@@ -227,6 +229,39 @@ export function CutInspector({
           })}
         </>
       )}
+
+      {selectedOverlayId &&
+        cut.overlays &&
+        (() => {
+          const overlay = cut.overlays.find((o) => o.id === selectedOverlayId)
+          if (!overlay) return null
+          return (
+            <>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 'var(--font-weight-semibold)' as never,
+                  color: 'var(--color-text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  marginTop: 'var(--space-4)',
+                  marginBottom: 'var(--space-2)',
+                  borderTop: '1px solid var(--color-border)',
+                  paddingTop: 'var(--space-3)'
+                }}
+              >
+                Selected Overlay
+              </div>
+              <Field label="ID" value={overlay.id} mono />
+              <Field label="Type" value={overlay.type} />
+              <Field label="Content" value={overlay.content} />
+              <Field label="X" value={String(overlay.x)} mono />
+              <Field label="Y" value={String(overlay.y)} mono />
+              <Field label="Width" value={String(overlay.width)} mono />
+              <Field label="Height" value={String(overlay.height)} mono />
+            </>
+          )
+        })()}
     </div>
   )
 }
