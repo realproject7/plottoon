@@ -31,6 +31,10 @@ export interface ImageState {
   prompt: string | null
   seed: number | null
   errorMessage?: string
+  generationBackend?: string
+  model?: string
+  attempts?: number
+  revisionNotes?: string
 }
 
 export interface CanvasOverrides {
@@ -136,13 +140,34 @@ function validateImageState(data: unknown, cutId: string, filePath: string): Ima
   if (s.errorMessage !== undefined && typeof s.errorMessage !== 'string') {
     fail(`cut "${cutId}": imageState.errorMessage must be a string if present`, filePath)
   }
+  if (s.generationBackend !== undefined && typeof s.generationBackend !== 'string') {
+    fail(`cut "${cutId}": imageState.generationBackend must be a string if present`, filePath)
+  }
+  if (s.model !== undefined && typeof s.model !== 'string') {
+    fail(`cut "${cutId}": imageState.model must be a string if present`, filePath)
+  }
+  if (s.attempts !== undefined) {
+    if (typeof s.attempts !== 'number' || !Number.isInteger(s.attempts) || s.attempts < 0) {
+      fail(
+        `cut "${cutId}": imageState.attempts must be a non-negative integer if present`,
+        filePath
+      )
+    }
+  }
+  if (s.revisionNotes !== undefined && typeof s.revisionNotes !== 'string') {
+    fail(`cut "${cutId}": imageState.revisionNotes must be a string if present`, filePath)
+  }
 
   return {
     status: s.status as ImageState['status'],
     path: (s.path as string) ?? null,
     prompt: (s.prompt as string) ?? null,
     seed: (s.seed as number) ?? null,
-    errorMessage: s.errorMessage as string | undefined
+    errorMessage: s.errorMessage as string | undefined,
+    generationBackend: s.generationBackend as string | undefined,
+    model: s.model as string | undefined,
+    attempts: s.attempts as number | undefined,
+    revisionNotes: s.revisionNotes as string | undefined
   }
 }
 

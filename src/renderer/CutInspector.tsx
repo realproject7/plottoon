@@ -7,9 +7,14 @@ const STATUS_OPTIONS: CutStatus[] = ['planned', 'draft', 'needs_revision', 'appr
 interface CutInspectorProps {
   cut: Cut | null
   onStatusChange?: (cutId: string, status: CutStatus) => void
+  onImportCleanImage?: (cutId: string) => void
 }
 
-export function CutInspector({ cut, onStatusChange }: CutInspectorProps): JSX.Element {
+export function CutInspector({
+  cut,
+  onStatusChange,
+  onImportCleanImage
+}: CutInspectorProps): JSX.Element {
   if (!cut) {
     return (
       <div
@@ -112,7 +117,7 @@ export function CutInspector({ cut, onStatusChange }: CutInspectorProps): JSX.El
           </div>
           <Field label="Status" value={cut.imageState.status} />
           <Field label="Path" value={cut.imageState.path} mono />
-          <Field label="Backend" value={cut.imageState.backend} />
+          <Field label="Backend" value={cut.imageState.generationBackend} />
           <Field label="Model" value={cut.imageState.model} />
           <Field label="Prompt" value={cut.imageState.prompt} />
           <Field
@@ -120,6 +125,29 @@ export function CutInspector({ cut, onStatusChange }: CutInspectorProps): JSX.El
             value={cut.imageState.attempts != null ? String(cut.imageState.attempts) : undefined}
           />
           <Field label="Revision Notes" value={cut.imageState.revisionNotes} />
+          {onImportCleanImage && (
+            <button
+              type="button"
+              data-testid="import-clean-btn"
+              onClick={() => onImportCleanImage(cut.id)}
+              style={{
+                all: 'unset',
+                cursor: 'pointer',
+                display: 'block',
+                fontSize: 11,
+                padding: '4px 8px',
+                marginTop: 'var(--space-2)',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--color-surface-raised)',
+                border: '1px solid var(--color-border)',
+                textAlign: 'center',
+                width: '100%',
+                boxSizing: 'border-box'
+              }}
+            >
+              Import clean image
+            </button>
+          )}
         </>
       )}
     </div>
