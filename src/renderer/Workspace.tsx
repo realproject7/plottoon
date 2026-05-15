@@ -56,8 +56,8 @@ export function Workspace({ projectId }: Props): JSX.Element {
     [saveCuts]
   )
 
-  const handlePlotsLoaded = useCallback((plots: string[]) => {
-    activePlotRef.current = plots[0] ?? null
+  const handlePlotChanged = useCallback((plot: string | null) => {
+    activePlotRef.current = plot
   }, [])
 
   const handleStatusChange = useCallback(
@@ -129,7 +129,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             activeCutId={activeCut?.id ?? null}
             onSelectCut={handleSelectCut}
             onCutsChanged={handleCutsChanged}
-            onPlotsLoaded={handlePlotsLoaded}
+            onPlotChanged={handlePlotChanged}
           />
         </div>
 

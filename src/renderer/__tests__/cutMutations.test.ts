@@ -37,6 +37,13 @@ describe('cutMutations', () => {
       expect(result).toHaveLength(2)
       expect(result[1].id).toBe('cut-002')
     })
+
+    it('generates unique ID after deletion (sparse list)', () => {
+      const cuts = [makeCut('cut-001'), makeCut('cut-003')]
+      const result = addCut(cuts)
+      expect(result).toHaveLength(3)
+      expect(result[2].id).toBe('cut-004')
+    })
   })
 
   describe('deleteCut', () => {
@@ -69,6 +76,13 @@ describe('cutMutations', () => {
       expect(result[1].status).toBe('planned')
       expect(result[1].direction).toBe('dir-cut-001')
       expect(result[1].imageState).toBeUndefined()
+    })
+
+    it('generates unique ID from max suffix after deletion', () => {
+      const cuts = [makeCut('cut-001'), makeCut('cut-005')]
+      const result = duplicateCut(cuts, 'cut-001')
+      expect(result).toHaveLength(3)
+      expect(result[1].id).toBe('cut-006')
     })
 
     it('returns same array if cutId not found', () => {

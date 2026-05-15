@@ -15,8 +15,17 @@ export function isProtected(cut: Cut): boolean {
   return PROTECTED_STATUSES.has(cut.status ?? '')
 }
 
+function nextCutId(cuts: Cut[]): string {
+  let max = 0
+  for (const c of cuts) {
+    const m = c.id.match(/^cut-(\d+)$/)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  return `cut-${String(max + 1).padStart(3, '0')}`
+}
+
 export function addCut(cuts: Cut[], afterId?: string): Cut[] {
-  const id = `cut-${String(cuts.length + 1).padStart(3, '0')}`
+  const id = nextCutId(cuts)
   const newCut: Cut = { id, status: 'planned' }
   if (!afterId) return [...cuts, newCut]
   const idx = cuts.findIndex((c) => c.id === afterId)
@@ -37,7 +46,7 @@ export function duplicateCut(cuts: Cut[], cutId: string): Cut[] {
   const idx = cuts.findIndex((c) => c.id === cutId)
   if (idx === -1) return cuts
   const source = cuts[idx]
-  const id = `cut-${String(cuts.length + 1).padStart(3, '0')}`
+  const id = nextCutId(cuts)
   const duplicate: Cut = {
     ...structuredClone(source),
     id,

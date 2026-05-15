@@ -75,6 +75,7 @@ interface CutListProps {
   activeCutId: string | null
   onSelectCut: (cut: Cut | null) => void
   onCutsChanged?: (cuts: Cut[]) => void
+  onPlotChanged?: (plot: string | null) => void
   onPlotsLoaded?: (plots: string[]) => void
 }
 
@@ -85,6 +86,7 @@ export function CutList({
   activeCutId,
   onSelectCut,
   onCutsChanged,
+  onPlotChanged,
   onPlotsLoaded
 }: CutListProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, {
@@ -107,6 +109,7 @@ export function CutList({
           return
         }
         dispatch({ type: 'plots-loaded', plots: entries })
+        onPlotChanged?.(entries[0] ?? null)
         onPlotsLoaded?.(entries)
       } catch {
         if (!cancelled) dispatch({ type: 'no-plots' })
@@ -230,6 +233,7 @@ export function CutList({
               type="button"
               onClick={() => {
                 dispatch({ type: 'select-plot', plot })
+                onPlotChanged?.(plot)
                 onSelectCut(null)
               }}
               style={{
