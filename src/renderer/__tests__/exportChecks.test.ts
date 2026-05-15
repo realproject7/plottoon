@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest'
-import { checkExportCapabilities } from '../exportChecks'
+import { describe, it, expect, vi } from 'vitest'
+import { checkExportCapabilities, checkFormat, checkFontRender } from '../exportChecks'
 
 describe('checkExportCapabilities', () => {
   it('returns a result with all expected fields', () => {
@@ -14,24 +14,114 @@ describe('checkExportCapabilities', () => {
     expect(typeof result.fontRender).toBe('boolean')
     expect(result.fontSample).toBe('PlotToon')
   })
+})
 
-  it('reports jpeg support status', () => {
-    const result = checkExportCapabilities()
-    expect(typeof result.jpeg).toBe('boolean')
+describe('checkFormat', () => {
+  it('returns true when toDataURL returns matching MIME type', () => {
+    const canvas = {
+      toDataURL: vi.fn().mockReturnValue('data:image/webp;base64,AAAA')
+    } as unknown as HTMLCanvasElement
+    expect(checkFormat(canvas, 'image/webp')).toBe(true)
   })
 
-  it('reports webp support status', () => {
-    const result = checkExportCapabilities()
-    expect(typeof result.webp).toBe('boolean')
+  it('returns true for JPEG when toDataURL returns jpeg MIME', () => {
+    const canvas = {
+      toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,AAAA')
+    } as unknown as HTMLCanvasElement
+    expect(checkFormat(canvas, 'image/jpeg')).toBe(true)
   })
 
-  it('reports font rendering status', () => {
-    const result = checkExportCapabilities()
-    expect(typeof result.fontRender).toBe('boolean')
+  it('returns false when toDataURL returns different MIME type', () => {
+    const canvas = {
+      toDataURL: vi.fn().mockReturnValue('data:image/png;base64,AAAA')
+    } as unknown as HTMLCanvasElement
+    expect(checkFormat(canvas, 'image/webp')).toBe(false)
   })
 
-  it('uses PlotToon as the font sample text', () => {
-    const result = checkExportCapabilities()
-    expect(result.fontSample).toBe('PlotToon')
+  it('returns false when toDataURL returns null', () => {
+    const canvas = {
+      toDataURL: vi.fn().mockReturnValue(null)
+    } as unknown as HTMLCanvasElement
+    expect(checkFormat(canvas, 'image/webp')).toBe(false)
+  })
+
+  it('returns false when toDataURL throws', () => {
+    const canvas = {
+      toDataURL: vi.fn().mockImplementation(() => {
+        throw new Error('not supported')
+      })
+    } as unknown as HTMLCanvasElement
+    expect(checkFormat(canvas, 'image/webp')).toBe(false)
+  })
+})
+
+describe('checkFontRender', () => {
+  it('returns true when fillText produces non-blank pixels', () => {
+    const pixels = new Uint8ClampedArray(64 * 24 * 4)
+    pixels[3] = 255
+    const ctx = {
+      clearRect: vi.fn(),
+      fillText: vi.fn(),
+      getImageData: vi.fn().mockReturnValue({ data: pixels }),
+      fillStyle: '',
+      font: ''
+    }
+    const canvas = {
+      width: 64,
+      height: 24,
+      getContext: vi.fn().mockReturnValue(ctx)
+    } as unknown as HTMLCanvasElement
+
+    expect(checkFontRender(canvas)).toBe(true)
+    expect(ctx.fillText).toHaveBeenCalledWith('PlotToon', 4, 18)
+  })
+
+  it('returns false when all pixels are blank', () => {
+    const pixels = new Uint8ClampedArray(64 * 24 * 4)
+    const ctx = {
+      clearRect: vi.fn(),
+      fillText: vi.fn(),
+      getImageData: vi.fn().mockReturnValue({ data: pixels }),
+      fillStyle: '',
+      font: ''
+    }
+    const canvas = {
+      width: 64,
+      height: 24,
+      getContext: vi.fn().mockReturnValue(ctx)
+    } as unknown as HTMLCanvasElement
+
+    expect(checkFontRender(canvas)).toBe(false)
+  })
+
+  it('returns false when getContext returns null', () => {
+    const canvas = {
+      width: 64,
+      height: 24,
+      getContext: vi.fn().mockReturnValue(null)
+    } as unknown as HTMLCanvasElement
+
+    expect(checkFontRender(canvas)).toBe(false)
+  })
+
+  it('sets correct font and fill style before rendering', () => {
+    const pixels = new Uint8ClampedArray(64 * 24 * 4)
+    pixels[7] = 128
+    const ctx = {
+      clearRect: vi.fn(),
+      fillText: vi.fn(),
+      getImageData: vi.fn().mockReturnValue({ data: pixels }),
+      fillStyle: '',
+      font: ''
+    }
+    const canvas = {
+      width: 64,
+      height: 24,
+      getContext: vi.fn().mockReturnValue(ctx)
+    } as unknown as HTMLCanvasElement
+
+    checkFontRender(canvas)
+    expect(ctx.fillStyle).toBe('#000000')
+    expect(ctx.font).toBe('16px sans-serif')
   })
 })

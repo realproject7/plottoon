@@ -17,7 +17,7 @@ export function checkExportCapabilities(): ExportCheckResult {
   return { webp, jpeg, fontRender, fontSample: 'PlotToon' }
 }
 
-function checkFormat(canvas: HTMLCanvasElement, mimeType: string): boolean {
+export function checkFormat(canvas: HTMLCanvasElement, mimeType: string): boolean {
   try {
     const dataUrl = canvas.toDataURL(mimeType)
     return typeof dataUrl === 'string' && dataUrl.startsWith(`data:${mimeType}`)
@@ -26,7 +26,7 @@ function checkFormat(canvas: HTMLCanvasElement, mimeType: string): boolean {
   }
 }
 
-function checkFontRender(canvas: HTMLCanvasElement): boolean {
+export function checkFontRender(canvas: HTMLCanvasElement): boolean {
   const ctx = canvas.getContext('2d')
   if (!ctx) return false
 
