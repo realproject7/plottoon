@@ -28,6 +28,7 @@ beforeEach(() => {
       writeProjectFile: vi.fn(),
       listProjectDir: vi.fn().mockResolvedValue([]),
       projectFileExists: vi.fn().mockResolvedValue(false),
+      resolveProjectFilePath: vi.fn().mockResolvedValue('/mock/path'),
       readAppConfig: vi.fn(),
       writeAppConfig: vi.fn()
     },

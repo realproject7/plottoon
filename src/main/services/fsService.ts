@@ -39,6 +39,11 @@ export async function projectFileExists(
   }
 }
 
+export function resolveProjectFilePath(projectId: string, ...segments: string[]): string {
+  const root = getProjectRoot(projectId)
+  return resolveProjectPath(root, ...segments)
+}
+
 export async function readAppConfig(filename: string): Promise<string> {
   const filePath = resolveAppConfigPath(filename)
   return fs.readFile(filePath, 'utf-8')

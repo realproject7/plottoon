@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('plottoon', {
       ipcRenderer.invoke('fs:listProjectDir', projectId, ...segments),
     projectFileExists: (projectId: string, ...segments: string[]) =>
       ipcRenderer.invoke('fs:projectFileExists', projectId, ...segments),
+    resolveProjectFilePath: (projectId: string, ...segments: string[]) =>
+      ipcRenderer.invoke('fs:resolveProjectFilePath', projectId, ...segments),
     readAppConfig: (filename: string) => ipcRenderer.invoke('fs:readAppConfig', filename),
     writeAppConfig: (filename: string, content: string) =>
       ipcRenderer.invoke('fs:writeAppConfig', filename, content)

@@ -28,6 +28,7 @@ interface PlottoonFs {
   writeProjectFile(projectId: string, segments: string[], content: string): Promise<void>
   listProjectDir(projectId: string, ...segments: string[]): Promise<string[]>
   projectFileExists(projectId: string, ...segments: string[]): Promise<boolean>
+  resolveProjectFilePath(projectId: string, ...segments: string[]): Promise<string>
   readAppConfig(filename: string): Promise<string>
   writeAppConfig(filename: string, content: string): Promise<void>
 }

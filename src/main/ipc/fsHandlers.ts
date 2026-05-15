@@ -4,6 +4,7 @@ import {
   writeProjectFile,
   listProjectDir,
   projectFileExists,
+  resolveProjectFilePath,
   readAppConfig,
   writeAppConfig
 } from '../services/fsService'
@@ -37,6 +38,12 @@ export function registerFsHandlers(): void {
 
   ipcMain.handle('fs:projectFileExists', (_event, projectId: string, ...segments: string[]) =>
     projectFileExists(projectId, ...segments)
+  )
+
+  ipcMain.handle(
+    'fs:resolveProjectFilePath',
+    (_event, projectId: string, ...segments: string[]) =>
+      resolveProjectFilePath(projectId, ...segments)
   )
 
   ipcMain.handle('fs:readAppConfig', (_event, filename: string) => readAppConfig(filename))
