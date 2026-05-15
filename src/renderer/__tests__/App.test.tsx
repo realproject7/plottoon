@@ -112,6 +112,10 @@ beforeEach(() => {
           }
         ]
       })
+    },
+    actionLog: {
+      log: vi.fn(),
+      get: vi.fn().mockResolvedValue([])
     }
   }
 })

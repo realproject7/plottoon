@@ -43,6 +43,11 @@ contextBridge.exposeInMainWorld('plottoon', {
   capability: {
     getReport: () => ipcRenderer.invoke('capability:getReport')
   },
+  actionLog: {
+    log: (action: string, detail: string, projectId?: string, plotId?: string) =>
+      ipcRenderer.invoke('actionLog:log', action, detail, projectId, plotId),
+    get: (projectId?: string) => ipcRenderer.invoke('actionLog:get', projectId)
+  },
   project: {
     discover: () => ipcRenderer.invoke('project:discover'),
     readMeta: (projectId: string) => ipcRenderer.invoke('project:readMeta', projectId),

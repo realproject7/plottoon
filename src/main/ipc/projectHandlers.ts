@@ -15,6 +15,7 @@ import { resolveAppConfigPath } from '../services/safePaths'
 import { detectClis } from '../services/cliDetection'
 import { generateReport } from '../services/capabilityReport'
 import type { CapabilityCheck, CheckStatus } from '../services/capabilityReport'
+import { logAction, getLog } from '../services/actionLog'
 
 const PROJECTS_DIR_KEY = 'projectsDir'
 
@@ -152,4 +153,12 @@ export function registerProjectHandlers(): void {
 
     return generateReport({ cliChecks, writeAccessCheck })
   })
+
+  ipcMain.handle(
+    'actionLog:log',
+    (_event, action: string, detail: string, projectId?: string, plotId?: string) =>
+      logAction(action, detail, projectId ?? null, plotId ?? null)
+  )
+
+  ipcMain.handle('actionLog:get', (_event, projectId?: string) => getLog(projectId))
 }
