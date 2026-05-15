@@ -9,6 +9,11 @@ import {
   writeAppConfig
 } from '../services/fsService'
 import { registerProject, listProjects } from '../services/projectRegistry'
+import {
+  importCleanImage,
+  detectCleanImages,
+  registerAgentFile
+} from '../services/cleanImageImport'
 
 export function registerFsHandlers(): void {
   ipcMain.handle('fs:openProject', async (event) => {
@@ -48,5 +53,31 @@ export function registerFsHandlers(): void {
 
   ipcMain.handle('fs:writeAppConfig', (_event, filename: string, content: string) =>
     writeAppConfig(filename, content)
+  )
+
+  ipcMain.handle(
+    'fs:importCleanImage',
+    async (event, projectId: string, plotSlug: string, cutId: string) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const result = await dialog.showOpenDialog(win ?? BrowserWindow.getFocusedWindow()!, {
+        title: 'Import Clean Image',
+        filters: [{ name: 'Images', extensions: ['webp', 'jpeg', 'jpg', 'png'] }],
+        properties: ['openFile']
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      return importCleanImage(projectId, plotSlug, cutId, result.filePaths[0])
+    }
+  )
+
+  ipcMain.handle(
+    'fs:detectCleanImages',
+    (_event, projectId: string, plotSlug: string, cutId: string) =>
+      detectCleanImages(projectId, plotSlug, cutId)
+  )
+
+  ipcMain.handle(
+    'fs:registerAgentFile',
+    (_event, projectId: string, plotSlug: string, cutId: string, filename: string) =>
+      registerAgentFile(projectId, plotSlug, cutId, filename)
   )
 }

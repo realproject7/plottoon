@@ -74,6 +74,38 @@ export function Workspace({ projectId }: Props): JSX.Element {
     [saveCuts, activeCut]
   )
 
+  const handleImportCleanImage = useCallback(
+    async (cutId: string) => {
+      if (!projectId || !activePlotRef.current) return
+      const result = await window.plottoon.fs.importCleanImage(
+        projectId,
+        activePlotRef.current,
+        cutId
+      )
+      if (!result) return
+      const next = cutsRef.current.map((c) =>
+        c.id === cutId
+          ? {
+              ...c,
+              imageState: {
+                ...c.imageState,
+                status: 'done' as const,
+                path: result.relativePath,
+                generationBackend: 'manual'
+              }
+            }
+          : c
+      )
+      cutsRef.current = next
+      saveCuts(next)
+      const updated = next.find((c) => c.id === cutId)
+      if (updated && activeCut?.id === cutId) {
+        setActiveCut(updated)
+      }
+    },
+    [projectId, saveCuts, activeCut]
+  )
+
   if (!projectId) {
     return (
       <div style={{ padding: 'var(--space-4)' }}>
@@ -144,7 +176,11 @@ export function Workspace({ projectId }: Props): JSX.Element {
             overflow: 'hidden'
           }}
         >
-          <CutPreview cut={activeCut} projectId={projectId} />
+          <CutPreview
+            cut={activeCut}
+            projectId={projectId}
+            onImportCleanImage={handleImportCleanImage}
+          />
         </div>
 
         {/* Right: Inspector */}
@@ -158,7 +194,11 @@ export function Workspace({ projectId }: Props): JSX.Element {
             overflow: 'auto'
           }}
         >
-          <CutInspector cut={activeCut} onStatusChange={handleStatusChange} />
+          <CutInspector
+            cut={activeCut}
+            onStatusChange={handleStatusChange}
+            onImportCleanImage={handleImportCleanImage}
+          />
         </div>
       </div>
 

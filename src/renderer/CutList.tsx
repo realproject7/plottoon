@@ -10,7 +10,7 @@ interface Cut {
   imageState?: {
     status?: string
     path?: string
-    backend?: string
+    generationBackend?: string
     model?: string
     prompt?: string
     attempts?: number

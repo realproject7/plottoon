@@ -4,6 +4,7 @@ import type { Cut } from './CutList'
 interface CutPreviewProps {
   cut: Cut | null
   projectId: string
+  onImportCleanImage?: (cutId: string) => void
 }
 
 type AsyncState =
@@ -16,7 +17,7 @@ function needsAsyncLoad(cut: Cut | null): cut is Cut {
   return cut !== null && cut.imageState?.status === 'done' && !!cut.imageState?.path
 }
 
-export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
+export function CutPreview({ cut, projectId, onImportCleanImage }: CutPreviewProps): JSX.Element {
   const [asyncState, setAsyncState] = useState<AsyncState>({ type: 'idle' })
 
   useEffect(() => {
@@ -121,6 +122,24 @@ export function CutPreview({ cut, projectId }: CutPreviewProps): JSX.Element {
           >
             {cut.direction}
           </div>
+        )}
+        {onImportCleanImage && (
+          <button
+            type="button"
+            data-testid="preview-import-btn"
+            onClick={() => onImportCleanImage(cut.id)}
+            style={{
+              all: 'unset',
+              cursor: 'pointer',
+              fontSize: 12,
+              padding: '6px 16px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--color-surface-raised)',
+              border: '1px solid var(--color-border)'
+            }}
+          >
+            Import clean image
+          </button>
         )}
       </div>
     )

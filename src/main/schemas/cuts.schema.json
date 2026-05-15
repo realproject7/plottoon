@@ -92,6 +92,23 @@
         "errorMessage": {
           "type": "string",
           "description": "Error detail when status is 'failed'."
+        },
+        "generationBackend": {
+          "type": "string",
+          "description": "Identifier of the backend that generated the image (e.g. 'manual', 'atlascloud')."
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name used for generation, if known."
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of generation attempts for this cut image."
+        },
+        "revisionNotes": {
+          "type": "string",
+          "description": "Free-form notes about revisions to the image."
         }
       }
     },

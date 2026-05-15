@@ -40,7 +40,13 @@ contextBridge.exposeInMainWorld('plottoon', {
       ipcRenderer.invoke('fs:resolveProjectFilePath', projectId, ...segments),
     readAppConfig: (filename: string) => ipcRenderer.invoke('fs:readAppConfig', filename),
     writeAppConfig: (filename: string, content: string) =>
-      ipcRenderer.invoke('fs:writeAppConfig', filename, content)
+      ipcRenderer.invoke('fs:writeAppConfig', filename, content),
+    importCleanImage: (projectId: string, plotSlug: string, cutId: string) =>
+      ipcRenderer.invoke('fs:importCleanImage', projectId, plotSlug, cutId),
+    detectCleanImages: (projectId: string, plotSlug: string, cutId: string) =>
+      ipcRenderer.invoke('fs:detectCleanImages', projectId, plotSlug, cutId),
+    registerAgentFile: (projectId: string, plotSlug: string, cutId: string, filename: string) =>
+      ipcRenderer.invoke('fs:registerAgentFile', projectId, plotSlug, cutId, filename)
   },
   capability: {
     getReport: () => ipcRenderer.invoke('capability:getReport')
