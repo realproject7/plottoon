@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from 'react'
+import { checkExportCapabilities } from './exportChecks'
 
 type Phase = 'loading' | 'ready' | 'error'
 
@@ -25,6 +26,43 @@ const STATUS_INDICATOR: Record<CheckStatus, { symbol: string; color: string }> =
   info: { symbol: 'INFO', color: 'var(--color-text-muted)' }
 }
 
+function augmentWithExportChecks(report: FirstRunReport): FirstRunReport {
+  const result = checkExportCapabilities()
+
+  const exportChecks: CapabilityCheck[] = [
+    {
+      id: 'export-webp',
+      label: 'WebP export',
+      status: result.webp ? 'pass' : 'fail',
+      detail: result.webp ? 'WebP encoding supported' : 'WebP encoding not available'
+    },
+    {
+      id: 'export-jpeg',
+      label: 'JPEG export',
+      status: result.jpeg ? 'pass' : 'fail',
+      detail: result.jpeg ? 'JPEG fallback encoding supported' : 'JPEG encoding not available'
+    },
+    {
+      id: 'font-render',
+      label: 'Font rendering',
+      status: result.fontRender ? 'pass' : 'fail',
+      detail: result.fontRender
+        ? `Text rendering verified (sample: "${result.fontSample}")`
+        : 'Font rendering produced blank output'
+    }
+  ]
+
+  return {
+    ...report,
+    sections: report.sections.map((section) => {
+      if (section.title === 'Local Capabilities') {
+        return { ...section, checks: [...section.checks, ...exportChecks] }
+      }
+      return section
+    })
+  }
+}
+
 export function CapabilityReport(): JSX.Element {
   const [state, dispatch] = useReducer(reducer, {
     phase: 'loading',
@@ -35,7 +73,7 @@ export function CapabilityReport(): JSX.Element {
   useEffect(() => {
     window.plottoon.capability
       .getReport()
-      .then((report) => dispatch({ type: 'loaded', report }))
+      .then((report) => dispatch({ type: 'loaded', report: augmentWithExportChecks(report) }))
       .catch((err: Error) => dispatch({ type: 'failed', error: err.message }))
   }, [])
 
