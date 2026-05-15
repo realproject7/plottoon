@@ -1,43 +1,68 @@
+<div align="center">
+
 # PlotToon
 
-Agentic Webtoon Studio for PlotLink.
+### Agentic Webtoon Studio for PlotLink
 
-PlotToon is a local desktop app for creating webtoon-style stories with a user-provided agent such as Codex CLI or Claude CLI. The app is designed for creating and publishing `cartoon` content to PlotLink.
+<p>
+  <a href="https://plotlink.xyz"><strong>PlotLink</strong></a> ·
+  <a href="#what-is-plottoon"><strong>What is PlotToon?</strong></a> ·
+  <a href="#how-it-works"><strong>How it Works</strong></a> ·
+  <a href="#status"><strong>Status</strong></a>
+</p>
+
+<p>
+  <a href="https://plotlink.xyz"><img src="https://img.shields.io/badge/PlotLink-plotlink.xyz-8B4513" alt="PlotLink" /></a>
+  <img src="https://img.shields.io/badge/status-planning-lightgrey" alt="Status" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PlotToon%20License-blue" alt="PlotToon License" /></a>
+</p>
+
+</div>
+
+---
+
+## What is PlotToon?
+
+PlotToon is a local desktop studio for creating webtoon-style visual stories with a user-provided agent such as Codex CLI or Claude CLI.
+
+It is designed for creators who want to plan, generate, edit, and publish `cartoon` stories to [PlotLink](https://plotlink.xyz).
+
+## How it Works
+
+```txt
+Creator idea
+  ↓
+Agent helps build structure, characters, style, and cut-by-cut story plan
+  ↓
+Agent generates clean webtoon cuts
+  ↓
+Creator places speech bubbles, narration, and SFX in PlotToon
+  ↓
+PlotToon exports final cut images
+  ↓
+Publish to PlotLink as cartoon content
+```
+
+## Planned Features
+
+- Local desktop app
+- Project-based webtoon workspace
+- Embedded agent terminal
+- Cut-by-cut story planning
+- Character and style guides
+- Clean image cut workflow
+- Speech bubble and narration editor
+- Final cut export
+- PlotLink publishing flow
 
 ## Status
 
-This repository is in planning and initialization.
+PlotToon is currently in early planning and repository initialization.
 
-## Public Repository Notice
-
-This repository, its issues, pull requests, discussions, examples, and logs should be treated as public.
-
-Do not include secrets or private operational data anywhere in this repository.
-
-Never commit or paste:
-
-- Private keys
-- Seed phrases
-- Wallet secret material
-- API keys
-- Filebase credentials
-- Production environment variables
-- Private database URLs
-- Private RPC URLs with embedded tokens
-- Private PlotLink admin endpoints
-- Customer/user private data
-- Real unpublished story drafts unless explicitly approved for public use
-
-Use placeholder names instead:
-
-- `PLOTTOON_PLOTLINK_API_URL`
-- `PLOTTOON_UPLOAD_ENDPOINT`
-- `PLOTTOON_WALLET_KEY_PATH`
-- `PLOTTOON_SIGNING_MODE`
-- `PLOTTOON_FILEBASE_TOKEN`
-- `PLOTTOON_RPC_URL`
+Implementation details, installation instructions, and development commands will be added as the app is built.
 
 ## License
 
-PlotToon is source-available under the PlotToon License. It is free to use for creating and publishing cartoon/webtoon content to PlotLink. Other uses, including competing platform use, hosted services, white-label redistribution, or resale, require separate written permission.
+PlotToon is source-available under the [PlotToon License](LICENSE).
 
+It is free to use for creating and publishing cartoon/webtoon content to PlotLink. Other uses may require separate written permission.
