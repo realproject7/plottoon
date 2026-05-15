@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { TerminalPanel } from './TerminalPanel'
 import { CutList } from './CutList'
 import { CutInspector } from './CutInspector'
+import { CutPreview } from './CutPreview'
 import { setStatus } from './cutMutations'
 import type { CutStatus } from './cutMutations'
 import type { Cut } from './CutList'
@@ -139,45 +140,11 @@ export function Workspace({ projectId }: Props): JSX.Element {
           style={{
             flex: 1,
             minWidth: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'var(--color-bg)'
+            background: 'var(--color-bg)',
+            overflow: 'hidden'
           }}
         >
-          {activeCut ? (
-            <div style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 'var(--font-weight-medium)' as never,
-                  marginBottom: 'var(--space-2)'
-                }}
-              >
-                {activeCut.id}
-              </div>
-              {activeCut.direction && (
-                <div style={{ fontSize: 12, maxWidth: '40ch', margin: '0 auto' }}>
-                  {activeCut.direction}
-                </div>
-              )}
-              {activeCut.imageState?.path && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontFamily: 'var(--font-mono, monospace)',
-                    marginTop: 'var(--space-2)'
-                  }}
-                >
-                  {activeCut.imageState.path}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-              Select a cut to preview
-            </div>
-          )}
+          <CutPreview cut={activeCut} projectId={projectId} />
         </div>
 
         {/* Right: Inspector */}
