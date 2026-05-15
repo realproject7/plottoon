@@ -21,7 +21,16 @@ beforeEach(() => {
       onData: vi.fn().mockReturnValue(() => {}),
       onExit: vi.fn().mockReturnValue(() => {})
     } as unknown as PlottoonTerminal,
-    fs: {} as PlottoonFs,
+    fs: {
+      openProject: vi.fn(),
+      listProjects: vi.fn().mockResolvedValue([]),
+      readProjectFile: vi.fn().mockResolvedValue(''),
+      writeProjectFile: vi.fn(),
+      listProjectDir: vi.fn().mockResolvedValue([]),
+      projectFileExists: vi.fn().mockResolvedValue(false),
+      readAppConfig: vi.fn(),
+      writeAppConfig: vi.fn()
+    },
     project: {
       discover: mockDiscover,
       readMeta: vi.fn(),
@@ -166,7 +175,34 @@ describe('App', () => {
     })
   })
 
-  it('navigates to workspace with projectId when clicking a project card', async () => {
+  it('navigates to workspace with layout panels when clicking a project card', async () => {
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          description: 'A cool story'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    await waitFor(() => {
+      expect(screen.queryByText('No projects yet')).toBeNull()
+      expect(document.querySelector('[data-testid="cut-list-panel"]')).toBeTruthy()
+      expect(document.querySelector('[data-testid="preview-panel"]')).toBeTruthy()
+      expect(document.querySelector('[data-testid="inspector-panel"]')).toBeTruthy()
+      expect(document.querySelector('[data-testid="terminal-region"]')).toBeTruthy()
+    })
+  })
+
+  it('shows cwd in workspace when terminal session exists', async () => {
     ;(window.plottoon.terminal.findByProject as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'sess_1',
       projectId: 'proj_1',
@@ -193,8 +229,108 @@ describe('App', () => {
     await waitFor(() => screen.getByText('My Webtoon'))
     fireEvent.click(screen.getByText('My Webtoon'))
     await waitFor(() => {
-      expect(screen.queryByText('No projects yet')).toBeNull()
       expect(screen.getByText(/cwd:/)).toBeDefined()
+    })
+  })
+
+  it('renders cut list and inspector from mocked cuts.json', async () => {
+    ;(window.plottoon.fs.listProjectDir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      'chapter-1'
+    ])
+    ;(window.plottoon.fs.projectFileExists as ReturnType<typeof vi.fn>).mockResolvedValue(true)
+    ;(window.plottoon.fs.readProjectFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        cuts: [
+          {
+            id: 'cut-001',
+            direction: 'Wide shot of the city skyline',
+            dialogue: 'Welcome home.',
+            imageState: { status: 'done', path: 'plots/chapter-1/assets/cut-001/clean-v001.webp' }
+          },
+          {
+            id: 'cut-002',
+            direction: 'Close-up on protagonist',
+            narration: 'It had been years.'
+          }
+        ]
+      })
+    )
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          description: 'A cool story'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    await waitFor(() => {
+      expect(screen.getAllByText('chapter-1').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('cut-001').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('cut-002').length).toBeGreaterThan(0)
+    })
+    await waitFor(() => {
+      expect(screen.getAllByText('Wide shot of the city skyline').length).toBeGreaterThan(0)
+      expect(screen.getByText('Welcome home.')).toBeDefined()
+    })
+  })
+
+  it('clears preview and inspector when switching to a plot with no cuts', async () => {
+    let callCount = 0
+    ;(window.plottoon.fs.listProjectDir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      'chapter-1',
+      'chapter-2'
+    ])
+    ;(window.plottoon.fs.projectFileExists as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      callCount++
+      // chapter-1 has cuts.json, chapter-2 does not
+      return Promise.resolve(callCount <= 1)
+    })
+    ;(window.plottoon.fs.readProjectFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        cuts: [
+          {
+            id: 'cut-001',
+            direction: 'Wide shot of the city skyline',
+            dialogue: 'Welcome home.'
+          }
+        ]
+      })
+    )
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          description: 'A cool story'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    // chapter-1 loads with cut-001 visible in inspector
+    await waitFor(() => {
+      expect(screen.getByText('Welcome home.')).toBeDefined()
+    })
+    // Switch to chapter-2 (no cuts.json)
+    fireEvent.click(screen.getByText('chapter-2'))
+    await waitFor(() => {
+      expect(screen.queryByText('Welcome home.')).toBeNull()
+      expect(screen.getByText('Select a cut to inspect')).toBeDefined()
     })
   })
 
