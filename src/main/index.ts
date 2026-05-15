@@ -2,6 +2,8 @@ import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import { registerFsHandlers } from './ipc/fsHandlers'
 import { registerProjectHandlers } from './ipc/projectHandlers'
+import { registerTerminalHandlers } from './ipc/terminalHandlers'
+import { destroyAllSessions } from './services/terminalSession'
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -26,6 +28,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerFsHandlers()
   registerProjectHandlers()
+  registerTerminalHandlers()
   createWindow()
 
   app.on('activate', () => {
@@ -39,4 +42,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('will-quit', () => {
+  destroyAllSessions()
 })

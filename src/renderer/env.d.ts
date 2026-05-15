@@ -41,9 +41,32 @@ interface PlottoonProject {
   getProjectsDir(): Promise<string | null>
 }
 
+interface TerminalSessionMeta {
+  id: string
+  projectId: string
+  cwd: string
+  state: 'connected' | 'disconnected' | 'exited'
+  createdAt: string
+  exitCode: number | null
+}
+
+interface PlottoonTerminal {
+  create(projectId: string): Promise<TerminalSessionMeta>
+  getSession(sessionId: string): Promise<TerminalSessionMeta | null>
+  findByProject(projectId: string): Promise<TerminalSessionMeta | null>
+  connect(sessionId: string): Promise<boolean>
+  write(sessionId: string, data: string): Promise<boolean>
+  disconnect(sessionId: string): Promise<boolean>
+  restart(sessionId: string): Promise<boolean>
+  destroy(sessionId: string): Promise<boolean>
+  onData(callback: (sessionId: string, data: string) => void): () => void
+  onExit(callback: (sessionId: string, code: number | null) => void): () => void
+}
+
 interface Window {
   plottoon: {
     version: string
+    terminal: PlottoonTerminal
     fs: PlottoonFs
     project: PlottoonProject
   }
