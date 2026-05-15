@@ -27,7 +27,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
     }
   }, [projectId])
 
-  const handleSelectCut = useCallback((cut: Cut) => {
+  const handleSelectCut = useCallback((cut: Cut | null) => {
     setActiveCut(cut)
   }, [])
 

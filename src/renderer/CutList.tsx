@@ -68,7 +68,7 @@ function reducer(state: State, action: Action): State {
 interface CutListProps {
   projectId: string
   activeCutId: string | null
-  onSelectCut: (cut: Cut) => void
+  onSelectCut: (cut: Cut | null) => void
   onPlotsLoaded?: (plots: string[]) => void
 }
 
@@ -123,7 +123,10 @@ export function CutList({
           'cuts.json'
         )
         if (!hasFile) {
-          if (!cancelled) dispatch({ type: 'cuts-loaded', cuts: [] })
+          if (!cancelled) {
+            dispatch({ type: 'cuts-loaded', cuts: [] })
+            onSelectCut(null)
+          }
           return
         }
         const raw = await window.plottoon.fs.readProjectFile(
@@ -139,11 +142,13 @@ export function CutList({
           if (cuts.length > 0) onSelectCut(cuts[0])
         }
       } catch (err) {
-        if (!cancelled)
+        if (!cancelled) {
           dispatch({
             type: 'error',
             message: err instanceof Error ? err.message : 'Failed to load cuts'
           })
+          onSelectCut(null)
+        }
       }
     }
     loadCuts()
@@ -181,7 +186,10 @@ export function CutList({
             <button
               key={plot}
               type="button"
-              onClick={() => dispatch({ type: 'select-plot', plot })}
+              onClick={() => {
+                dispatch({ type: 'select-plot', plot })
+                onSelectCut(null)
+              }}
               style={{
                 all: 'unset',
                 cursor: 'pointer',

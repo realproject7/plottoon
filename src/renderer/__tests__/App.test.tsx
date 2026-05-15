@@ -283,6 +283,59 @@ describe('App', () => {
     })
   })
 
+  it('clears preview and inspector when switching to a plot with no cuts', async () => {
+    let callCount = 0
+    ;(window.plottoon.fs.listProjectDir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      'chapter-1',
+      'chapter-2'
+    ])
+    ;(window.plottoon.fs.projectFileExists as ReturnType<typeof vi.fn>).mockImplementation(
+      () => {
+        callCount++
+        // chapter-1 has cuts.json, chapter-2 does not
+        return Promise.resolve(callCount <= 1)
+      }
+    )
+    ;(window.plottoon.fs.readProjectFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        cuts: [
+          {
+            id: 'cut-001',
+            direction: 'Wide shot of the city skyline',
+            dialogue: 'Welcome home.'
+          }
+        ]
+      })
+    )
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          description: 'A cool story'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    // chapter-1 loads with cut-001 visible in inspector
+    await waitFor(() => {
+      expect(screen.getByText('Welcome home.')).toBeDefined()
+    })
+    // Switch to chapter-2 (no cuts.json)
+    fireEvent.click(screen.getByText('chapter-2'))
+    await waitFor(() => {
+      expect(screen.queryByText('Welcome home.')).toBeNull()
+      expect(screen.getByText('Select a cut to inspect')).toBeDefined()
+    })
+  })
+
   it('shows error state for projects with invalid metadata', async () => {
     mockDiscover.mockResolvedValue([
       {
