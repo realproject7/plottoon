@@ -55,11 +55,24 @@ Publish to PlotLink as cartoon content
 - Final cut export
 - PlotLink publishing flow
 
+## Development
+
+```bash
+npm install          # Install dependencies
+npm run dev          # Start Electron app in development mode
+npm run build        # Build for production
+npm run typecheck    # Run TypeScript type checking
+npm run lint         # Run ESLint
+npm run format       # Format code with Prettier
+npm run format:check # Check formatting without writing
+npm run test         # Run unit tests (Vitest)
+npm run test:watch   # Run tests in watch mode
+npm run smoke        # Full smoke check (typecheck + build)
+```
+
 ## Status
 
-PlotToon is currently in early planning and repository initialization.
-
-Implementation details, installation instructions, and development commands will be added as the app is built.
+PlotToon is currently in early development.
 
 ## License
 
