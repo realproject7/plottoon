@@ -18,6 +18,7 @@ import type { CutStatus } from './cutMutations'
 import type { Cut } from './CutList'
 import { createOverlayFromPreset } from './overlayPresets'
 import type { PresetName } from './overlayPresets'
+import type { ExportMeta } from './exportMetadata'
 
 interface Props {
   projectId?: string
@@ -27,6 +28,8 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const [activeCut, setActiveCut] = useState<Cut | null>(null)
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
   const [cwd, setCwd] = useState<string | null>(null)
+  const [exportMetas, setExportMetas] = useState<ExportMeta[]>([])
+  const [activePlot, setActivePlot] = useState<string | null>(null)
   const activePlotRef = useRef<string | null>(null)
   const cutsRef = useRef<Cut[]>([])
 
@@ -44,6 +47,31 @@ export function Workspace({ projectId }: Props): JSX.Element {
       cancelled = true
     }
   }, [projectId])
+
+  useEffect(() => {
+    if (!projectId || !activePlot) return
+    let cancelled = false
+    async function loadMetas() {
+      try {
+        const raw = await window.plottoon.fs.readProjectFile(
+          projectId!,
+          'plots',
+          activePlot!,
+          'exports',
+          'manifest.json'
+        )
+        if (cancelled) return
+        const manifest = JSON.parse(raw)
+        setExportMetas(Array.isArray(manifest.cuts) ? manifest.cuts : [])
+      } catch {
+        if (!cancelled) setExportMetas([])
+      }
+    }
+    loadMetas()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, activePlot])
 
   const handleSelectCut = useCallback((cut: Cut | null) => {
     setActiveCut(cut)
@@ -73,6 +101,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
 
   const handlePlotChanged = useCallback((plot: string | null) => {
     activePlotRef.current = plot
+    setActivePlot(plot)
   }, [])
 
   const handleStatusChange = useCallback(
@@ -361,6 +390,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             onResizeOverlay={handleResizeOverlay}
             onSetTailAnchor={handleSetTailAnchor}
             onRemoveTailAnchor={handleRemoveTailAnchor}
+            exportMetas={exportMetas}
           />
         </div>
       </div>

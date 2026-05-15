@@ -4,6 +4,7 @@ import type { CutStatus } from './cutMutations'
 import { PRESET_NAMES, getPresetLabel } from './overlayPresets'
 import type { PresetName } from './overlayPresets'
 import { checkExportBlockers } from './exportChecks'
+import { validatePublishReadiness } from './publishReadiness'
 
 const STATUS_OPTIONS: CutStatus[] = ['planned', 'draft', 'needs_revision', 'approved']
 
@@ -34,6 +35,7 @@ interface CutInspectorProps {
   onResizeOverlay?: (cutId: string, overlayId: string, width: number, height: number) => void
   onSetTailAnchor?: (cutId: string, overlayId: string, x: number, y: number) => void
   onRemoveTailAnchor?: (cutId: string, overlayId: string) => void
+  exportMetas?: Array<{ cutId: string; byteSize: number; [key: string]: unknown }>
 }
 
 export function CutInspector({
@@ -48,7 +50,8 @@ export function CutInspector({
   onReorderOverlay,
   onResizeOverlay,
   onSetTailAnchor,
-  onRemoveTailAnchor
+  onRemoveTailAnchor,
+  exportMetas
 }: CutInspectorProps): JSX.Element {
   if (!cut) {
     return (
@@ -494,6 +497,67 @@ export function CutInspector({
             {blockers.map((b) => (
               <div key={b.type} style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
                 {b.message}
+              </div>
+            ))}
+          </div>
+        )
+      })()}
+
+      {(() => {
+        const report = validatePublishReadiness(
+          [cut],
+          (exportMetas ?? []) as import('./exportMetadata').ExportMeta[]
+        )
+        const nonPass = report.checks.filter((c) => c.level !== 'pass')
+        if (nonPass.length === 0) {
+          return (
+            <div
+              data-testid="publish-ready"
+              style={{
+                marginTop: 'var(--space-4)',
+                padding: 'var(--space-2) var(--space-3)',
+                borderTop: '1px solid var(--color-border)',
+                fontSize: 11,
+                color: 'var(--color-text-muted)'
+              }}
+            >
+              Publish ready
+            </div>
+          )
+        }
+        return (
+          <div
+            data-testid="publish-readiness"
+            style={{
+              marginTop: 'var(--space-4)',
+              padding: 'var(--space-2) var(--space-3)',
+              borderTop: '1px solid var(--color-border)'
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 'var(--font-weight-semibold)' as never,
+                color: report.ready ? 'var(--color-text-muted)' : 'var(--color-error, #e53e3e)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                marginBottom: 4
+              }}
+            >
+              {report.ready ? 'Publish ready (with warnings)' : 'Not ready to publish'}
+            </div>
+            {nonPass.map((c) => (
+              <div
+                key={c.id}
+                data-testid={`readiness-${c.id}`}
+                style={{
+                  fontSize: 11,
+                  color:
+                    c.level === 'block' ? 'var(--color-error, #e53e3e)' : 'var(--color-text-muted)',
+                  marginBottom: 2
+                }}
+              >
+                {c.level === 'block' ? '[BLOCK]' : '[WARN]'} {c.label}: {c.message}
               </div>
             ))}
           </div>
