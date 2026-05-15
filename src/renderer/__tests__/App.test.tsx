@@ -281,4 +281,63 @@ describe('App', () => {
       expect(screen.getByText(/Publish is disabled/)).toBeDefined()
     })
   })
+
+  it('renders Guides nav button', async () => {
+    render(<App />)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Guides' })).toBeDefined()
+    })
+  })
+
+  it('navigates to AtlasCloud guide when clicking Guides', async () => {
+    render(<App />)
+    await waitFor(() => screen.getByRole('button', { name: 'Guides' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Guides' }))
+    expect(screen.getByText('AtlasCloud Backend Guide')).toBeDefined()
+  })
+
+  it('guide explains API key lives in user environment', async () => {
+    render(<App />)
+    await waitFor(() => screen.getByRole('button', { name: 'Guides' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Guides' }))
+    expect(screen.getByText(/does not store API keys/)).toBeDefined()
+    expect(screen.getByText(/Never paste your API key into PlotToon/)).toBeDefined()
+  })
+
+  it('guide specifies output path rules', async () => {
+    render(<App />)
+    await waitFor(() => screen.getByRole('button', { name: 'Guides' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Guides' }))
+    expect(screen.getByText('plots/{plotId}/assets/{cutId}/clean-vNNN.webp')).toBeDefined()
+  })
+
+  it('guide specifies cuts.json update fields', async () => {
+    render(<App />)
+    await waitFor(() => screen.getByRole('button', { name: 'Guides' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Guides' }))
+    expect(screen.getByText('imageState.backend')).toBeDefined()
+    expect(screen.getByText('imageState.model')).toBeDefined()
+    expect(screen.getByText('imageState.attempts')).toBeDefined()
+    expect(screen.getAllByText('imageState.revisionNotes').length).toBeGreaterThan(0)
+  })
+
+  it('guide warns about batch generation costs', async () => {
+    render(<App />)
+    await waitFor(() => screen.getByRole('button', { name: 'Guides' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Guides' }))
+    expect(screen.getByText(/batch or high-volume generation/)).toBeDefined()
+  })
+
+  it('guide has no API key input field', async () => {
+    render(<App />)
+    await waitFor(() => screen.getByRole('button', { name: 'Guides' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Guides' }))
+    const inputs = screen.queryAllByRole('textbox')
+    const keyInputs = inputs.filter(
+      (el) =>
+        el.getAttribute('name')?.toLowerCase().includes('key') ||
+        el.getAttribute('placeholder')?.toLowerCase().includes('key')
+    )
+    expect(keyInputs).toHaveLength(0)
+  })
 })

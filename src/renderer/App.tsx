@@ -3,8 +3,9 @@ import { AppShell } from './AppShell'
 import { ProjectList } from './ProjectList'
 import { Workspace } from './Workspace'
 import { CapabilityReport } from './CapabilityReport'
+import { AtlasCloudGuide } from './AtlasCloudGuide'
 
-export type View = 'projects' | 'workspace' | 'status'
+export type View = 'projects' | 'workspace' | 'status' | 'guides'
 
 function App(): JSX.Element {
   const [view, setView] = useState<View>('projects')
@@ -18,6 +19,7 @@ function App(): JSX.Element {
   let content: JSX.Element
   if (view === 'projects') content = <ProjectList onSelectProject={handleSelectProject} />
   else if (view === 'status') content = <CapabilityReport />
+  else if (view === 'guides') content = <AtlasCloudGuide />
   else content = <Workspace projectId={activeProjectId ?? undefined} />
 
   return (
