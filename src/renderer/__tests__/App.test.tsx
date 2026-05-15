@@ -289,13 +289,11 @@ describe('App', () => {
       'chapter-1',
       'chapter-2'
     ])
-    ;(window.plottoon.fs.projectFileExists as ReturnType<typeof vi.fn>).mockImplementation(
-      () => {
-        callCount++
-        // chapter-1 has cuts.json, chapter-2 does not
-        return Promise.resolve(callCount <= 1)
-      }
-    )
+    ;(window.plottoon.fs.projectFileExists as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      callCount++
+      // chapter-1 has cuts.json, chapter-2 does not
+      return Promise.resolve(callCount <= 1)
+    })
     ;(window.plottoon.fs.readProjectFile as ReturnType<typeof vi.fn>).mockResolvedValue(
       JSON.stringify({
         cuts: [
