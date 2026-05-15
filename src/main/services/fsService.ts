@@ -1,34 +1,36 @@
 import fs from 'node:fs/promises'
 import { resolveProjectPath, resolveAppConfigPath } from './safePaths'
+import { getProjectRoot } from './projectRegistry'
 
-export async function readProjectFile(projectRoot: string, ...segments: string[]): Promise<string> {
-  const filePath = resolveProjectPath(projectRoot, ...segments)
+export async function readProjectFile(projectId: string, ...segments: string[]): Promise<string> {
+  const root = getProjectRoot(projectId)
+  const filePath = resolveProjectPath(root, ...segments)
   return fs.readFile(filePath, 'utf-8')
 }
 
 export async function writeProjectFile(
-  projectRoot: string,
+  projectId: string,
   segments: string[],
   content: string
 ): Promise<void> {
-  const filePath = resolveProjectPath(projectRoot, ...segments)
-  await fs.mkdir(resolveProjectPath(projectRoot, ...segments.slice(0, -1)), { recursive: true })
+  const root = getProjectRoot(projectId)
+  const filePath = resolveProjectPath(root, ...segments)
+  await fs.mkdir(resolveProjectPath(root, ...segments.slice(0, -1)), { recursive: true })
   await fs.writeFile(filePath, content, 'utf-8')
 }
 
-export async function listProjectDir(
-  projectRoot: string,
-  ...segments: string[]
-): Promise<string[]> {
-  const dirPath = resolveProjectPath(projectRoot, ...segments)
+export async function listProjectDir(projectId: string, ...segments: string[]): Promise<string[]> {
+  const root = getProjectRoot(projectId)
+  const dirPath = resolveProjectPath(root, ...segments)
   return fs.readdir(dirPath)
 }
 
 export async function projectFileExists(
-  projectRoot: string,
+  projectId: string,
   ...segments: string[]
 ): Promise<boolean> {
-  const filePath = resolveProjectPath(projectRoot, ...segments)
+  const root = getProjectRoot(projectId)
+  const filePath = resolveProjectPath(root, ...segments)
   try {
     await fs.access(filePath)
     return true
