@@ -151,6 +151,29 @@ describe('validateCutsFile', () => {
     expect(() => validateCutsFile(data, 'f')).toThrow('"order" must be a non-negative integer')
   })
 
+  it('accepts optional narration and continuityNotes', () => {
+    const data = validFixture()
+    data.cuts[0].narration = 'The hero reflects.'
+    data.cuts[0].continuityNotes = 'Same outfit as cut-002'
+    const result = validateCutsFile(data, 'test.json')
+    expect(result.cuts[0].narration).toBe('The hero reflects.')
+    expect(result.cuts[0].continuityNotes).toBe('Same outfit as cut-002')
+  })
+
+  it('rejects non-string narration', () => {
+    const data = validFixture()
+    ;(data.cuts[0] as Record<string, unknown>).narration = 42
+    expect(() => validateCutsFile(data, 'f')).toThrow('"narration" must be a string if present')
+  })
+
+  it('rejects non-string continuityNotes', () => {
+    const data = validFixture()
+    ;(data.cuts[0] as Record<string, unknown>).continuityNotes = true
+    expect(() => validateCutsFile(data, 'f')).toThrow(
+      '"continuityNotes" must be a string if present'
+    )
+  })
+
   it('rejects invalid imageState status', () => {
     const data = validFixture()
     ;(data.cuts[0].imageState as Record<string, unknown>).status = 'unknown'

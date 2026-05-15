@@ -35,6 +35,11 @@ function formatCut(cut: Cut): string {
     lines.push('')
   }
 
+  if (cut.narration) {
+    lines.push(`**Narration:** _${cut.narration}_`)
+    lines.push('')
+  }
+
   const sfxOverlays = cut.overlays.filter((o) => o.type === 'sfx')
   const textOverlays = cut.overlays.filter((o) => o.type === 'text')
 
@@ -63,6 +68,11 @@ function formatCut(cut: Cut): string {
       lines.push(`**Canvas:** ${parts.join(', ')}`)
       lines.push('')
     }
+  }
+
+  if (cut.continuityNotes) {
+    lines.push(`**Continuity:** ${cut.continuityNotes}`)
+    lines.push('')
   }
 
   lines.push(formatImageStatus(cut))

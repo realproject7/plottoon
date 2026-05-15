@@ -14,6 +14,8 @@ function sampleCutsFile(): CutsFile {
         order: 0,
         dialogue: 'Where am I?',
         direction: 'Close-up on face, eyes opening slowly',
+        narration: 'The last thing I remembered was the flash of light.',
+        continuityNotes: 'Protagonist wears torn jacket from scene 3',
         imageState: {
           status: 'done',
           path: 'assets/cut-001.png',
@@ -198,5 +200,27 @@ describe('generatePlotText', () => {
     const data = createEmptyCutsFile('No Synopsis', '')
     const result = generatePlotText(data)
     expect(result).not.toContain('> ')
+  })
+
+  it('includes narration in italics', () => {
+    const result = generatePlotText(sampleCutsFile())
+    expect(result).toContain('**Narration:** _The last thing I remembered was the flash of light._')
+  })
+
+  it('omits narration section when not present', () => {
+    const data = sampleCutsFile()
+    const cut2Section = generatePlotText(data).split('### Cut 2')[1]
+    expect(cut2Section).not.toContain('**Narration:**')
+  })
+
+  it('includes continuity notes', () => {
+    const result = generatePlotText(sampleCutsFile())
+    expect(result).toContain('**Continuity:** Protagonist wears torn jacket from scene 3')
+  })
+
+  it('omits continuity notes when not present', () => {
+    const data = sampleCutsFile()
+    const cut2Section = generatePlotText(data).split('### Cut 2')[1]
+    expect(cut2Section).not.toContain('**Continuity:**')
   })
 })
