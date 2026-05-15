@@ -3,7 +3,7 @@ import { TerminalPanel } from './TerminalPanel'
 import { CutList } from './CutList'
 import { CutInspector } from './CutInspector'
 import { CutPreview } from './CutPreview'
-import { setStatus, isProtected } from './cutMutations'
+import { setStatus, isImageProtected } from './cutMutations'
 import type { CutStatus } from './cutMutations'
 import type { Cut } from './CutList'
 
@@ -77,6 +77,8 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const handleImportCleanImage = useCallback(
     async (cutId: string) => {
       if (!projectId || !activePlotRef.current) return
+      const cut = cutsRef.current.find((c) => c.id === cutId)
+      if (cut && isImageProtected(cut)) return
       const result = await window.plottoon.fs.importCleanImage(
         projectId,
         activePlotRef.current,
@@ -117,7 +119,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const handleSetCurrentRevision = useCallback(
     (cutId: string, version: number) => {
       const cut = cutsRef.current.find((c) => c.id === cutId)
-      if (!cut || isProtected(cut)) return
+      if (!cut || isImageProtected(cut)) return
       const revisions = cut.imageState?.revisions ?? []
       const target = revisions.find((r) => r.version === version)
       if (!target) return

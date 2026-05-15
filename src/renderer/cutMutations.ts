@@ -11,8 +11,19 @@ export type CutStatus =
 
 const PROTECTED_STATUSES: ReadonlySet<string> = new Set(['exported', 'uploaded', 'published'])
 
+const IMAGE_PROTECTED_STATUSES: ReadonlySet<string> = new Set([
+  'approved',
+  'exported',
+  'uploaded',
+  'published'
+])
+
 export function isProtected(cut: Cut): boolean {
   return PROTECTED_STATUSES.has(cut.status ?? '')
+}
+
+export function isImageProtected(cut: Cut): boolean {
+  return IMAGE_PROTECTED_STATUSES.has(cut.status ?? '')
 }
 
 function nextCutId(cuts: Cut[]): string {

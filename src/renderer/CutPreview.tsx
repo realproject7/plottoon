@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Cut } from './CutList'
+import { isImageProtected } from './cutMutations'
 
 interface CutPreviewProps {
   cut: Cut | null
@@ -123,7 +124,7 @@ export function CutPreview({ cut, projectId, onImportCleanImage }: CutPreviewPro
             {cut.direction}
           </div>
         )}
-        {onImportCleanImage && (
+        {onImportCleanImage && !isImageProtected(cut) && (
           <button
             type="button"
             data-testid="preview-import-btn"

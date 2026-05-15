@@ -1,5 +1,5 @@
 import type { Cut } from './CutList'
-import { canTransition, isProtected } from './cutMutations'
+import { canTransition, isProtected, isImageProtected } from './cutMutations'
 import type { CutStatus } from './cutMutations'
 
 const STATUS_OPTIONS: CutStatus[] = ['planned', 'draft', 'needs_revision', 'approved']
@@ -127,7 +127,7 @@ export function CutInspector({
             value={cut.imageState.attempts != null ? String(cut.imageState.attempts) : undefined}
           />
           <Field label="Revision Notes" value={cut.imageState.revisionNotes} />
-          {onImportCleanImage && (
+          {onImportCleanImage && !isImageProtected(cut) && (
             <button
               type="button"
               data-testid="import-clean-btn"
@@ -172,7 +172,7 @@ export function CutInspector({
           </div>
           {cut.imageState.revisions.map((rev) => {
             const isCurrent = cut.imageState?.path === rev.path
-            const cutProtected = isProtected(cut)
+            const cutProtected = isImageProtected(cut)
             return (
               <div
                 key={rev.version}
