@@ -19,12 +19,9 @@ export default defineConfig({
     }
   },
   renderer: {
-    root: 'src/renderer',
+    root: './src/renderer/',
     build: {
-      outDir: 'dist/renderer',
-      rollupOptions: {
-        input: 'src/renderer/index.html'
-      }
+      outDir: '../../dist/renderer'
     },
     plugins: [react()]
   }
