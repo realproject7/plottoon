@@ -34,8 +34,9 @@ function tryExport(
   canvas: HTMLCanvasElement,
   mimeType: string,
   quality: number
-): { dataUrl: string; sizeBytes: number } {
+): { dataUrl: string; sizeBytes: number } | null {
   const dataUrl = canvas.toDataURL(mimeType, quality)
+  if (!dataUrl.startsWith(`data:${mimeType}`)) return null
   return { dataUrl, sizeBytes: dataUrlSize(dataUrl) }
 }
 
@@ -45,29 +46,35 @@ export function exportCutImage(canvas: HTMLCanvasElement): ExportResult | Export
 
   if (webpSupported) {
     for (const quality of QUALITY_STEPS) {
-      const { dataUrl, sizeBytes } = tryExport(canvas, 'image/webp', quality)
-      if (sizeBytes <= MAX_SIZE_BYTES) {
-        return { dataUrl, format: 'webp', quality, sizeBytes }
+      const result = tryExport(canvas, 'image/webp', quality)
+      if (result && result.sizeBytes <= MAX_SIZE_BYTES) {
+        return { dataUrl: result.dataUrl, format: 'webp', quality, sizeBytes: result.sizeBytes }
       }
     }
   }
 
   // Fall back to JPEG
-  for (const quality of QUALITY_STEPS) {
-    const { dataUrl, sizeBytes } = tryExport(canvas, 'image/jpeg', quality)
-    if (sizeBytes <= MAX_SIZE_BYTES) {
-      return { dataUrl, format: 'jpeg', quality, sizeBytes }
+  const jpegSupported = isFormatSupported(canvas, 'image/jpeg')
+  if (jpegSupported) {
+    for (const quality of QUALITY_STEPS) {
+      const result = tryExport(canvas, 'image/jpeg', quality)
+      if (result && result.sizeBytes <= MAX_SIZE_BYTES) {
+        return { dataUrl: result.dataUrl, format: 'jpeg', quality, sizeBytes: result.sizeBytes }
+      }
     }
   }
 
-  // Could not fit under 1MB even at lowest quality
+  // Could not fit under 1MB or no supported format
   const lastQuality = QUALITY_STEPS[QUALITY_STEPS.length - 1]
   const last = tryExport(canvas, 'image/jpeg', lastQuality)
+  const lastSize = last?.sizeBytes ?? 0
   return {
-    error: `Export exceeds 1MB (${Math.round(last.sizeBytes / 1024)}KB at quality ${lastQuality})`,
+    error: last
+      ? `Export exceeds 1MB (${Math.round(lastSize / 1024)}KB at quality ${lastQuality})`
+      : 'Neither WebP nor JPEG encoding is supported',
     lastFormat: 'jpeg',
     lastQuality,
-    lastSizeBytes: last.sizeBytes
+    lastSizeBytes: lastSize
   }
 }
 

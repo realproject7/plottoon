@@ -129,6 +129,41 @@ describe('exportCutImage', () => {
   it('max size is 1MB', () => {
     expect(getMaxSizeBytes()).toBe(1_048_576)
   })
+
+  it('rejects JPEG that returns PNG MIME type', () => {
+    const small = makeBase64(500_000)
+    const canvas = {
+      toDataURL: vi.fn(() => {
+        // Browser returns PNG for both WebP and JPEG (neither supported)
+        return `data:image/png;base64,${small}`
+      })
+    } as unknown as HTMLCanvasElement
+
+    const result = exportCutImage(canvas)
+    expect(isExportResult(result)).toBe(false)
+    if (!isExportResult(result)) {
+      expect(result.error).toBeTruthy()
+    }
+  })
+
+  it('rejects WebP that returns PNG MIME type but accepts JPEG', () => {
+    const small = makeBase64(500_000)
+    const canvas = {
+      toDataURL: vi.fn((mimeType: string) => {
+        if (mimeType === 'image/jpeg') {
+          return `data:image/jpeg;base64,${small}`
+        }
+        // WebP not supported — returns PNG
+        return `data:image/png;base64,${small}`
+      })
+    } as unknown as HTMLCanvasElement
+
+    const result = exportCutImage(canvas)
+    expect(isExportResult(result)).toBe(true)
+    if (isExportResult(result)) {
+      expect(result.format).toBe('jpeg')
+    }
+  })
 })
 
 describe('isExportResult', () => {
