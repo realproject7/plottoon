@@ -16,5 +16,15 @@ contextBridge.exposeInMainWorld('plottoon', {
     readAppConfig: (filename: string) => ipcRenderer.invoke('fs:readAppConfig', filename),
     writeAppConfig: (filename: string, content: string) =>
       ipcRenderer.invoke('fs:writeAppConfig', filename, content)
+  },
+  project: {
+    discover: () => ipcRenderer.invoke('project:discover'),
+    readMeta: (projectId: string) => ipcRenderer.invoke('project:readMeta', projectId),
+    writeMeta: (projectId: string, meta: unknown) =>
+      ipcRenderer.invoke('project:writeMeta', projectId, meta),
+    create: (name: string, description?: string) =>
+      ipcRenderer.invoke('project:create', name, description),
+    setProjectsDir: () => ipcRenderer.invoke('project:setProjectsDir'),
+    getProjectsDir: () => ipcRenderer.invoke('project:getProjectsDir')
   }
 })

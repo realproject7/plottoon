@@ -1,0 +1,89 @@
+import { ipcMain, dialog, BrowserWindow } from 'electron'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { registerProject, getProjectRoot } from '../services/projectRegistry'
+import {
+  readProjectMeta,
+  writeProjectMeta,
+  createProjectMeta,
+  type ProjectMeta
+} from '../services/projectMeta'
+import { discoverProjects } from '../services/projectDiscovery'
+import { resolveAppConfigPath } from '../services/safePaths'
+
+const PROJECTS_DIR_KEY = 'projectsDir'
+
+async function getProjectsDir(): Promise<string | null> {
+  try {
+    const configPath = resolveAppConfigPath(PROJECTS_DIR_KEY)
+    return (await fs.readFile(configPath, 'utf-8')).trim()
+  } catch {
+    return null
+  }
+}
+
+async function setProjectsDir(dir: string): Promise<void> {
+  const configPath = resolveAppConfigPath(PROJECTS_DIR_KEY)
+  const configDir = path.dirname(configPath)
+  await fs.mkdir(configDir, { recursive: true })
+  await fs.writeFile(configPath, dir, 'utf-8')
+}
+
+export function registerProjectHandlers(): void {
+  ipcMain.handle('project:discover', async () => {
+    const dir = await getProjectsDir()
+    if (!dir) return []
+    return discoverProjects(dir)
+  })
+
+  ipcMain.handle('project:readMeta', async (_event, projectId: string) => {
+    const root = getProjectRoot(projectId)
+    return readProjectMeta(root)
+  })
+
+  ipcMain.handle('project:writeMeta', async (_event, projectId: string, meta: ProjectMeta) => {
+    const root = getProjectRoot(projectId)
+    await writeProjectMeta(root, meta)
+  })
+
+  ipcMain.handle('project:create', async (event, name: string, description?: string) => {
+    let projectsDir = await getProjectsDir()
+
+    if (!projectsDir) {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const result = await dialog.showOpenDialog(win ?? BrowserWindow.getFocusedWindow()!, {
+        title: 'Choose projects folder',
+        properties: ['openDirectory', 'createDirectory']
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      projectsDir = result.filePaths[0]
+      await setProjectsDir(projectsDir)
+    }
+
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    const projectPath = path.join(projectsDir, slug)
+    await fs.mkdir(projectPath, { recursive: true })
+
+    const meta = createProjectMeta(name, description)
+    await writeProjectMeta(projectPath, meta)
+
+    const id = registerProject(projectPath)
+    return { id, path: projectPath, meta }
+  })
+
+  ipcMain.handle('project:setProjectsDir', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(win ?? BrowserWindow.getFocusedWindow()!, {
+      title: 'Choose projects folder',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    await setProjectsDir(result.filePaths[0])
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('project:getProjectsDir', () => getProjectsDir())
+}
