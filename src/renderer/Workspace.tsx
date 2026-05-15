@@ -1,66 +1,136 @@
-import { useEffect, useState } from 'react'
+import { useState, useCallback } from 'react'
 import { TerminalPanel } from './TerminalPanel'
+import { CutList } from './CutList'
+import { CutInspector } from './CutInspector'
+import type { Cut } from './CutList'
 
 interface Props {
   projectId?: string
 }
 
 export function Workspace({ projectId }: Props): JSX.Element {
-  const [cwd, setCwd] = useState<string | null>(null)
+  const [activeCut, setActiveCut] = useState<Cut | null>(null)
 
-  useEffect(() => {
-    if (!projectId) return
-    let cancelled = false
-    async function fetchCwd() {
-      const session = await window.plottoon.terminal.findByProject(projectId!)
-      if (!cancelled && session) {
-        setCwd(session.cwd)
-      }
-    }
-    fetchCwd()
-    return () => {
-      cancelled = true
-    }
-  }, [projectId])
+  const handleSelectCut = useCallback((cut: Cut) => {
+    setActiveCut(cut)
+  }, [])
 
-  const activeCwd = projectId ? cwd : null
+  if (!projectId) {
+    return (
+      <div style={{ padding: 'var(--space-4)' }}>
+        <p style={{ color: 'var(--color-text-secondary)' }}>Open a project to start editing.</p>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <h1
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        overflow: 'hidden'
+      }}
+    >
+      <div
         style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 24,
-          fontWeight: 'var(--font-weight-semibold)' as never,
-          letterSpacing: '-0.02em',
-          lineHeight: 1.2,
-          marginBottom: 'var(--space-2)',
-          flexShrink: 0
+          display: 'flex',
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden'
         }}
       >
-        Workspace
-      </h1>
-      {activeCwd && (
+        {/* Left: Cut list navigation */}
         <div
+          data-testid="cut-list-panel"
           style={{
-            fontSize: 12,
-            color: 'var(--color-text-muted)',
-            fontFamily: 'var(--font-mono, monospace)',
-            marginBottom: 'var(--space-4)',
-            flexShrink: 0
+            width: 200,
+            flexShrink: 0,
+            borderRight: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            overflow: 'hidden'
           }}
         >
-          cwd: {activeCwd}
+          <CutList
+            projectId={projectId}
+            activeCutId={activeCut?.id ?? null}
+            onSelectCut={handleSelectCut}
+          />
         </div>
-      )}
-      {!projectId && (
-        <p style={{ color: 'var(--color-text-secondary)' }}>Open a project to start editing.</p>
-      )}
-      {projectId && (
-        <div style={{ flex: 1, minHeight: 0 }}>
-          <TerminalPanel projectId={projectId} />
+
+        {/* Center: Preview area */}
+        <div
+          data-testid="preview-panel"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--color-bg)'
+          }}
+        >
+          {activeCut ? (
+            <div style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 'var(--font-weight-medium)' as never,
+                  marginBottom: 'var(--space-2)'
+                }}
+              >
+                {activeCut.id}
+              </div>
+              {activeCut.direction && (
+                <div style={{ fontSize: 12, maxWidth: '40ch', margin: '0 auto' }}>
+                  {activeCut.direction}
+                </div>
+              )}
+              {activeCut.imageState?.path && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontFamily: 'var(--font-mono, monospace)',
+                    marginTop: 'var(--space-2)'
+                  }}
+                >
+                  {activeCut.imageState.path}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+              Select a cut to preview
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Right: Inspector */}
+        <div
+          data-testid="inspector-panel"
+          style={{
+            width: 240,
+            flexShrink: 0,
+            borderLeft: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            overflow: 'auto'
+          }}
+        >
+          <CutInspector cut={activeCut} />
+        </div>
+      </div>
+
+      {/* Bottom: Terminal */}
+      <div
+        data-testid="terminal-region"
+        style={{
+          height: 200,
+          flexShrink: 0,
+          borderTop: '1px solid var(--color-border)'
+        }}
+      >
+        <TerminalPanel projectId={projectId} />
+      </div>
     </div>
   )
 }

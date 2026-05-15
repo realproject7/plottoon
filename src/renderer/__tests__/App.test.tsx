@@ -21,7 +21,16 @@ beforeEach(() => {
       onData: vi.fn().mockReturnValue(() => {}),
       onExit: vi.fn().mockReturnValue(() => {})
     } as unknown as PlottoonTerminal,
-    fs: {} as PlottoonFs,
+    fs: {
+      openProject: vi.fn(),
+      listProjects: vi.fn().mockResolvedValue([]),
+      readProjectFile: vi.fn().mockResolvedValue(''),
+      writeProjectFile: vi.fn(),
+      listProjectDir: vi.fn().mockResolvedValue([]),
+      projectFileExists: vi.fn().mockResolvedValue(false),
+      readAppConfig: vi.fn(),
+      writeAppConfig: vi.fn()
+    },
     project: {
       discover: mockDiscover,
       readMeta: vi.fn(),
@@ -166,15 +175,7 @@ describe('App', () => {
     })
   })
 
-  it('navigates to workspace with projectId when clicking a project card', async () => {
-    ;(window.plottoon.terminal.findByProject as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: 'sess_1',
-      projectId: 'proj_1',
-      cwd: '/home/user/my-webtoon',
-      state: 'connected',
-      createdAt: '2026-01-01T00:00:00Z',
-      exitCode: null
-    })
+  it('navigates to workspace with layout panels when clicking a project card', async () => {
     mockDiscover.mockResolvedValue([
       {
         id: 'proj_1',
@@ -194,7 +195,10 @@ describe('App', () => {
     fireEvent.click(screen.getByText('My Webtoon'))
     await waitFor(() => {
       expect(screen.queryByText('No projects yet')).toBeNull()
-      expect(screen.getByText(/cwd:/)).toBeDefined()
+      expect(document.querySelector('[data-testid="cut-list-panel"]')).toBeTruthy()
+      expect(document.querySelector('[data-testid="preview-panel"]')).toBeTruthy()
+      expect(document.querySelector('[data-testid="inspector-panel"]')).toBeTruthy()
+      expect(document.querySelector('[data-testid="terminal-region"]')).toBeTruthy()
     })
   })
 
