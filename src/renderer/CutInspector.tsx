@@ -35,6 +35,7 @@ interface CutInspectorProps {
   onResizeOverlay?: (cutId: string, overlayId: string, width: number, height: number) => void
   onSetTailAnchor?: (cutId: string, overlayId: string, x: number, y: number) => void
   onRemoveTailAnchor?: (cutId: string, overlayId: string) => void
+  exportMetas?: Array<{ cutId: string; byteSize: number; [key: string]: unknown }>
 }
 
 export function CutInspector({
@@ -49,7 +50,8 @@ export function CutInspector({
   onReorderOverlay,
   onResizeOverlay,
   onSetTailAnchor,
-  onRemoveTailAnchor
+  onRemoveTailAnchor,
+  exportMetas
 }: CutInspectorProps): JSX.Element {
   if (!cut) {
     return (
@@ -502,7 +504,10 @@ export function CutInspector({
       })()}
 
       {(() => {
-        const report = validatePublishReadiness([cut])
+        const report = validatePublishReadiness(
+          [cut],
+          (exportMetas ?? []) as import('./exportMetadata').ExportMeta[]
+        )
         const nonPass = report.checks.filter((c) => c.level !== 'pass')
         if (nonPass.length === 0) {
           return (

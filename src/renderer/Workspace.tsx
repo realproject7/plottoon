@@ -18,6 +18,7 @@ import type { CutStatus } from './cutMutations'
 import type { Cut } from './CutList'
 import { createOverlayFromPreset } from './overlayPresets'
 import type { PresetName } from './overlayPresets'
+import type { ExportMeta } from './exportMetadata'
 
 interface Props {
   projectId?: string
@@ -27,6 +28,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const [activeCut, setActiveCut] = useState<Cut | null>(null)
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
   const [cwd, setCwd] = useState<string | null>(null)
+  const [exportMetas, setExportMetas] = useState<ExportMeta[]>([])
   const activePlotRef = useRef<string | null>(null)
   const cutsRef = useRef<Cut[]>([])
 
@@ -40,6 +42,31 @@ export function Workspace({ projectId }: Props): JSX.Element {
       }
     }
     fetchCwd()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    if (!projectId || !activePlotRef.current) return
+    let cancelled = false
+    async function loadMetas() {
+      try {
+        const raw = await window.plottoon.fs.readProjectFile(
+          projectId!,
+          'plots',
+          activePlotRef.current!,
+          'exports',
+          'manifest.json'
+        )
+        if (cancelled) return
+        const manifest = JSON.parse(raw)
+        setExportMetas(Array.isArray(manifest.cuts) ? manifest.cuts : [])
+      } catch {
+        if (!cancelled) setExportMetas([])
+      }
+    }
+    loadMetas()
     return () => {
       cancelled = true
     }
@@ -361,6 +388,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             onResizeOverlay={handleResizeOverlay}
             onSetTailAnchor={handleSetTailAnchor}
             onRemoveTailAnchor={handleRemoveTailAnchor}
+            exportMetas={exportMetas}
           />
         </div>
       </div>
