@@ -180,6 +180,7 @@ export function EditorCanvas({
 
         {overlays.map((overlay) => {
           const isSelected = selectedOverlayId === overlay.id
+          const presetStyle = overlay.style ?? {}
           return (
             <div
               key={overlay.id}
@@ -193,20 +194,20 @@ export function EditorCanvas({
                 top: overlay.y,
                 width: overlay.width,
                 height: overlay.height,
-                border: isSelected
-                  ? '2px solid var(--color-accent, #3b82f6)'
-                  : '1px dashed var(--color-border)',
-                borderRadius: 'var(--radius-sm)',
-                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 11,
-                color: 'var(--color-text-muted)',
-                background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
                 boxSizing: 'border-box',
                 overflow: 'hidden',
-                userSelect: 'none'
+                userSelect: 'none',
+                cursor: 'pointer',
+                ...presetStyle,
+                ...(isSelected
+                  ? {
+                      outline: '2px solid var(--color-accent, #3b82f6)',
+                      outlineOffset: '1px'
+                    }
+                  : {})
               }}
             >
               <span
