@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import { resolveProjectPath, resolveAppConfigPath } from './safePaths'
 import { getProjectRoot } from './projectRegistry'
-import { validateCutsFile } from './cutsSchema'
+import type { CutsFile, Cut } from './cutsSchema'
 import { generatePlotText } from './plotTextGenerator'
 
 export async function readProjectFile(projectId: string, ...segments: string[]): Promise<string> {
@@ -58,15 +58,48 @@ export function resolveProjectFilePath(projectId: string, ...segments: string[])
   return resolveProjectPath(root, ...segments)
 }
 
-export async function regeneratePlotText(
-  projectId: string,
-  plotSlug: string
-): Promise<void> {
+function normalizeCut(data: Record<string, unknown>, index: number): Cut {
+  return {
+    id: typeof data.id === 'string' ? data.id : `cut-${index}`,
+    order: typeof data.order === 'number' ? data.order : index,
+    dialogue: typeof data.dialogue === 'string' ? data.dialogue : '',
+    direction: typeof data.direction === 'string' ? data.direction : '',
+    narration: typeof data.narration === 'string' ? data.narration : undefined,
+    continuityNotes: typeof data.continuityNotes === 'string' ? data.continuityNotes : undefined,
+    imageState:
+      data.imageState && typeof data.imageState === 'object'
+        ? (data.imageState as Cut['imageState'])
+        : { status: 'pending', path: null, prompt: null, seed: null },
+    overlays: Array.isArray(data.overlays) ? (data.overlays as Cut['overlays']) : [],
+    canvasOverrides:
+      data.canvasOverrides && typeof data.canvasOverrides === 'object'
+        ? (data.canvasOverrides as Cut['canvasOverrides'])
+        : undefined
+  }
+}
+
+function normalizeCutsFile(parsed: Record<string, unknown>): CutsFile {
+  const cuts = Array.isArray(parsed.cuts)
+    ? (parsed.cuts as Record<string, unknown>[]).map((c, i) => normalizeCut(c, i))
+    : []
+  return {
+    version: typeof parsed.version === 'number' ? parsed.version : 1,
+    plotTitle: typeof parsed.plotTitle === 'string' ? parsed.plotTitle : '',
+    synopsis: typeof parsed.synopsis === 'string' ? parsed.synopsis : '',
+    cuts,
+    publishState:
+      parsed.publishState && typeof parsed.publishState === 'object'
+        ? (parsed.publishState as CutsFile['publishState'])
+        : { published: false, exportedAt: null, format: null }
+  }
+}
+
+export async function regeneratePlotText(projectId: string, plotSlug: string): Promise<void> {
   const root = getProjectRoot(projectId)
   const cutsPath = resolveProjectPath(root, 'plots', plotSlug, 'cuts.json')
   const raw = await fs.readFile(cutsPath, 'utf-8')
-  const parsed = JSON.parse(raw)
-  const cutsFile = validateCutsFile(parsed, cutsPath)
+  const parsed = JSON.parse(raw) as Record<string, unknown>
+  const cutsFile = normalizeCutsFile(parsed)
   const text = generatePlotText(cutsFile)
   const textPath = resolveProjectPath(root, 'plots', plotSlug, 'plot-text.md')
   await fs.writeFile(textPath, text, 'utf-8')

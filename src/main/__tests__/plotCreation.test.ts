@@ -203,6 +203,36 @@ describe('regeneratePlotText', () => {
     expect(plotText).toContain('# Regen Test')
   })
 
+  it('handles renderer-shaped cuts with missing schema fields', async () => {
+    const result = await createPlot({
+      projectRoot: tmpDir,
+      plotTitle: 'Renderer Test'
+    })
+
+    const projectId = registerProject(tmpDir)
+
+    // Simulate a renderer save with minimal cut shape (like addCut produces)
+    const rendererSave = JSON.stringify(
+      {
+        version: 1,
+        plotTitle: 'Renderer Test',
+        synopsis: '',
+        cuts: [{ id: 'cut-001', status: 'planned' }],
+        publishState: { published: false, exportedAt: null, format: null }
+      },
+      null,
+      2
+    )
+    await fs.writeFile(result.cutsPath, rendererSave, 'utf-8')
+
+    // regeneratePlotText should not throw
+    await regeneratePlotText(projectId, 'renderer-test')
+
+    const plotText = await fs.readFile(path.join(result.plotDir, 'plot-text.md'), 'utf-8')
+    expect(plotText).toContain('# Renderer Test')
+    expect(plotText).toContain('cut-001')
+  })
+
   it('reflects added cuts in regenerated plot-text.md', async () => {
     const result = await createPlot({
       projectRoot: tmpDir,
