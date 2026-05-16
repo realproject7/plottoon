@@ -78,7 +78,7 @@ describe('generateAltText', () => {
 })
 
 describe('generatePublishMarkdown', () => {
-  it('generates markdown with title, images, and transcript', () => {
+  it('generates image-only markdown by default', () => {
     const cuts = [
       makeCut('cut-001', 'Hello!', 'Opening scene.', 'Wide shot'),
       makeCut('cut-002', 'Goodbye.', '', 'Close-up')
@@ -94,6 +94,26 @@ describe('generatePublishMarkdown', () => {
     expect(md).toContain('![')
     expect(md).toContain('https://cdn.example.com/cut-001.webp')
     expect(md).toContain('https://cdn.example.com/cut-002.webp')
+    expect(md).not.toContain('## Transcript')
+  })
+
+  it('includes transcript when includeTranscript is true', () => {
+    const cuts = [
+      makeCut('cut-001', 'Hello!', 'Opening scene.', 'Wide shot'),
+      makeCut('cut-002', 'Goodbye.', '', 'Close-up')
+    ]
+    const urls = [
+      { cutId: 'cut-001', url: 'https://cdn.example.com/cut-001.webp' },
+      { cutId: 'cut-002', url: 'https://cdn.example.com/cut-002.webp' }
+    ]
+
+    const md = generatePublishMarkdown({
+      cuts,
+      urls,
+      plotTitle: 'Episode 1',
+      includeTranscript: true
+    })
+
     expect(md).toContain('## Transcript')
     expect(md).toContain('Hello!')
     expect(md).toContain('Opening scene.')
@@ -149,7 +169,7 @@ describe('generatePublishMarkdown', () => {
     expect(md).toContain('[PLACEHOLDER:cut-002]')
   })
 
-  it('includes SFX in transcript section', () => {
+  it('includes SFX in transcript section when includeTranscript is true', () => {
     const cuts = [
       makeCut('cut-001', '', '', '', [
         { id: 'ovl-1', type: 'sfx', content: 'WHOOSH', x: 0, y: 0, width: 100, height: 40 }
@@ -158,7 +178,8 @@ describe('generatePublishMarkdown', () => {
     const md = generatePublishMarkdown({
       cuts,
       urls: [{ cutId: 'cut-001', url: 'https://cdn.example.com/1.webp' }],
-      plotTitle: 'Test'
+      plotTitle: 'Test',
+      includeTranscript: true
     })
     expect(md).toContain('WHOOSH')
   })

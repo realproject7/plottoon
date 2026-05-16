@@ -38,21 +38,44 @@ export function checkCutStatus(cuts: Cut[]): ReadinessCheck {
   }
 }
 
-export function checkImagesExported(cuts: Cut[]): ReadinessCheck {
+export function checkCleanImages(cuts: Cut[]): ReadinessCheck {
   const missing = cuts.filter((c) => !c.imageState?.path || c.imageState.status !== 'done')
   if (missing.length === 0) {
     return {
-      id: 'images-exported',
-      label: 'Images',
+      id: 'clean-images',
+      label: 'Clean Images',
       level: 'pass',
-      message: 'All cuts have exported images'
+      message: 'All cuts have clean images'
     }
   }
   return {
-    id: 'images-exported',
-    label: 'Images',
+    id: 'clean-images',
+    label: 'Clean Images',
     level: 'block',
-    message: `${missing.length} cut(s) missing exported image: ${missing.map((c) => c.id).join(', ')}`
+    message: `${missing.length} cut(s) missing clean image: ${missing.map((c) => c.id).join(', ')}`
+  }
+}
+
+function isValidExportMeta(meta: ExportMeta): boolean {
+  return !!meta.path && meta.byteSize > 0
+}
+
+export function checkFinalExports(cuts: Cut[], exportMetas: ExportMeta[]): ReadinessCheck {
+  const validExports = new Set(exportMetas.filter(isValidExportMeta).map((m) => m.cutId))
+  const missing = cuts.filter((c) => !validExports.has(c.id))
+  if (missing.length === 0) {
+    return {
+      id: 'final-exports',
+      label: 'Final Exports',
+      level: 'pass',
+      message: 'All cuts have final exports'
+    }
+  }
+  return {
+    id: 'final-exports',
+    label: 'Final Exports',
+    level: 'block',
+    message: `${missing.length} cut(s) missing final export: ${missing.map((c) => c.id).join(', ')}`
   }
 }
 
@@ -143,7 +166,8 @@ export function validatePublishReadiness(
 ): ReadinessReport {
   const checks = [
     checkCutStatus(cuts),
-    checkImagesExported(cuts),
+    checkCleanImages(cuts),
+    checkFinalExports(cuts, exportMetas),
     checkImageSize(exportMetas),
     checkTextOverflow(cuts),
     checkTranscript(cuts),

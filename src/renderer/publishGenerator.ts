@@ -17,6 +17,7 @@ export interface GenerateOptions {
   urls: CutUrl[]
   plotTitle: string
   dryRun?: boolean
+  includeTranscript?: boolean
 }
 
 export function generateTranscript(cuts: Cut[]): TranscriptEntry[] {
@@ -49,11 +50,10 @@ export function generateAltText(cut: Cut): string {
 }
 
 export function generatePublishMarkdown(options: GenerateOptions): string {
-  const { cuts, urls, plotTitle, dryRun = false } = options
+  const { cuts, urls, plotTitle, dryRun = false, includeTranscript = false } = options
 
   const urlMap = new Map(urls.map((u) => [u.cutId, u.url]))
 
-  // Validate URLs unless dry-run
   if (!dryRun) {
     const missing = cuts
       .filter((c) => {
@@ -77,20 +77,21 @@ export function generatePublishMarkdown(options: GenerateOptions): string {
     lines.push('')
   }
 
-  // Transcript section
-  lines.push('---')
-  lines.push('')
-  lines.push('## Transcript')
-  lines.push('')
+  if (includeTranscript) {
+    lines.push('---')
+    lines.push('')
+    lines.push('## Transcript')
+    lines.push('')
 
-  const transcript = generateTranscript(cuts)
-  for (const entry of transcript) {
-    lines.push(`### ${entry.cutId}`)
-    lines.push('')
-    if (entry.dialogue) lines.push(`**Dialogue:** ${entry.dialogue}`)
-    if (entry.narration) lines.push(`*Narration:* ${entry.narration}`)
-    if (entry.sfx.length > 0) lines.push(`SFX: ${entry.sfx.join(', ')}`)
-    lines.push('')
+    const transcript = generateTranscript(cuts)
+    for (const entry of transcript) {
+      lines.push(`### ${entry.cutId}`)
+      lines.push('')
+      if (entry.dialogue) lines.push(`**Dialogue:** ${entry.dialogue}`)
+      if (entry.narration) lines.push(`*Narration:* ${entry.narration}`)
+      if (entry.sfx.length > 0) lines.push(`SFX: ${entry.sfx.join(', ')}`)
+      lines.push('')
+    }
   }
 
   return lines.join('\n')
