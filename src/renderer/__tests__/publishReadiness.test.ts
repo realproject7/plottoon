@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   checkCutStatus,
-  checkImagesExported,
+  checkCleanImages,
+  checkFinalExports,
   checkImageSize,
   checkTextOverflow,
   checkTranscript,
@@ -38,6 +39,20 @@ function makeCut(
   }
 }
 
+function makeExportMeta(cutId: string, byteSize: number): ExportMeta {
+  return {
+    cutId,
+    exportedAt: '2026-05-16T12:00:00.000Z',
+    width: 320,
+    height: 480,
+    mimeType: 'image/webp',
+    byteSize,
+    hash: 'abcd1234',
+    fonts: ['sans-serif'],
+    path: `exports/${cutId}.webp`
+  }
+}
+
 describe('checkCutStatus', () => {
   it('passes when all cuts are approved or beyond', () => {
     const cuts = [
@@ -67,13 +82,13 @@ describe('checkCutStatus', () => {
   })
 })
 
-describe('checkImagesExported', () => {
+describe('checkCleanImages', () => {
   it('passes when all cuts have done images', () => {
     const cuts = [
       makeCut('c1', { imagePath: 'assets/c1.webp', imageStatus: 'done' }),
       makeCut('c2', { imagePath: 'assets/c2.webp', imageStatus: 'done' })
     ]
-    expect(checkImagesExported(cuts).level).toBe('pass')
+    expect(checkCleanImages(cuts).level).toBe('pass')
   })
 
   it('blocks when cuts have no image', () => {
@@ -81,14 +96,47 @@ describe('checkImagesExported', () => {
       makeCut('c1'),
       makeCut('c2', { imagePath: 'assets/c2.webp', imageStatus: 'done' })
     ]
-    const result = checkImagesExported(cuts)
+    const result = checkCleanImages(cuts)
     expect(result.level).toBe('block')
     expect(result.message).toContain('c1')
   })
 
   it('blocks when image status is pending', () => {
     const cuts = [makeCut('c1', { imageStatus: 'pending' })]
-    expect(checkImagesExported(cuts).level).toBe('block')
+    expect(checkCleanImages(cuts).level).toBe('block')
+  })
+})
+
+describe('checkFinalExports', () => {
+  it('passes when all cuts have export manifest entries', () => {
+    const cuts = [
+      makeCut('c1', { imagePath: 'assets/c1.webp', imageStatus: 'done' }),
+      makeCut('c2', { imagePath: 'assets/c2.webp', imageStatus: 'done' })
+    ]
+    const metas = [makeExportMeta('c1', 500_000), makeExportMeta('c2', 500_000)]
+    expect(checkFinalExports(cuts, metas).level).toBe('pass')
+  })
+
+  it('blocks when cuts are missing from export manifest', () => {
+    const cuts = [
+      makeCut('c1', { imagePath: 'assets/c1.webp', imageStatus: 'done' }),
+      makeCut('c2', { imagePath: 'assets/c2.webp', imageStatus: 'done' })
+    ]
+    const metas = [makeExportMeta('c1', 500_000)]
+    const result = checkFinalExports(cuts, metas)
+    expect(result.level).toBe('block')
+    expect(result.message).toContain('c2')
+  })
+
+  it('blocks when clean image exists but no final export', () => {
+    const cuts = [makeCut('c1', { imagePath: 'assets/c1.webp', imageStatus: 'done' })]
+    const result = checkFinalExports(cuts, [])
+    expect(result.level).toBe('block')
+    expect(result.message).toContain('c1')
+  })
+
+  it('passes with empty cuts array', () => {
+    expect(checkFinalExports([], []).level).toBe('pass')
   })
 })
 
@@ -126,20 +174,6 @@ describe('checkTextOverflow', () => {
     expect(checkTextOverflow([makeCut('c1')]).level).toBe('pass')
   })
 })
-
-function makeExportMeta(cutId: string, byteSize: number): ExportMeta {
-  return {
-    cutId,
-    exportedAt: '2026-05-16T12:00:00.000Z',
-    width: 320,
-    height: 480,
-    mimeType: 'image/webp',
-    byteSize,
-    hash: 'abcd1234',
-    fonts: ['sans-serif'],
-    path: `exports/${cutId}.webp`
-  }
-}
 
 describe('checkImageSize', () => {
   it('passes when all images are under 1MB', () => {
@@ -204,7 +238,8 @@ describe('validatePublishReadiness', () => {
         imageStatus: 'done'
       })
     ]
-    const report = validatePublishReadiness(cuts)
+    const metas = [makeExportMeta('c1', 500_000)]
+    const report = validatePublishReadiness(cuts, metas)
     expect(report.ready).toBe(true)
     expect(report.checks.every((c) => c.level !== 'block')).toBe(true)
   })
@@ -230,17 +265,19 @@ describe('validatePublishReadiness', () => {
         imageStatus: 'done'
       })
     ]
-    const report = validatePublishReadiness(cuts)
+    const metas = [makeExportMeta('c1', 500_000), makeExportMeta('c2', 500_000)]
+    const report = validatePublishReadiness(cuts, metas)
     expect(report.ready).toBe(true)
     expect(report.checks.some((c) => c.level === 'warn')).toBe(true)
   })
 
-  it('includes all six checks', () => {
+  it('includes all seven checks', () => {
     const report = validatePublishReadiness([makeCut('c1')])
-    expect(report.checks).toHaveLength(6)
+    expect(report.checks).toHaveLength(7)
     const ids = report.checks.map((c) => c.id)
     expect(ids).toContain('cut-status')
-    expect(ids).toContain('images-exported')
+    expect(ids).toContain('clean-images')
+    expect(ids).toContain('final-exports')
     expect(ids).toContain('image-size')
     expect(ids).toContain('text-overflow')
     expect(ids).toContain('transcript')
