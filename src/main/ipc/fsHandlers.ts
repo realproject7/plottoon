@@ -57,9 +57,8 @@ export function registerFsHandlers(): void {
     resolveProjectFilePath(projectId, ...segments)
   )
 
-  ipcMain.handle(
-    'fs:regeneratePlotText',
-    (_event, projectId: string, plotSlug: string) => regeneratePlotText(projectId, plotSlug)
+  ipcMain.handle('fs:regeneratePlotText', (_event, projectId: string, plotSlug: string) =>
+    regeneratePlotText(projectId, plotSlug)
   )
 
   ipcMain.handle('fs:readAppConfig', (_event, filename: string) => readAppConfig(filename))
