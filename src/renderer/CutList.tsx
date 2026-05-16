@@ -198,8 +198,6 @@ export function CutList({
         const data: CutsData = JSON.parse(raw)
         if (!cancelled) {
           const cuts = Array.isArray(data.cuts) ? data.cuts : []
-          dispatch({ type: 'cuts-loaded', cuts })
-          onCutsChanged?.(cuts)
           onEnvelopeLoaded?.({
             version: data.version ?? 1,
             plotTitle: data.plotTitle ?? state.activePlot ?? '',
@@ -210,6 +208,8 @@ export function CutList({
               format: null
             }
           })
+          dispatch({ type: 'cuts-loaded', cuts })
+          onCutsChanged?.(cuts)
           if (cuts.length > 0) onSelectCut(cuts[0])
         }
       } catch (err) {
