@@ -7,7 +7,8 @@ import {
   projectFileExists,
   resolveProjectFilePath,
   readAppConfig,
-  writeAppConfig
+  writeAppConfig,
+  regeneratePlotText
 } from '../services/fsService'
 import { registerProject, listProjects } from '../services/projectRegistry'
 import {
@@ -54,6 +55,11 @@ export function registerFsHandlers(): void {
 
   ipcMain.handle('fs:resolveProjectFilePath', (_event, projectId: string, ...segments: string[]) =>
     resolveProjectFilePath(projectId, ...segments)
+  )
+
+  ipcMain.handle(
+    'fs:regeneratePlotText',
+    (_event, projectId: string, plotSlug: string) => regeneratePlotText(projectId, plotSlug)
   )
 
   ipcMain.handle('fs:readAppConfig', (_event, filename: string) => readAppConfig(filename))

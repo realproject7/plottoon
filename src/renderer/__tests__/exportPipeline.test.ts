@@ -22,6 +22,7 @@ beforeEach(() => {
       readProjectFile: vi.fn().mockResolvedValue(''),
       writeProjectFile: vi.fn().mockResolvedValue(undefined),
       writeProjectFileBinary: vi.fn().mockResolvedValue(undefined),
+      regeneratePlotText: vi.fn().mockResolvedValue(undefined),
       listProjectDir: vi.fn().mockResolvedValue([]),
       projectFileExists: vi.fn().mockResolvedValue(false),
       resolveProjectFilePath: vi.fn().mockResolvedValue('/mock/path'),

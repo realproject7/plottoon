@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises'
 import { resolveProjectPath, resolveAppConfigPath } from './safePaths'
 import { getProjectRoot } from './projectRegistry'
+import { validateCutsFile } from './cutsSchema'
+import { generatePlotText } from './plotTextGenerator'
 
 export async function readProjectFile(projectId: string, ...segments: string[]): Promise<string> {
   const root = getProjectRoot(projectId)
@@ -54,6 +56,20 @@ export async function projectFileExists(
 export function resolveProjectFilePath(projectId: string, ...segments: string[]): string {
   const root = getProjectRoot(projectId)
   return resolveProjectPath(root, ...segments)
+}
+
+export async function regeneratePlotText(
+  projectId: string,
+  plotSlug: string
+): Promise<void> {
+  const root = getProjectRoot(projectId)
+  const cutsPath = resolveProjectPath(root, 'plots', plotSlug, 'cuts.json')
+  const raw = await fs.readFile(cutsPath, 'utf-8')
+  const parsed = JSON.parse(raw)
+  const cutsFile = validateCutsFile(parsed, cutsPath)
+  const text = generatePlotText(cutsFile)
+  const textPath = resolveProjectPath(root, 'plots', plotSlug, 'plot-text.md')
+  await fs.writeFile(textPath, text, 'utf-8')
 }
 
 export async function readAppConfig(filename: string): Promise<string> {
