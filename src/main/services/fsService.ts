@@ -59,8 +59,21 @@ export function resolveProjectFilePath(projectId: string, ...segments: string[])
 }
 
 function normalizeCut(data: Record<string, unknown>, index: number): Cut {
+  const validStatuses = [
+    'planned',
+    'draft',
+    'needs_revision',
+    'approved',
+    'exported',
+    'uploaded',
+    'published'
+  ]
   return {
     id: typeof data.id === 'string' ? data.id : `cut-${index}`,
+    status:
+      typeof data.status === 'string' && validStatuses.includes(data.status)
+        ? (data.status as Cut['status'])
+        : undefined,
     order: typeof data.order === 'number' ? data.order : index,
     dialogue: typeof data.dialogue === 'string' ? data.dialogue : '',
     direction: typeof data.direction === 'string' ? data.direction : '',

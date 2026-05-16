@@ -12,7 +12,8 @@ import {
   resizeOverlay,
   duplicateOverlay,
   reorderOverlay,
-  setOverlayTailAnchor
+  setOverlayTailAnchor,
+  normalizeCutsForSave
 } from './cutMutations'
 import type { CutStatus } from './cutMutations'
 import type { Cut, CutsFileEnvelope } from './CutList'
@@ -88,7 +89,8 @@ export function Workspace({ projectId }: Props): JSX.Element {
         synopsis: '',
         publishState: { published: false, exportedAt: null, format: null }
       }
-      const data = JSON.stringify({ ...envelope, cuts }, null, 2)
+      const normalized = normalizeCutsForSave(cuts)
+      const data = JSON.stringify({ ...envelope, cuts: normalized }, null, 2)
       const plot = activePlotRef.current
       window.plottoon.fs
         .writeProjectFile(projectId, ['plots', plot, 'cuts.json'], data)

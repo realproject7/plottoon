@@ -39,6 +39,19 @@
           "minLength": 1,
           "description": "Unique identifier for this cut."
         },
+        "status": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "draft",
+            "needs_revision",
+            "approved",
+            "exported",
+            "uploaded",
+            "published"
+          ],
+          "description": "Lifecycle status of this cut."
+        },
         "order": {
           "type": "integer",
           "minimum": 0,
