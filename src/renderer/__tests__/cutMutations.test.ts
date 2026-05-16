@@ -581,5 +581,52 @@ describe('cutMutations', () => {
       expect(result[1].overlays).toHaveLength(1)
       expect(result[1].order).toBe(1)
     })
+
+    it('normalizes partial imageState from manual import', () => {
+      const cuts: Cut[] = [
+        {
+          id: 'cut-001',
+          status: 'draft',
+          imageState: { status: 'done', path: 'assets/clean-v001.webp' }
+        }
+      ]
+      const result = normalizeCutsForSave(cuts)
+      expect(result[0].imageState).toEqual({
+        status: 'done',
+        path: 'assets/clean-v001.webp',
+        prompt: null,
+        seed: null
+      })
+    })
+
+    it('normalizes imageState with only status field', () => {
+      const cuts: Cut[] = [{ id: 'cut-001', imageState: { status: 'generating' } }]
+      const result = normalizeCutsForSave(cuts)
+      expect(result[0].imageState).toEqual({
+        status: 'generating',
+        path: null,
+        prompt: null,
+        seed: null
+      })
+    })
+
+    it('preserves extra imageState fields while filling required ones', () => {
+      const cuts: Cut[] = [
+        {
+          id: 'cut-001',
+          imageState: {
+            status: 'done',
+            path: 'assets/img.webp',
+            generationBackend: 'manual',
+            revisions: [{ version: 1, path: 'assets/img.webp', createdAt: '2026-05-17T00:00:00Z' }]
+          }
+        }
+      ]
+      const result = normalizeCutsForSave(cuts)
+      expect(result[0].imageState!.prompt).toBeNull()
+      expect(result[0].imageState!.seed).toBeNull()
+      expect((result[0].imageState as Record<string, unknown>).generationBackend).toBe('manual')
+      expect((result[0].imageState as Record<string, unknown>).revisions).toHaveLength(1)
+    })
   })
 })

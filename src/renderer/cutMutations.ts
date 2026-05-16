@@ -202,13 +202,29 @@ export function setOverlayTailAnchor(
   })
 }
 
+function normalizeImageState(
+  state: Cut['imageState']
+): { status: string; path: string | null; prompt: string | null; seed: number | null } & Record<
+  string,
+  unknown
+> {
+  if (!state) return { status: 'pending', path: null, prompt: null, seed: null }
+  return {
+    ...state,
+    status: state.status ?? 'pending',
+    path: state.path ?? null,
+    prompt: state.prompt ?? null,
+    seed: state.seed ?? null
+  }
+}
+
 export function normalizeCutsForSave(cuts: Cut[]): Cut[] {
   return cuts.map((c, index) => ({
     ...c,
     order: index,
     dialogue: c.dialogue ?? '',
     direction: c.direction ?? '',
-    imageState: c.imageState ?? { status: 'pending', path: null, prompt: null, seed: null },
+    imageState: normalizeImageState(c.imageState),
     overlays: c.overlays ?? []
   }))
 }
