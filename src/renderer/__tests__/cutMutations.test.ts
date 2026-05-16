@@ -14,7 +14,8 @@ import {
   resizeOverlay,
   duplicateOverlay,
   reorderOverlay,
-  setOverlayTailAnchor
+  setOverlayTailAnchor,
+  normalizeCutsForSave
 } from '../cutMutations'
 import type { Cut } from '../CutList'
 
@@ -76,14 +77,19 @@ describe('cutMutations', () => {
   })
 
   describe('duplicateCut', () => {
-    it('duplicates a cut with planned status and no imageState', () => {
+    it('duplicates a cut with planned status and pending imageState', () => {
       const cuts = [makeCut('cut-001', 'draft')]
       cuts[0].imageState = { status: 'done', path: '/img.webp' }
       const result = duplicateCut(cuts, 'cut-001')
       expect(result).toHaveLength(2)
       expect(result[1].status).toBe('planned')
       expect(result[1].direction).toBe('dir-cut-001')
-      expect(result[1].imageState).toBeUndefined()
+      expect(result[1].imageState).toEqual({
+        status: 'pending',
+        path: null,
+        prompt: null,
+        seed: null
+      })
     })
 
     it('generates unique ID from max suffix after deletion', () => {
@@ -482,5 +488,98 @@ describe('cutMutations', () => {
     it('allows draft → needs_revision', () =>
       expect(canTransition('draft', 'needs_revision')).toBe(true))
     it('blocks approved → draft', () => expect(canTransition('approved', 'draft')).toBe(false))
+  })
+
+  describe('normalizeCutsForSave', () => {
+    it('assigns order based on array position', () => {
+      const cuts = [makeCut('cut-001'), makeCut('cut-002'), makeCut('cut-003')]
+      const result = normalizeCutsForSave(cuts)
+      expect(result[0].order).toBe(0)
+      expect(result[1].order).toBe(1)
+      expect(result[2].order).toBe(2)
+    })
+
+    it('fills missing dialogue and direction with empty strings', () => {
+      const cuts: Cut[] = [{ id: 'cut-001', status: 'planned' }]
+      const result = normalizeCutsForSave(cuts)
+      expect(result[0].dialogue).toBe('')
+      expect(result[0].direction).toBe('')
+    })
+
+    it('fills missing imageState with pending defaults', () => {
+      const cuts: Cut[] = [{ id: 'cut-001' }]
+      const result = normalizeCutsForSave(cuts)
+      expect(result[0].imageState).toEqual({
+        status: 'pending',
+        path: null,
+        prompt: null,
+        seed: null
+      })
+    })
+
+    it('fills missing overlays with empty array', () => {
+      const cuts: Cut[] = [{ id: 'cut-001' }]
+      const result = normalizeCutsForSave(cuts)
+      expect(result[0].overlays).toEqual([])
+    })
+
+    it('preserves existing values when present', () => {
+      const cuts: Cut[] = [
+        {
+          id: 'cut-001',
+          status: 'draft',
+          dialogue: 'Hello',
+          direction: 'Wide shot',
+          imageState: { status: 'done', path: 'img.webp' },
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: 'Hi', x: 0, y: 0, width: 100, height: 40 }
+          ]
+        }
+      ]
+      const result = normalizeCutsForSave(cuts)
+      expect(result[0].dialogue).toBe('Hello')
+      expect(result[0].direction).toBe('Wide shot')
+      expect(result[0].imageState!.status).toBe('done')
+      expect(result[0].overlays).toHaveLength(1)
+    })
+
+    it('addCut produces a cut that normalizes to canonical shape', () => {
+      const cuts = addCut([])
+      const result = normalizeCutsForSave(cuts)
+      expect(result[0].id).toMatch(/^cut-\d{3}$/)
+      expect(result[0].order).toBe(0)
+      expect(result[0].dialogue).toBe('')
+      expect(result[0].direction).toBe('')
+      expect(result[0].imageState).toBeDefined()
+      expect(result[0].overlays).toEqual([])
+      expect(result[0].status).toBe('planned')
+    })
+
+    it('duplicateCut produces a cut that normalizes to canonical shape', () => {
+      const initial: Cut[] = [
+        {
+          id: 'cut-001',
+          status: 'approved',
+          dialogue: 'Hello',
+          direction: 'Close-up',
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: 'Hi', x: 0, y: 0, width: 100, height: 40 }
+          ]
+        }
+      ]
+      const cuts = duplicateCut(initial, 'cut-001')
+      const result = normalizeCutsForSave(cuts)
+      expect(result).toHaveLength(2)
+      expect(result[1].status).toBe('planned')
+      expect(result[1].imageState).toEqual({
+        status: 'pending',
+        path: null,
+        prompt: null,
+        seed: null
+      })
+      expect(result[1].dialogue).toBe('Hello')
+      expect(result[1].overlays).toHaveLength(1)
+      expect(result[1].order).toBe(1)
+    })
   })
 })

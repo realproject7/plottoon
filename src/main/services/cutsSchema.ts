@@ -57,8 +57,18 @@ export interface CanvasOverrides {
   backgroundColor?: string
 }
 
+export type CutStatus =
+  | 'planned'
+  | 'draft'
+  | 'needs_revision'
+  | 'approved'
+  | 'exported'
+  | 'uploaded'
+  | 'published'
+
 export interface Cut {
   id: string
+  status?: CutStatus
   order: number
   dialogue: string
   direction: string
@@ -282,6 +292,25 @@ function validateCut(data: unknown, index: number, filePath: string): Cut {
   }
   const cutId = c.id as string
 
+  const validCutStatuses = [
+    'planned',
+    'draft',
+    'needs_revision',
+    'approved',
+    'exported',
+    'uploaded',
+    'published'
+  ]
+  if (
+    c.status !== undefined &&
+    (typeof c.status !== 'string' || !validCutStatuses.includes(c.status))
+  ) {
+    fail(
+      `cut "${cutId}": "status" must be one of ${validCutStatuses.join(', ')} if present`,
+      filePath
+    )
+  }
+
   if (typeof c.order !== 'number' || !Number.isInteger(c.order) || c.order < 0) {
     fail(`cut "${cutId}": "order" must be a non-negative integer`, filePath)
   }
@@ -312,6 +341,7 @@ function validateCut(data: unknown, index: number, filePath: string): Cut {
 
   return {
     id: cutId,
+    status: c.status as CutStatus | undefined,
     order: c.order as number,
     dialogue: c.dialogue as string,
     direction: c.direction as string,

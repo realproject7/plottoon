@@ -494,4 +494,116 @@ describe('CUTS_JSON_SCHEMA', () => {
       expect.arrayContaining(['id', 'order', 'imageState', 'overlays'])
     )
   })
+
+  it('cut schema allows optional status field with lifecycle enum', () => {
+    const defs = schema.$defs as Record<string, { properties: Record<string, unknown> }>
+    const statusProp = defs.cut.properties.status as { type: string; enum: string[] }
+    expect(statusProp.type).toBe('string')
+    expect(statusProp.enum).toEqual(
+      expect.arrayContaining(['planned', 'draft', 'approved', 'exported', 'published'])
+    )
+  })
+})
+
+describe('renderer round-trip validation', () => {
+  it('validates a cuts.json produced by renderer addCut + normalization', () => {
+    const rendererCuts = [
+      {
+        id: 'cut-001',
+        status: 'planned',
+        order: 0,
+        dialogue: '',
+        direction: '',
+        imageState: { status: 'pending', path: null, prompt: null, seed: null },
+        overlays: []
+      }
+    ]
+    const cutsFile = {
+      version: 1,
+      plotTitle: 'Test Plot',
+      synopsis: '',
+      cuts: rendererCuts,
+      publishState: { published: false, exportedAt: null, format: null }
+    }
+    const validated = validateCutsFile(cutsFile, 'test.json')
+    expect(validated.cuts[0].id).toBe('cut-001')
+    expect(validated.cuts[0].status).toBe('planned')
+  })
+
+  it('validates renderer save with multiple cuts and status changes', () => {
+    const cutsFile = {
+      version: 1,
+      plotTitle: 'Multi Cut',
+      synopsis: 'A story',
+      cuts: [
+        {
+          id: 'cut-001',
+          status: 'approved',
+          order: 0,
+          dialogue: 'Hello',
+          direction: 'Wide shot',
+          imageState: { status: 'done', path: 'assets/clean-v001.webp', prompt: null, seed: null },
+          overlays: []
+        },
+        {
+          id: 'cut-002',
+          status: 'draft',
+          order: 1,
+          dialogue: '',
+          direction: '',
+          imageState: { status: 'pending', path: null, prompt: null, seed: null },
+          overlays: [
+            { id: 'ovl-1', type: 'text', content: 'Hey!', x: 10, y: 20, width: 100, height: 40 }
+          ]
+        }
+      ],
+      publishState: { published: false, exportedAt: null, format: null }
+    }
+    const validated = validateCutsFile(cutsFile, 'test.json')
+    expect(validated.cuts).toHaveLength(2)
+    expect(validated.cuts[0].status).toBe('approved')
+    expect(validated.cuts[1].status).toBe('draft')
+  })
+
+  it('rejects invalid status values', () => {
+    const cutsFile = {
+      version: 1,
+      plotTitle: 'Bad Status',
+      synopsis: '',
+      cuts: [
+        {
+          id: 'cut-001',
+          status: 'invalid_status',
+          order: 0,
+          dialogue: '',
+          direction: '',
+          imageState: { status: 'pending', path: null, prompt: null, seed: null },
+          overlays: []
+        }
+      ],
+      publishState: { published: false, exportedAt: null, format: null }
+    }
+    expect(() => validateCutsFile(cutsFile, 'test.json')).toThrow(CutsValidationError)
+  })
+
+  it('accepts cuts without status field (backward compatibility)', () => {
+    const cutsFile = {
+      version: 1,
+      plotTitle: 'No Status',
+      synopsis: '',
+      cuts: [
+        {
+          id: 'cut-001',
+          order: 0,
+          dialogue: '',
+          direction: '',
+          imageState: { status: 'pending', path: null, prompt: null, seed: null },
+          overlays: []
+        }
+      ],
+      publishState: { published: false, exportedAt: null, format: null }
+    }
+    const validated = validateCutsFile(cutsFile, 'test.json')
+    expect(validated.cuts[0].status).toBeUndefined()
+  })
 })

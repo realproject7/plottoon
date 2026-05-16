@@ -37,7 +37,14 @@ function nextCutId(cuts: Cut[]): string {
 
 export function addCut(cuts: Cut[], afterId?: string): Cut[] {
   const id = nextCutId(cuts)
-  const newCut: Cut = { id, status: 'planned' }
+  const newCut: Cut = {
+    id,
+    status: 'planned',
+    dialogue: '',
+    direction: '',
+    imageState: { status: 'pending', path: null, prompt: null, seed: null },
+    overlays: []
+  }
   if (!afterId) return [...cuts, newCut]
   const idx = cuts.findIndex((c) => c.id === afterId)
   if (idx === -1) return [...cuts, newCut]
@@ -62,7 +69,8 @@ export function duplicateCut(cuts: Cut[], cutId: string): Cut[] {
     ...structuredClone(source),
     id,
     status: 'planned',
-    imageState: undefined
+    imageState: { status: 'pending', path: null, prompt: null, seed: null },
+    overlays: source.overlays ? structuredClone(source.overlays) : []
   }
   const result = [...cuts]
   result.splice(idx + 1, 0, duplicate)
@@ -192,6 +200,17 @@ export function setOverlayTailAnchor(
       overlays: c.overlays.map((o) => (o.id === overlayId ? { ...o, tailAnchor } : o))
     }
   })
+}
+
+export function normalizeCutsForSave(cuts: Cut[]): Cut[] {
+  return cuts.map((c, index) => ({
+    ...c,
+    order: index,
+    dialogue: c.dialogue ?? '',
+    direction: c.direction ?? '',
+    imageState: c.imageState ?? { status: 'pending', path: null, prompt: null, seed: null },
+    overlays: c.overlays ?? []
+  }))
 }
 
 export function setStatus(cuts: Cut[], cutId: string, status: CutStatus): Cut[] {
