@@ -32,8 +32,28 @@ function buildAssetDir(plotSlug: string, cutId: string): string[] {
   return ['plots', plotSlug, 'assets', cutId]
 }
 
-function buildCleanFilename(cutId: string, ext: string): string {
-  return `clean-${cutId}${ext}`
+const VERSION_PATTERN = /^clean-v(\d{3})\.\w+$/
+
+async function nextVersion(assetDir: string): Promise<number> {
+  let entries: string[]
+  try {
+    entries = await fs.readdir(assetDir)
+  } catch {
+    return 1
+  }
+  let max = 0
+  for (const name of entries) {
+    const match = VERSION_PATTERN.exec(name)
+    if (match) {
+      const v = parseInt(match[1], 10)
+      if (v > max) max = v
+    }
+  }
+  return max + 1
+}
+
+function buildVersionedFilename(version: number, ext: string): string {
+  return `clean-v${String(version).padStart(3, '0')}${ext}`
 }
 
 export async function importCleanImage(
@@ -54,7 +74,8 @@ export async function importCleanImage(
   const assetDir = resolveProjectPath(root, ...assetSegments)
   await fs.mkdir(assetDir, { recursive: true })
 
-  const filename = buildCleanFilename(cutId, ext)
+  const version = await nextVersion(assetDir)
+  const filename = buildVersionedFilename(version, ext)
   const destPath = resolveProjectPath(root, ...assetSegments, filename)
 
   await fs.copyFile(sourcePath, destPath)

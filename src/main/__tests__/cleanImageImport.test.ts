@@ -26,45 +26,45 @@ afterEach(async () => {
 })
 
 describe('importCleanImage', () => {
-  it('copies a PNG file into the asset folder', async () => {
+  it('copies a PNG file with versioned filename', async () => {
     const srcFile = path.join(tmpDir, 'external.png')
     await fs.writeFile(srcFile, 'fake-png-data')
 
     const result = await importCleanImage(projectId, 'episode-1', 'cut-001', srcFile)
 
-    expect(result.filename).toBe('clean-cut-001.png')
+    expect(result.filename).toBe('clean-v001.png')
     expect(result.relativePath).toBe(
-      path.join('plots', 'episode-1', 'assets', 'cut-001', 'clean-cut-001.png')
+      path.join('plots', 'episode-1', 'assets', 'cut-001', 'clean-v001.png')
     )
     const copied = await fs.readFile(result.absolutePath, 'utf-8')
     expect(copied).toBe('fake-png-data')
   })
 
-  it('copies a WebP file into the asset folder', async () => {
+  it('copies a WebP file with versioned filename', async () => {
     const srcFile = path.join(tmpDir, 'external.webp')
     await fs.writeFile(srcFile, 'fake-webp-data')
 
     const result = await importCleanImage(projectId, 'episode-1', 'cut-001', srcFile)
 
-    expect(result.filename).toBe('clean-cut-001.webp')
+    expect(result.filename).toBe('clean-v001.webp')
     const copied = await fs.readFile(result.absolutePath, 'utf-8')
     expect(copied).toBe('fake-webp-data')
   })
 
-  it('copies a JPEG file into the asset folder', async () => {
+  it('copies a JPEG file with versioned filename', async () => {
     const srcFile = path.join(tmpDir, 'photo.jpeg')
     await fs.writeFile(srcFile, 'fake-jpeg-data')
 
     const result = await importCleanImage(projectId, 'episode-1', 'cut-001', srcFile)
-    expect(result.filename).toBe('clean-cut-001.jpeg')
+    expect(result.filename).toBe('clean-v001.jpeg')
   })
 
-  it('copies a JPG file into the asset folder', async () => {
+  it('copies a JPG file with versioned filename', async () => {
     const srcFile = path.join(tmpDir, 'photo.jpg')
     await fs.writeFile(srcFile, 'fake-jpg-data')
 
     const result = await importCleanImage(projectId, 'episode-1', 'cut-001', srcFile)
-    expect(result.filename).toBe('clean-cut-001.jpg')
+    expect(result.filename).toBe('clean-v001.jpg')
   })
 
   it('rejects unsupported file extensions', async () => {
@@ -82,7 +82,7 @@ describe('importCleanImage', () => {
 
     const result = await importCleanImage(projectId, 'episode-1', 'cut-new', srcFile)
 
-    expect(result.filename).toBe('clean-cut-new.png')
+    expect(result.filename).toBe('clean-v001.png')
     const exists = await fs
       .access(result.absolutePath)
       .then(() => true)
@@ -96,10 +96,45 @@ describe('importCleanImage', () => {
 
     const result = await importCleanImage(projectId, 'episode-1', 'cut-001', srcFile)
 
-    // The relativePath should be usable as imageState.path
     expect(result.relativePath).toContain('assets')
     expect(result.relativePath).toContain('cut-001')
     expect(result.relativePath).toMatch(/\.webp$/)
+  })
+
+  it('increments version on repeated imports without overwriting', async () => {
+    const srcFile = path.join(tmpDir, 'external.webp')
+    await fs.writeFile(srcFile, 'first-version')
+
+    const r1 = await importCleanImage(projectId, 'episode-1', 'cut-001', srcFile)
+    expect(r1.filename).toBe('clean-v001.webp')
+
+    await fs.writeFile(srcFile, 'second-version')
+    const r2 = await importCleanImage(projectId, 'episode-1', 'cut-001', srcFile)
+    expect(r2.filename).toBe('clean-v002.webp')
+
+    await fs.writeFile(srcFile, 'third-version')
+    const r3 = await importCleanImage(projectId, 'episode-1', 'cut-001', srcFile)
+    expect(r3.filename).toBe('clean-v003.webp')
+
+    // All three versions preserved
+    const v1 = await fs.readFile(r1.absolutePath, 'utf-8')
+    const v2 = await fs.readFile(r2.absolutePath, 'utf-8')
+    const v3 = await fs.readFile(r3.absolutePath, 'utf-8')
+    expect(v1).toBe('first-version')
+    expect(v2).toBe('second-version')
+    expect(v3).toBe('third-version')
+  })
+
+  it('detects version from existing files regardless of extension', async () => {
+    const assetDir = path.join(tmpDir, 'plots', 'episode-1', 'assets', 'cut-001')
+    await fs.writeFile(path.join(assetDir, 'clean-v001.png'), 'old')
+    await fs.writeFile(path.join(assetDir, 'clean-v002.webp'), 'older')
+
+    const srcFile = path.join(tmpDir, 'new.webp')
+    await fs.writeFile(srcFile, 'new-data')
+
+    const result = await importCleanImage(projectId, 'episode-1', 'cut-001', srcFile)
+    expect(result.filename).toBe('clean-v003.webp')
   })
 })
 
