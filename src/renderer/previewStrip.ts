@@ -76,7 +76,7 @@ export async function generatePreviewStrip(
 
   const outputPath = `plots/${plotSlug}/exports/preview-strip.png`
   const segments = outputPath.split('/')
-  await window.plottoon.fs.writeProjectFile(projectId, segments, base64)
+  await window.plottoon.fs.writeProjectFileBinary(projectId, segments, base64)
 
   return {
     path: outputPath,
