@@ -226,7 +226,7 @@ export function CutList({
     return () => {
       cancelled = true
     }
-  }, [projectId, state.activePlot, onSelectCut, onCutsChanged])
+  }, [projectId, state.activePlot, onSelectCut, onCutsChanged, onEnvelopeLoaded])
 
   const mutateCuts = useCallback(
     (next: Cut[]) => {
