@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('plottoon', {
       ipcRenderer.invoke('fs:readProjectFile', projectId, ...segments),
     writeProjectFile: (projectId: string, segments: string[], content: string) =>
       ipcRenderer.invoke('fs:writeProjectFile', projectId, segments, content),
+    writeProjectFileBinary: (projectId: string, segments: string[], base64: string) =>
+      ipcRenderer.invoke('fs:writeProjectFileBinary', projectId, segments, base64),
     listProjectDir: (projectId: string, ...segments: string[]) =>
       ipcRenderer.invoke('fs:listProjectDir', projectId, ...segments),
     projectFileExists: (projectId: string, ...segments: string[]) =>

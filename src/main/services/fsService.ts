@@ -19,6 +19,18 @@ export async function writeProjectFile(
   await fs.writeFile(filePath, content, 'utf-8')
 }
 
+export async function writeProjectFileBinary(
+  projectId: string,
+  segments: string[],
+  base64: string
+): Promise<void> {
+  const root = getProjectRoot(projectId)
+  const filePath = resolveProjectPath(root, ...segments)
+  await fs.mkdir(resolveProjectPath(root, ...segments.slice(0, -1)), { recursive: true })
+  const buffer = Buffer.from(base64, 'base64')
+  await fs.writeFile(filePath, buffer)
+}
+
 export async function listProjectDir(projectId: string, ...segments: string[]): Promise<string[]> {
   const root = getProjectRoot(projectId)
   const dirPath = resolveProjectPath(root, ...segments)

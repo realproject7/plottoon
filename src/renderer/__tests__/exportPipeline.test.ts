@@ -21,6 +21,7 @@ beforeEach(() => {
       listProjects: vi.fn().mockResolvedValue([]),
       readProjectFile: vi.fn().mockResolvedValue(''),
       writeProjectFile: vi.fn().mockResolvedValue(undefined),
+      writeProjectFileBinary: vi.fn().mockResolvedValue(undefined),
       listProjectDir: vi.fn().mockResolvedValue([]),
       projectFileExists: vi.fn().mockResolvedValue(false),
       resolveProjectFilePath: vi.fn().mockResolvedValue('/mock/path'),
@@ -93,15 +94,17 @@ describe('exportSingleCut', () => {
       expect(result.meta.path).toContain('exports/cut-001')
     }
 
-    // Should write image file and metadata file
-    const writeCalls = (window.plottoon.fs.writeProjectFile as ReturnType<typeof vi.fn>).mock.calls
-    expect(writeCalls).toHaveLength(2)
-    // First call: image file
-    expect(writeCalls[0][1]).toEqual(
+    // Image written via binary API
+    const binaryCalls = (window.plottoon.fs.writeProjectFileBinary as ReturnType<typeof vi.fn>).mock
+      .calls
+    expect(binaryCalls).toHaveLength(1)
+    expect(binaryCalls[0][1]).toEqual(
       expect.arrayContaining(['exports', expect.stringContaining('cut-001')])
     )
-    // Second call: metadata file
-    expect(writeCalls[1][1]).toEqual(expect.arrayContaining(['exports', 'cut-001.meta.json']))
+    // Metadata written via text API
+    const textCalls = (window.plottoon.fs.writeProjectFile as ReturnType<typeof vi.fn>).mock.calls
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0][1]).toEqual(expect.arrayContaining(['exports', 'cut-001.meta.json']))
   })
 
   it('blocks export of protected cut without force', async () => {
@@ -134,7 +137,7 @@ describe('exportSingleCut', () => {
     })
 
     expect(result.ok).toBe(true)
-    expect(window.plottoon.fs.writeProjectFile).toHaveBeenCalled()
+    expect(window.plottoon.fs.writeProjectFileBinary).toHaveBeenCalled()
   })
 
   it('writes metadata with correct dimensions, hash, and timestamp', async () => {
@@ -173,15 +176,18 @@ describe('exportPlot', () => {
       plotSlug: 'ep1'
     })
 
-    // 2 cuts x 2 files each (image + meta) + 1 manifest = 5 writes
+    // 2 binary image writes + 2 text meta writes + 1 text manifest
     expect(result.results).toHaveLength(2)
     expect(result.results.every((r) => r.ok)).toBe(true)
     expect(result.manifest).not.toBeNull()
     expect(result.manifest!.cuts).toHaveLength(2)
     expect(result.manifest!.version).toBe(1)
 
-    const writeCalls = (window.plottoon.fs.writeProjectFile as ReturnType<typeof vi.fn>).mock.calls
-    expect(writeCalls).toHaveLength(5) // 2 images + 2 metas + 1 manifest
+    const binaryCalls = (window.plottoon.fs.writeProjectFileBinary as ReturnType<typeof vi.fn>).mock
+      .calls
+    expect(binaryCalls).toHaveLength(2) // 2 images
+    const textCalls = (window.plottoon.fs.writeProjectFile as ReturnType<typeof vi.fn>).mock.calls
+    expect(textCalls).toHaveLength(3) // 2 metas + 1 manifest
   })
 
   it('skips protected cuts and exports unprotected ones', async () => {

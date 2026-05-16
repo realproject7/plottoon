@@ -74,10 +74,10 @@ export async function exportSingleCut(options: ExportCutOptions): Promise<Export
   const segments = outputPath.split('/')
 
   const base64 = dataUrlToBase64(imageResult.dataUrl)
-  await window.plottoon.fs.writeProjectFile(projectId, segments, base64)
+  await window.plottoon.fs.writeProjectFileBinary(projectId, segments, base64)
 
-  // Build and write metadata
-  const meta = buildExportMeta(cut, imageResult, outputPath)
+  // Build and write metadata from actual decoded bytes
+  const meta = buildExportMeta(cut, imageResult, outputPath, base64)
   const metaPath = `plots/${plotSlug}/exports/${cut.id}.meta.json`
   const metaSegments = metaPath.split('/')
   await window.plottoon.fs.writeProjectFile(projectId, metaSegments, JSON.stringify(meta, null, 2))
