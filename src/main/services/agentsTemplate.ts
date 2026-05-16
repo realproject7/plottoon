@@ -61,7 +61,7 @@ ${projectName}/
 └── plots/
     └── <plot-slug>/
         ├── cuts.json     # Canonical cut data
-        ├── plot.md       # Plot notes
+        ├── plot-text.md  # Generated from cuts.json (do not edit)
         ├── assets/       # Generated images
         └── exports/      # Build artifacts (do not modify)
 \`\`\`

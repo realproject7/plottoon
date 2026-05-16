@@ -100,26 +100,45 @@ describe('createPlot', () => {
     }
   })
 
-  it('creates plot.md with title and synopsis', async () => {
+  it('creates plot-text.md with title and synopsis from cuts.json', async () => {
     const result = await createPlot({
       projectRoot: tmpDir,
       plotTitle: 'My Story',
       synopsis: 'An epic tale'
     })
 
-    const plotText = await fs.readFile(path.join(result.plotDir, 'plot.md'), 'utf-8')
+    const plotText = await fs.readFile(path.join(result.plotDir, 'plot-text.md'), 'utf-8')
     expect(plotText).toContain('# My Story')
     expect(plotText).toContain('An epic tale')
+    expect(plotText).toContain('Publish Status')
   })
 
-  it('creates plot.md with default text when no synopsis', async () => {
+  it('creates plot-text.md with cut details when sample is true', async () => {
     const result = await createPlot({
       projectRoot: tmpDir,
-      plotTitle: 'No Synopsis'
+      plotTitle: 'Sample Story',
+      sample: true
     })
 
-    const plotText = await fs.readFile(path.join(result.plotDir, 'plot.md'), 'utf-8')
-    expect(plotText).toContain('Add your plot notes here.')
+    const plotText = await fs.readFile(path.join(result.plotDir, 'plot-text.md'), 'utf-8')
+    expect(plotText).toContain('# Sample Story')
+    expect(plotText).toContain('cut-001')
+    expect(plotText).toContain('cut-002')
+    expect(plotText).toContain('Wide establishing shot')
+    expect(plotText).toContain('It all started here...')
+  })
+
+  it('does not create plot.md', async () => {
+    const result = await createPlot({
+      projectRoot: tmpDir,
+      plotTitle: 'No Old File'
+    })
+
+    const exists = await fs
+      .access(path.join(result.plotDir, 'plot.md'))
+      .then(() => true)
+      .catch(() => false)
+    expect(exists).toBe(false)
   })
 
   it('slugifies title correctly', async () => {
