@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   computeHash,
+  base64ByteLength,
   extractFonts,
   buildExportMeta,
   buildExportManifest,
@@ -59,6 +60,27 @@ describe('computeHash', () => {
   it('handles empty base64', () => {
     const hash = computeHash('data:image/webp;base64,')
     expect(hash).toMatch(/^[0-9a-f]{8}$/)
+  })
+})
+
+describe('base64ByteLength', () => {
+  it('computes correct byte length without padding', () => {
+    // 'AAAA' = 3 bytes
+    expect(base64ByteLength('AAAA')).toBe(3)
+  })
+
+  it('computes correct byte length with single padding', () => {
+    // 'AAA=' = 2 bytes
+    expect(base64ByteLength('AAA=')).toBe(2)
+  })
+
+  it('computes correct byte length with double padding', () => {
+    // 'AA==' = 1 byte
+    expect(base64ByteLength('AA==')).toBe(1)
+  })
+
+  it('returns 0 for empty string', () => {
+    expect(base64ByteLength('')).toBe(0)
   })
 })
 
@@ -140,7 +162,7 @@ describe('buildExportMeta', () => {
     expect(meta.width).toBe(320)
     expect(meta.height).toBe(480)
     expect(meta.mimeType).toBe('image/webp')
-    expect(meta.byteSize).toBe(50000)
+    expect(meta.byteSize).toBe(6)
     expect(meta.hash).toMatch(/^[0-9a-f]{8}$/)
     expect(meta.fonts).toContain('sans-serif')
     expect(meta.path).toBe('exports/cut-001.webp')
@@ -151,6 +173,15 @@ describe('buildExportMeta', () => {
     const meta = buildExportMeta(cut, makeExportResult(), 'exports/cut-001.webp')
     expect(meta.width).toBe(800)
     expect(meta.height).toBe(1200)
+  })
+
+  it('computes byteSize and hash from explicit base64 when provided', () => {
+    const cut = makeCut('cut-001')
+    const result = makeExportResult('webp')
+    const base64 = 'AAAA' // 3 bytes
+    const meta = buildExportMeta(cut, result, 'exports/cut-001.webp', base64)
+    expect(meta.byteSize).toBe(3)
+    expect(meta.hash).toBe(computeHash(base64))
   })
 
   it('sets correct MIME type for JPEG', () => {

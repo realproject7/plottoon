@@ -2,6 +2,7 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import {
   readProjectFile,
   writeProjectFile,
+  writeProjectFileBinary,
   listProjectDir,
   projectFileExists,
   resolveProjectFilePath,
@@ -35,6 +36,12 @@ export function registerFsHandlers(): void {
     'fs:writeProjectFile',
     (_event, projectId: string, segments: string[], content: string) =>
       writeProjectFile(projectId, segments, content)
+  )
+
+  ipcMain.handle(
+    'fs:writeProjectFileBinary',
+    (_event, projectId: string, segments: string[], base64: string) =>
+      writeProjectFileBinary(projectId, segments, base64)
   )
 
   ipcMain.handle('fs:listProjectDir', (_event, projectId: string, ...segments: string[]) =>
