@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { platform } from 'node:os'
+import { buildAgentEnv } from './agentEnv'
 
 export type SessionState = 'connected' | 'disconnected' | 'exited'
 
@@ -85,7 +86,7 @@ export function connectSession(
   const shell = defaultShell()
   const child = spawn(shell, [], {
     cwd: meta.cwd,
-    env: { ...process.env, TERM: 'dumb' },
+    env: buildAgentEnv(process.env, { TERM: 'dumb' }),
     stdio: ['pipe', 'pipe', 'pipe'],
     shell: false
   })
