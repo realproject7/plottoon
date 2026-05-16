@@ -58,7 +58,7 @@ export function buildExportMeta(
   const height = cut.canvasOverrides?.height ?? DEFAULT_HEIGHT
   const mimeType = exportResult.format === 'webp' ? 'image/webp' : 'image/jpeg'
 
-  const actualBase64 = base64 ?? (exportResult.dataUrl.split(',')[1] ?? '')
+  const actualBase64 = base64 ?? exportResult.dataUrl.split(',')[1] ?? ''
 
   return {
     cutId: cut.id,
