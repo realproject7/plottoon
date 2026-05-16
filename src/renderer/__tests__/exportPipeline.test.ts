@@ -74,6 +74,80 @@ function mockCanvasCreation(dataUrl: string) {
   } as unknown as HTMLCanvasElement)
 }
 
+describe('export byte integrity', () => {
+  it('writes binary base64 that decodes to valid image bytes, not raw text', async () => {
+    // Real PNG 1x1 pixel (smallest valid PNG)
+    const pngBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+    mockCanvasCreation(`data:image/webp;base64,${pngBase64}`)
+
+    const cut: Cut = { id: 'cut-001', status: 'draft' }
+    await exportSingleCut({ cut, projectId: 'proj_1', plotSlug: 'ep1' })
+
+    const binaryCalls = (window.plottoon.fs.writeProjectFileBinary as ReturnType<typeof vi.fn>).mock
+      .calls
+    expect(binaryCalls).toHaveLength(1)
+
+    const writtenBase64 = binaryCalls[0][2] as string
+    // Decode to verify it's valid binary (not double-encoded text)
+    const bytes = Uint8Array.from(atob(writtenBase64), (c) => c.charCodeAt(0))
+
+    // PNG magic bytes: 89 50 4E 47
+    expect(bytes[0]).toBe(0x89)
+    expect(bytes[1]).toBe(0x50) // P
+    expect(bytes[2]).toBe(0x4e) // N
+    expect(bytes[3]).toBe(0x47) // G
+    expect(bytes.length).toBeGreaterThan(0)
+  })
+
+  it('byteSize in metadata matches actual decoded byte length', async () => {
+    const pngBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+    mockCanvasCreation(`data:image/webp;base64,${pngBase64}`)
+
+    const cut: Cut = { id: 'cut-001', status: 'draft' }
+    const result = await exportSingleCut({ cut, projectId: 'proj_1', plotSlug: 'ep1' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const binaryCalls = (window.plottoon.fs.writeProjectFileBinary as ReturnType<typeof vi.fn>).mock
+      .calls
+    const writtenBase64 = binaryCalls[0][2] as string
+    const actualBytes = Uint8Array.from(atob(writtenBase64), (c) => c.charCodeAt(0))
+
+    expect(result.meta.byteSize).toBe(actualBytes.length)
+  })
+
+  it('SHA-256 hash in metadata matches hash of actual bytes', async () => {
+    const { computeHashSha256 } = await import('../exportMetadata')
+    const pngBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+    mockCanvasCreation(`data:image/webp;base64,${pngBase64}`)
+
+    const cut: Cut = { id: 'cut-001', status: 'draft' }
+    const result = await exportSingleCut({ cut, projectId: 'proj_1', plotSlug: 'ep1' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const binaryCalls = (window.plottoon.fs.writeProjectFileBinary as ReturnType<typeof vi.fn>).mock
+      .calls
+    const writtenBase64 = binaryCalls[0][2] as string
+    const actualBytes = Uint8Array.from(atob(writtenBase64), (c) => c.charCodeAt(0))
+    const expectedHash = await computeHashSha256(actualBytes)
+
+    expect(result.meta.hash).toBe(expectedHash)
+  })
+
+  it('rejects base64 text as a valid image (no magic bytes)', () => {
+    // If someone accidentally wrote raw base64 text as-is, decoding it
+    // would not produce valid image magic bytes
+    const rawText = 'iVBORw0KGgo='
+    const asTextBytes = new TextEncoder().encode(rawText)
+    // Text encoding of base64 does NOT start with PNG magic
+    expect(asTextBytes[0]).not.toBe(0x89)
+  })
+})
+
 describe('exportSingleCut', () => {
   it('exports a cut and writes image + metadata files', async () => {
     const small = makeBase64(500_000)
@@ -91,7 +165,7 @@ describe('exportSingleCut', () => {
       expect(result.meta.cutId).toBe('cut-001')
       expect(result.meta.mimeType).toBe('image/webp')
       expect(result.meta.byteSize).toBeGreaterThan(0)
-      expect(result.meta.hash).toMatch(/^[0-9a-f]{8}$/)
+      expect(result.meta.hash).toMatch(/^[0-9a-f]{64}$/)
       expect(result.meta.path).toContain('exports/cut-001')
     }
 
