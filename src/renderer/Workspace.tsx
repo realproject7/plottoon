@@ -15,7 +15,7 @@ import {
   setOverlayTailAnchor
 } from './cutMutations'
 import type { CutStatus } from './cutMutations'
-import type { Cut } from './CutList'
+import type { Cut, CutsFileEnvelope } from './CutList'
 import { createOverlayFromPreset } from './overlayPresets'
 import type { PresetName } from './overlayPresets'
 import type { ExportMeta } from './exportMetadata'
@@ -32,6 +32,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const [activePlot, setActivePlot] = useState<string | null>(null)
   const activePlotRef = useRef<string | null>(null)
   const cutsRef = useRef<Cut[]>([])
+  const envelopeRef = useRef<CutsFileEnvelope | null>(null)
 
   useEffect(() => {
     if (!projectId) return
@@ -81,7 +82,13 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const saveCuts = useCallback(
     (cuts: Cut[]) => {
       if (!projectId || !activePlotRef.current) return
-      const data = JSON.stringify({ cuts }, null, 2)
+      const envelope = envelopeRef.current ?? {
+        version: 1,
+        plotTitle: activePlotRef.current,
+        synopsis: '',
+        publishState: { published: false, exportedAt: null, format: null }
+      }
+      const data = JSON.stringify({ ...envelope, cuts }, null, 2)
       window.plottoon.fs.writeProjectFile(
         projectId,
         ['plots', activePlotRef.current, 'cuts.json'],
@@ -102,6 +109,11 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const handlePlotChanged = useCallback((plot: string | null) => {
     activePlotRef.current = plot
     setActivePlot(plot)
+    envelopeRef.current = null
+  }, [])
+
+  const handleEnvelopeLoaded = useCallback((envelope: CutsFileEnvelope) => {
+    envelopeRef.current = envelope
   }, [])
 
   const handleStatusChange = useCallback(
@@ -344,6 +356,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             onSelectCut={handleSelectCut}
             onCutsChanged={handleCutsChanged}
             onPlotChanged={handlePlotChanged}
+            onEnvelopeLoaded={handleEnvelopeLoaded}
           />
         </div>
 

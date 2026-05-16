@@ -26,6 +26,7 @@ beforeEach(() => {
       listProjects: vi.fn().mockResolvedValue([]),
       readProjectFile: vi.fn().mockResolvedValue(''),
       writeProjectFile: vi.fn(),
+      writeProjectFileBinary: vi.fn(),
       listProjectDir: vi.fn().mockResolvedValue([]),
       projectFileExists: vi.fn().mockResolvedValue(false),
       resolveProjectFilePath: vi.fn().mockResolvedValue('/mock/path'),
@@ -528,5 +529,117 @@ describe('App', () => {
         el.getAttribute('placeholder')?.toLowerCase().includes('key')
     )
     expect(keyInputs).toHaveLength(0)
+  })
+
+  it('preserves top-level cuts.json fields on save after status change', async () => {
+    ;(window.plottoon.fs.listProjectDir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      'chapter-1'
+    ])
+    ;(window.plottoon.fs.projectFileExists as ReturnType<typeof vi.fn>).mockResolvedValue(true)
+    ;(window.plottoon.fs.readProjectFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        plotTitle: 'My First Plot',
+        synopsis: 'A tale of two cities.',
+        cuts: [
+          {
+            id: 'cut-001',
+            status: 'planned',
+            direction: 'Wide shot'
+          }
+        ],
+        publishState: {
+          published: false,
+          exportedAt: '2026-05-10T00:00:00.000Z',
+          format: 'webp'
+        }
+      })
+    )
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    await waitFor(() => {
+      expect(screen.getAllByText('cut-001').length).toBeGreaterThan(0)
+    })
+    const draftBtn = document.querySelector('[data-testid="status-btn-draft"]') as HTMLButtonElement
+    expect(draftBtn).toBeTruthy()
+    fireEvent.click(draftBtn)
+    await waitFor(() => {
+      const writeMock = window.plottoon.fs.writeProjectFile as ReturnType<typeof vi.fn>
+      expect(writeMock).toHaveBeenCalled()
+      const lastCall = writeMock.mock.calls[writeMock.mock.calls.length - 1]
+      const written = JSON.parse(lastCall[2])
+      expect(written.version).toBe(1)
+      expect(written.plotTitle).toBe('My First Plot')
+      expect(written.synopsis).toBe('A tale of two cities.')
+      expect(written.publishState).toEqual({
+        published: false,
+        exportedAt: '2026-05-10T00:00:00.000Z',
+        format: 'webp'
+      })
+      expect(written.cuts[0].status).toBe('draft')
+    })
+  })
+
+  it('defaults envelope when loading legacy cuts.json without top-level fields', async () => {
+    ;(window.plottoon.fs.listProjectDir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      'chapter-1'
+    ])
+    ;(window.plottoon.fs.projectFileExists as ReturnType<typeof vi.fn>).mockResolvedValue(true)
+    ;(window.plottoon.fs.readProjectFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        cuts: [{ id: 'cut-001', status: 'planned', direction: 'Wide shot' }]
+      })
+    )
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    await waitFor(() => {
+      expect(screen.getAllByText('cut-001').length).toBeGreaterThan(0)
+    })
+    const draftBtn = document.querySelector('[data-testid="status-btn-draft"]') as HTMLButtonElement
+    expect(draftBtn).toBeTruthy()
+    fireEvent.click(draftBtn)
+    await waitFor(() => {
+      const writeMock = window.plottoon.fs.writeProjectFile as ReturnType<typeof vi.fn>
+      expect(writeMock).toHaveBeenCalled()
+      const lastCall = writeMock.mock.calls[writeMock.mock.calls.length - 1]
+      const written = JSON.parse(lastCall[2])
+      expect(written.version).toBe(1)
+      expect(written.plotTitle).toBe('chapter-1')
+      expect(written.synopsis).toBe('')
+      expect(written.publishState).toEqual({
+        published: false,
+        exportedAt: null,
+        format: null
+      })
+      expect(written.cuts[0].status).toBe('draft')
+    })
   })
 })
