@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createEmptyCutsFile, writeCutsFile, resolveCutsPath } from './cutsSchema'
 import type { CutsFile, Cut } from './cutsSchema'
+import { generatePlotText } from './plotTextGenerator'
 
 export interface CreatePlotOptions {
   projectRoot: string
@@ -91,8 +92,8 @@ export async function createPlot(options: CreatePlotOptions): Promise<CreatedPlo
   const cutsFile = buildCutsFile(trimmed, synopsis, sample)
   await writeCutsFile(cutsPath, cutsFile)
 
-  const plotTextPath = path.join(plotDir, 'plot.md')
-  const plotText = `# ${trimmed}\n\n${synopsis || 'Add your plot notes here.'}\n`
+  const plotTextPath = path.join(plotDir, 'plot-text.md')
+  const plotText = generatePlotText(cutsFile)
   await fs.writeFile(plotTextPath, plotText, 'utf-8')
 
   return {

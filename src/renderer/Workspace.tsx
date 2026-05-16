@@ -89,11 +89,11 @@ export function Workspace({ projectId }: Props): JSX.Element {
         publishState: { published: false, exportedAt: null, format: null }
       }
       const data = JSON.stringify({ ...envelope, cuts }, null, 2)
-      window.plottoon.fs.writeProjectFile(
-        projectId,
-        ['plots', activePlotRef.current, 'cuts.json'],
-        data
-      )
+      const plot = activePlotRef.current
+      window.plottoon.fs
+        .writeProjectFile(projectId, ['plots', plot, 'cuts.json'], data)
+        .then(() => window.plottoon.fs.regeneratePlotText(projectId, plot))
+        .catch((err) => console.warn('plot-text.md regeneration failed:', err))
     },
     [projectId]
   )

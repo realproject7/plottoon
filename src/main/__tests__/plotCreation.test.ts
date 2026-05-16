@@ -3,7 +3,9 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import { createPlot } from '../services/plotCreation'
-import { readCutsFile, validateCutsFile } from '../services/cutsSchema'
+import { readCutsFile, validateCutsFile, writeCutsFile } from '../services/cutsSchema'
+import { regeneratePlotText } from '../services/fsService'
+import { registerProject, clearRegistry } from '../services/projectRegistry'
 
 let tmpDir: string
 
@@ -13,6 +15,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  clearRegistry()
   await fs.rm(tmpDir, { recursive: true, force: true })
 })
 
@@ -100,26 +103,45 @@ describe('createPlot', () => {
     }
   })
 
-  it('creates plot.md with title and synopsis', async () => {
+  it('creates plot-text.md with title and synopsis from cuts.json', async () => {
     const result = await createPlot({
       projectRoot: tmpDir,
       plotTitle: 'My Story',
       synopsis: 'An epic tale'
     })
 
-    const plotText = await fs.readFile(path.join(result.plotDir, 'plot.md'), 'utf-8')
+    const plotText = await fs.readFile(path.join(result.plotDir, 'plot-text.md'), 'utf-8')
     expect(plotText).toContain('# My Story')
     expect(plotText).toContain('An epic tale')
+    expect(plotText).toContain('Publish Status')
   })
 
-  it('creates plot.md with default text when no synopsis', async () => {
+  it('creates plot-text.md with cut details when sample is true', async () => {
     const result = await createPlot({
       projectRoot: tmpDir,
-      plotTitle: 'No Synopsis'
+      plotTitle: 'Sample Story',
+      sample: true
     })
 
-    const plotText = await fs.readFile(path.join(result.plotDir, 'plot.md'), 'utf-8')
-    expect(plotText).toContain('Add your plot notes here.')
+    const plotText = await fs.readFile(path.join(result.plotDir, 'plot-text.md'), 'utf-8')
+    expect(plotText).toContain('# Sample Story')
+    expect(plotText).toContain('cut-001')
+    expect(plotText).toContain('cut-002')
+    expect(plotText).toContain('Wide establishing shot')
+    expect(plotText).toContain('It all started here...')
+  })
+
+  it('does not create plot.md', async () => {
+    const result = await createPlot({
+      projectRoot: tmpDir,
+      plotTitle: 'No Old File'
+    })
+
+    const exists = await fs
+      .access(path.join(result.plotDir, 'plot.md'))
+      .then(() => true)
+      .catch(() => false)
+    expect(exists).toBe(false)
   })
 
   it('slugifies title correctly', async () => {
@@ -154,5 +176,92 @@ describe('createPlot', () => {
     await expect(createPlot({ projectRoot: tmpDir, plotTitle: '---!!!' })).rejects.toThrow(
       'Plot title must contain at least one alphanumeric character'
     )
+  })
+})
+
+describe('regeneratePlotText', () => {
+  it('regenerates plot-text.md after cuts.json is modified', async () => {
+    const result = await createPlot({
+      projectRoot: tmpDir,
+      plotTitle: 'Regen Test',
+      synopsis: 'A story',
+      sample: true
+    })
+
+    const projectId = registerProject(tmpDir)
+    const cutsFile = await readCutsFile(result.cutsPath)
+
+    // Modify a cut's dialogue
+    cutsFile.cuts[0].dialogue = 'New dialogue after edit'
+    await writeCutsFile(result.cutsPath, cutsFile)
+
+    // Regenerate
+    await regeneratePlotText(projectId, 'regen-test')
+
+    const plotText = await fs.readFile(path.join(result.plotDir, 'plot-text.md'), 'utf-8')
+    expect(plotText).toContain('New dialogue after edit')
+    expect(plotText).toContain('# Regen Test')
+  })
+
+  it('handles renderer-shaped cuts with missing schema fields', async () => {
+    const result = await createPlot({
+      projectRoot: tmpDir,
+      plotTitle: 'Renderer Test'
+    })
+
+    const projectId = registerProject(tmpDir)
+
+    // Simulate a renderer save with minimal cut shape (like addCut produces)
+    const rendererSave = JSON.stringify(
+      {
+        version: 1,
+        plotTitle: 'Renderer Test',
+        synopsis: '',
+        cuts: [{ id: 'cut-001', status: 'planned' }],
+        publishState: { published: false, exportedAt: null, format: null }
+      },
+      null,
+      2
+    )
+    await fs.writeFile(result.cutsPath, rendererSave, 'utf-8')
+
+    // regeneratePlotText should not throw
+    await regeneratePlotText(projectId, 'renderer-test')
+
+    const plotText = await fs.readFile(path.join(result.plotDir, 'plot-text.md'), 'utf-8')
+    expect(plotText).toContain('# Renderer Test')
+    expect(plotText).toContain('cut-001')
+  })
+
+  it('reflects added cuts in regenerated plot-text.md', async () => {
+    const result = await createPlot({
+      projectRoot: tmpDir,
+      plotTitle: 'Add Cut Test'
+    })
+
+    const projectId = registerProject(tmpDir)
+    const cutsFile = await readCutsFile(result.cutsPath)
+
+    // Initially empty
+    const initialText = await fs.readFile(path.join(result.plotDir, 'plot-text.md'), 'utf-8')
+    expect(initialText).toContain('No cuts defined yet')
+
+    // Add a cut and regenerate
+    cutsFile.cuts.push({
+      id: 'cut-001',
+      order: 0,
+      dialogue: 'Hello world',
+      direction: 'Establishing shot',
+      imageState: { status: 'pending', path: null, prompt: null, seed: null },
+      overlays: []
+    })
+    await writeCutsFile(result.cutsPath, cutsFile)
+    await regeneratePlotText(projectId, 'add-cut-test')
+
+    const updatedText = await fs.readFile(path.join(result.plotDir, 'plot-text.md'), 'utf-8')
+    expect(updatedText).toContain('cut-001')
+    expect(updatedText).toContain('Hello world')
+    expect(updatedText).toContain('Establishing shot')
+    expect(updatedText).not.toContain('No cuts defined yet')
   })
 })
