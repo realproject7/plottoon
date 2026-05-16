@@ -22,6 +22,13 @@ export interface ExportManifest {
 const DEFAULT_WIDTH = 320
 const DEFAULT_HEIGHT = 480
 
+export async function computeHashSha256(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 export function computeHash(input: string): string {
   let hash = 0
   for (let i = 0; i < input.length; i++) {
@@ -48,17 +55,19 @@ export function extractFonts(cut: Cut): string[] {
   return [...fonts]
 }
 
-export function buildExportMeta(
+export async function buildExportMeta(
   cut: Cut,
   exportResult: ExportResult,
   outputPath: string,
   base64?: string
-): ExportMeta {
+): Promise<ExportMeta> {
   const width = cut.canvasOverrides?.width ?? DEFAULT_WIDTH
   const height = cut.canvasOverrides?.height ?? DEFAULT_HEIGHT
   const mimeType = exportResult.format === 'webp' ? 'image/webp' : 'image/jpeg'
 
   const actualBase64 = base64 ?? exportResult.dataUrl.split(',')[1] ?? ''
+  const bytes = Uint8Array.from(atob(actualBase64), (c) => c.charCodeAt(0))
+  const hash = await computeHashSha256(bytes)
 
   return {
     cutId: cut.id,
@@ -66,8 +75,8 @@ export function buildExportMeta(
     width,
     height,
     mimeType,
-    byteSize: base64ByteLength(actualBase64),
-    hash: computeHash(actualBase64),
+    byteSize: bytes.length,
+    hash,
     fonts: extractFonts(cut),
     path: outputPath
   }

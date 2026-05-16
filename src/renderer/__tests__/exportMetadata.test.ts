@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   computeHash,
+  computeHashSha256,
   base64ByteLength,
   extractFonts,
   buildExportMeta,
@@ -19,7 +20,7 @@ function makeCut(id: string, status?: string): Cut {
 
 function makeExportResult(format: 'webp' | 'jpeg' = 'webp'): ExportResult {
   return {
-    dataUrl: `data:image/${format};base64,AAABBBCCC`,
+    dataUrl: `data:image/${format};base64,AAABBBCC`,
     format,
     quality: 0.92,
     sizeBytes: 50000
@@ -142,6 +143,27 @@ describe('extractFonts', () => {
   })
 })
 
+describe('computeHashSha256', () => {
+  it('returns a 64-character hex string', async () => {
+    const bytes = new Uint8Array([0, 1, 2, 3])
+    const hash = await computeHashSha256(bytes)
+    expect(hash).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('returns different hashes for different data', async () => {
+    const h1 = await computeHashSha256(new Uint8Array([1, 2, 3]))
+    const h2 = await computeHashSha256(new Uint8Array([4, 5, 6]))
+    expect(h1).not.toBe(h2)
+  })
+
+  it('returns same hash for same data', async () => {
+    const data = new Uint8Array([10, 20, 30])
+    const h1 = await computeHashSha256(data)
+    const h2 = await computeHashSha256(data)
+    expect(h1).toBe(h2)
+  })
+})
+
 describe('buildExportMeta', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -152,10 +174,10 @@ describe('buildExportMeta', () => {
     vi.useRealTimers()
   })
 
-  it('builds complete metadata from cut and export result', () => {
+  it('builds complete metadata from cut and export result', async () => {
     const cut = makeCut('cut-001')
     const result = makeExportResult('webp')
-    const meta = buildExportMeta(cut, result, 'exports/cut-001.webp')
+    const meta = await buildExportMeta(cut, result, 'exports/cut-001.webp')
 
     expect(meta.cutId).toBe('cut-001')
     expect(meta.exportedAt).toBe('2026-05-16T12:00:00.000Z')
@@ -163,29 +185,33 @@ describe('buildExportMeta', () => {
     expect(meta.height).toBe(480)
     expect(meta.mimeType).toBe('image/webp')
     expect(meta.byteSize).toBe(6)
-    expect(meta.hash).toMatch(/^[0-9a-f]{8}$/)
+    expect(meta.hash).toMatch(/^[0-9a-f]{64}$/)
     expect(meta.fonts).toContain('sans-serif')
     expect(meta.path).toBe('exports/cut-001.webp')
   })
 
-  it('uses canvasOverrides for dimensions', () => {
+  it('uses canvasOverrides for dimensions', async () => {
     const cut: Cut = { id: 'cut-001', canvasOverrides: { width: 800, height: 1200 } }
-    const meta = buildExportMeta(cut, makeExportResult(), 'exports/cut-001.webp')
+    const meta = await buildExportMeta(cut, makeExportResult(), 'exports/cut-001.webp')
     expect(meta.width).toBe(800)
     expect(meta.height).toBe(1200)
   })
 
-  it('computes byteSize and hash from explicit base64 when provided', () => {
+  it('computes byteSize and SHA-256 hash from explicit base64 when provided', async () => {
     const cut = makeCut('cut-001')
     const result = makeExportResult('webp')
     const base64 = 'AAAA' // 3 bytes
-    const meta = buildExportMeta(cut, result, 'exports/cut-001.webp', base64)
+    const meta = await buildExportMeta(cut, result, 'exports/cut-001.webp', base64)
     expect(meta.byteSize).toBe(3)
-    expect(meta.hash).toBe(computeHash(base64))
+    expect(meta.hash).toMatch(/^[0-9a-f]{64}$/)
+    const expectedHash = await computeHashSha256(
+      Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+    )
+    expect(meta.hash).toBe(expectedHash)
   })
 
-  it('sets correct MIME type for JPEG', () => {
-    const meta = buildExportMeta(
+  it('sets correct MIME type for JPEG', async () => {
+    const meta = await buildExportMeta(
       makeCut('cut-001'),
       makeExportResult('jpeg'),
       'exports/cut-001.jpg'
