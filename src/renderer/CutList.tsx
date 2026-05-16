@@ -50,8 +50,25 @@ interface Cut {
   continuityNotes?: string
 }
 
+interface PlotPublishState {
+  published: boolean
+  exportedAt: string | null
+  format: string | null
+}
+
+interface CutsFileEnvelope {
+  version: number
+  plotTitle: string
+  synopsis: string
+  publishState: PlotPublishState
+}
+
 interface CutsData {
   cuts: Cut[]
+  version?: number
+  plotTitle?: string
+  synopsis?: string
+  publishState?: PlotPublishState
 }
 
 interface State {
@@ -108,9 +125,10 @@ interface CutListProps {
   onCutsChanged?: (cuts: Cut[]) => void
   onPlotChanged?: (plot: string | null) => void
   onPlotsLoaded?: (plots: string[]) => void
+  onEnvelopeLoaded?: (envelope: CutsFileEnvelope) => void
 }
 
-export type { Cut, CutsData, Overlay, CanvasOverrides, TailAnchor }
+export type { Cut, CutsData, CutsFileEnvelope, Overlay, CanvasOverrides, TailAnchor }
 
 export function CutList({
   projectId,
@@ -118,7 +136,8 @@ export function CutList({
   onSelectCut,
   onCutsChanged,
   onPlotChanged,
-  onPlotsLoaded
+  onPlotsLoaded,
+  onEnvelopeLoaded
 }: CutListProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, {
     phase: 'loading',
@@ -181,6 +200,16 @@ export function CutList({
           const cuts = Array.isArray(data.cuts) ? data.cuts : []
           dispatch({ type: 'cuts-loaded', cuts })
           onCutsChanged?.(cuts)
+          onEnvelopeLoaded?.({
+            version: data.version ?? 1,
+            plotTitle: data.plotTitle ?? state.activePlot ?? '',
+            synopsis: data.synopsis ?? '',
+            publishState: data.publishState ?? {
+              published: false,
+              exportedAt: null,
+              format: null
+            }
+          })
           if (cuts.length > 0) onSelectCut(cuts[0])
         }
       } catch (err) {
