@@ -56,9 +56,13 @@ export function checkCleanImages(cuts: Cut[]): ReadinessCheck {
   }
 }
 
+function isValidExportMeta(meta: ExportMeta): boolean {
+  return !!meta.path && meta.byteSize > 0
+}
+
 export function checkFinalExports(cuts: Cut[], exportMetas: ExportMeta[]): ReadinessCheck {
-  const exportedCutIds = new Set(exportMetas.map((m) => m.cutId))
-  const missing = cuts.filter((c) => !exportedCutIds.has(c.id))
+  const validExports = new Set(exportMetas.filter(isValidExportMeta).map((m) => m.cutId))
+  const missing = cuts.filter((c) => !validExports.has(c.id))
   if (missing.length === 0) {
     return {
       id: 'final-exports',

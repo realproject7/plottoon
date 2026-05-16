@@ -135,6 +135,22 @@ describe('checkFinalExports', () => {
     expect(result.message).toContain('c1')
   })
 
+  it('blocks when export has empty path', () => {
+    const cuts = [makeCut('c1', { imagePath: 'assets/c1.webp', imageStatus: 'done' })]
+    const meta: ExportMeta = { ...makeExportMeta('c1', 500_000), path: '' }
+    const result = checkFinalExports(cuts, [meta])
+    expect(result.level).toBe('block')
+    expect(result.message).toContain('c1')
+  })
+
+  it('blocks when export has zero byte size', () => {
+    const cuts = [makeCut('c1', { imagePath: 'assets/c1.webp', imageStatus: 'done' })]
+    const meta = makeExportMeta('c1', 0)
+    const result = checkFinalExports(cuts, [meta])
+    expect(result.level).toBe('block')
+    expect(result.message).toContain('c1')
+  })
+
   it('passes with empty cuts array', () => {
     expect(checkFinalExports([], []).level).toBe('pass')
   })
