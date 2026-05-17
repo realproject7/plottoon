@@ -12,7 +12,6 @@ import {
 import type { Cut } from '../CutList'
 import type { CutUrl } from '../publishGenerator'
 import type { ProjectPublishMeta } from '../publishMetadata'
-import type { ContentRating } from '../contentRating'
 
 function makeCut(id: string): Cut {
   return {
