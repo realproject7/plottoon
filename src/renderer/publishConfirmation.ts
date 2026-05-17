@@ -1,5 +1,12 @@
 import type { ExportMeta } from './exportMetadata'
 
+export interface ImageIdentity {
+  cutId: string
+  hash: string
+  mimeType: string
+  byteSize: number
+}
+
 export interface PublishPreview {
   title: string
   contentType: 'cartoon'
@@ -10,6 +17,7 @@ export interface PublishPreview {
   matureFlag: boolean
   markdown: string
   imageOrder: string[]
+  imageIdentities: ImageIdentity[]
   payloadHash: string
 }
 
@@ -39,7 +47,8 @@ export function computePayloadHash(preview: Omit<PublishPreview, 'payloadHash'>)
     hasAltText: preview.hasAltText,
     matureFlag: preview.matureFlag,
     markdown: preview.markdown,
-    imageOrder: preview.imageOrder
+    imageOrder: preview.imageOrder,
+    imageIdentities: preview.imageIdentities
   })
   let hash = 0
   for (let i = 0; i < payload.length; i++) {
@@ -61,6 +70,12 @@ export function buildPublishPreview(
 ): PublishPreview {
   const imageOrder = exportMetas.map((m) => m.cutId)
   const totalUploadedBytes = exportMetas.reduce((sum, m) => sum + m.byteSize, 0)
+  const imageIdentities: ImageIdentity[] = exportMetas.map((m) => ({
+    cutId: m.cutId,
+    hash: m.hash,
+    mimeType: m.mimeType,
+    byteSize: m.byteSize
+  }))
 
   const partial = {
     title,
@@ -71,7 +86,8 @@ export function buildPublishPreview(
     hasAltText: opts.hasAltText,
     matureFlag: opts.matureFlag ?? false,
     markdown,
-    imageOrder
+    imageOrder,
+    imageIdentities
   }
 
   return { ...partial, payloadHash: computePayloadHash(partial) }
