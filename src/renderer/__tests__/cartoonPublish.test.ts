@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   buildCartoonPayload,
+  buildOutboundRequest,
   validatePayload,
   publishCartoon,
   includesContentType,
@@ -172,7 +173,7 @@ describe('publishCartoon', () => {
     expect(result.isDryRun).toBe(true)
   })
 
-  it('calls publish function in live mode', async () => {
+  it('calls publish function with outbound request in live mode', async () => {
     const cuts = [makeCut('cut-001')]
     const urls = makeUrls(['cut-001'])
     const payload = buildCartoonPayload(cuts, urls, newStoryline(), { plotTitle: 'Ep' })
@@ -188,7 +189,11 @@ describe('publishCartoon', () => {
 
     const result = await publishCartoon(payload, config)
 
-    expect(publishFn).toHaveBeenCalledWith(payload)
+    expect(publishFn).toHaveBeenCalledTimes(1)
+    const outbound = publishFn.mock.calls[0][0]
+    expect(outbound.plotTitle).toBe('Ep')
+    expect(outbound.contentType).toBe('cartoon')
+    expect(outbound.storylineTitle).toBe('My Cartoon')
     expect(result.success).toBe(true)
     expect(result.publishId).toBe('real-pub-1')
   })
@@ -240,5 +245,82 @@ describe('includesContentType', () => {
     const payload = buildCartoonPayload(cuts, urls, existingStoryline(), { plotTitle: 'Ep' })
 
     expect(includesContentType(payload)).toBe(false)
+  })
+})
+
+describe('buildOutboundRequest', () => {
+  it('includes contentType for new storyline', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline('New Story'), { plotTitle: 'Ep' })
+    const outbound = buildOutboundRequest(payload)
+
+    expect(outbound.contentType).toBe('cartoon')
+    expect(outbound.storylineTitle).toBe('New Story')
+    expect(outbound.storylineId).toBeUndefined()
+  })
+
+  it('omits contentType for existing storyline', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, existingStoryline('sl-99'), { plotTitle: 'Ep' })
+    const outbound = buildOutboundRequest(payload)
+
+    expect(outbound.contentType).toBeUndefined()
+    expect(outbound.storylineId).toBe('sl-99')
+    expect(outbound.storylineTitle).toBeUndefined()
+  })
+})
+
+describe('persistence', () => {
+  it('calls persist with result on successful mock publish', async () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline(), { plotTitle: 'Ep' })
+    const persist = vi.fn().mockResolvedValue(undefined)
+    const config: CartoonPublishConfig = { mode: 'mock', persist }
+
+    const result = await publishCartoon(payload, config)
+
+    expect(persist).toHaveBeenCalledWith(result)
+    expect(result.success).toBe(true)
+  })
+
+  it('calls persist with error result on validation failure', async () => {
+    const payload: CartoonPublishPayload = {
+      storyline: newStoryline(''),
+      contentType: 'cartoon',
+      plotTitle: '',
+      markdown: '',
+      imageCount: 0,
+      imageUrls: [],
+      isDryRun: false
+    }
+    const persist = vi.fn().mockResolvedValue(undefined)
+    const config: CartoonPublishConfig = { mode: 'live', persist }
+
+    const result = await publishCartoon(payload, config)
+
+    expect(persist).toHaveBeenCalledWith(result)
+    expect(result.success).toBe(false)
+  })
+
+  it('calls persist with result from live publish function', async () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline(), { plotTitle: 'Ep' })
+    const liveResult = {
+      success: true,
+      publishId: 'pub-1',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      isDryRun: false
+    }
+    const publishFn = vi.fn().mockResolvedValue(liveResult)
+    const persist = vi.fn().mockResolvedValue(undefined)
+    const config: CartoonPublishConfig = { mode: 'live', publish: publishFn, persist }
+
+    await publishCartoon(payload, config)
+
+    expect(persist).toHaveBeenCalledWith(liveResult)
   })
 })

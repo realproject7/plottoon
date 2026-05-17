@@ -28,10 +28,22 @@ export interface PublishRequestResult {
   isDryRun: boolean
 }
 
-export type PublishFn = (payload: CartoonPublishPayload) => Promise<PublishRequestResult>
+export interface OutboundPublishRequest {
+  storylineId?: string
+  storylineTitle?: string
+  contentType?: 'cartoon'
+  plotTitle: string
+  markdown: string
+  imageCount: number
+  imageUrls: CutUrl[]
+}
+
+export type PublishFn = (request: OutboundPublishRequest) => Promise<PublishRequestResult>
+export type PersistFn = (result: PublishRequestResult) => Promise<void>
 
 export interface CartoonPublishConfig {
   publish?: PublishFn
+  persist?: PersistFn
   mode: 'live' | 'mock'
 }
 
@@ -95,7 +107,6 @@ export function validatePayload(payload: CartoonPublishPayload): string[] {
     errors.push('contentType must be "cartoon"')
   }
 
-  const urlMap = new Map(payload.imageUrls.map((u) => [u.cutId, u.url]))
   if (!payload.isDryRun) {
     const missingUrls = payload.imageUrls.filter((u) => !u.url || u.url.trim().length === 0)
     if (missingUrls.length > 0) {
@@ -106,34 +117,61 @@ export function validatePayload(payload: CartoonPublishPayload): string[] {
   return errors
 }
 
+export function buildOutboundRequest(payload: CartoonPublishPayload): OutboundPublishRequest {
+  const request: OutboundPublishRequest = {
+    plotTitle: payload.plotTitle,
+    markdown: payload.markdown,
+    imageCount: payload.imageCount,
+    imageUrls: payload.imageUrls
+  }
+
+  if (payload.storyline.type === 'new') {
+    request.storylineTitle = payload.storyline.title
+    request.contentType = 'cartoon'
+  } else {
+    request.storylineId = payload.storyline.storylineId
+  }
+
+  return request
+}
+
 export async function publishCartoon(
   payload: CartoonPublishPayload,
   config: CartoonPublishConfig
 ): Promise<PublishRequestResult> {
   const errors = validatePayload(payload)
   if (errors.length > 0) {
-    return {
+    const result: PublishRequestResult = {
       success: false,
       error: errors.join('; '),
       timestamp: new Date().toISOString(),
       isDryRun: payload.isDryRun
     }
+    if (config.persist) await config.persist(result)
+    return result
   }
 
   if (config.mode === 'mock' || payload.isDryRun) {
-    return mockPublish(payload)
+    const result = mockPublish(payload)
+    if (config.persist) await config.persist(result)
+    return result
   }
 
   if (!config.publish) {
-    return {
+    const result: PublishRequestResult = {
       success: false,
       error: 'Live mode requires a publish function',
       timestamp: new Date().toISOString(),
       isDryRun: false
     }
+    if (config.persist) await config.persist(result)
+    return result
   }
 
-  return config.publish(payload)
+  const outbound = buildOutboundRequest(payload)
+  const result = await config.publish(outbound)
+  if (config.persist) await config.persist(result)
+  return result
 }
 
 export function includesContentType(payload: CartoonPublishPayload): boolean {
