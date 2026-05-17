@@ -3,6 +3,8 @@ import type { ExportMeta } from './exportMetadata'
 import { hasUnresolvedOverflow } from './textLayout'
 import { generateAltText } from './publishGenerator'
 import { getMaxSizeBytes } from './imageExport'
+import type { ContentRating } from './contentRating'
+import { validateContentRating } from './contentRating'
 
 export type ReadinessLevel = 'pass' | 'warn' | 'block'
 
@@ -160,9 +162,36 @@ export function checkAltText(cuts: Cut[]): ReadinessCheck {
   }
 }
 
+export function checkContentRating(rating: ContentRating | unknown | undefined): ReadinessCheck {
+  if (rating === undefined) {
+    return {
+      id: 'content-rating',
+      label: 'Content Rating',
+      level: 'block',
+      message: 'Content rating is required before publishing'
+    }
+  }
+  const validated = validateContentRating(rating)
+  if (validated !== null) {
+    return {
+      id: 'content-rating',
+      label: 'Content Rating',
+      level: 'pass',
+      message: `Content rating set: ${validated}`
+    }
+  }
+  return {
+    id: 'content-rating',
+    label: 'Content Rating',
+    level: 'block',
+    message: 'Content rating is required before publishing'
+  }
+}
+
 export function validatePublishReadiness(
   cuts: Cut[],
-  exportMetas: ExportMeta[] = []
+  exportMetas: ExportMeta[] = [],
+  opts?: { contentRating?: ContentRating | unknown }
 ): ReadinessReport {
   const checks = [
     checkCutStatus(cuts),
@@ -173,6 +202,10 @@ export function validatePublishReadiness(
     checkTranscript(cuts),
     checkAltText(cuts)
   ]
+
+  if (opts && 'contentRating' in opts) {
+    checks.push(checkContentRating(opts.contentRating))
+  }
 
   const ready = checks.every((c) => c.level !== 'block')
 
