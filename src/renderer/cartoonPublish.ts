@@ -1,6 +1,8 @@
 import type { Cut } from './CutList'
 import type { CutUrl, GenerateOptions } from './publishGenerator'
 import { generatePublishMarkdown } from './publishGenerator'
+import type { ProjectPublishMeta } from './publishMetadata'
+import { shouldIncludeContentType, getContentTypeForNewStoryline } from './publishMetadata'
 
 export interface StorylineTarget {
   type: 'new' | 'existing'
@@ -44,6 +46,7 @@ export type PersistFn = (result: PublishRequestResult) => Promise<void>
 export interface CartoonPublishConfig {
   publish?: PublishFn
   persist?: PersistFn
+  publishMeta?: ProjectPublishMeta
   mode: 'live' | 'mock'
 }
 
@@ -117,7 +120,10 @@ export function validatePayload(payload: CartoonPublishPayload): string[] {
   return errors
 }
 
-export function buildOutboundRequest(payload: CartoonPublishPayload): OutboundPublishRequest {
+export function buildOutboundRequest(
+  payload: CartoonPublishPayload,
+  publishMeta?: ProjectPublishMeta
+): OutboundPublishRequest {
   const request: OutboundPublishRequest = {
     plotTitle: payload.plotTitle,
     markdown: payload.markdown,
@@ -127,7 +133,14 @@ export function buildOutboundRequest(payload: CartoonPublishPayload): OutboundPu
 
   if (payload.storyline.type === 'new') {
     request.storylineTitle = payload.storyline.title
-    request.contentType = 'cartoon'
+    if (publishMeta) {
+      if (shouldIncludeContentType(publishMeta, 'new')) {
+        const ct = getContentTypeForNewStoryline(publishMeta)
+        if (ct) request.contentType = ct
+      }
+    } else {
+      request.contentType = 'cartoon'
+    }
   } else {
     request.storylineId = payload.storyline.storylineId
   }
@@ -168,7 +181,7 @@ export async function publishCartoon(
     return result
   }
 
-  const outbound = buildOutboundRequest(payload)
+  const outbound = buildOutboundRequest(payload, config.publishMeta)
   const result = await config.publish(outbound)
   if (config.persist) await config.persist(result)
   return result
