@@ -93,7 +93,9 @@ describe('buildUploadPlan', () => {
       makeEntry('cut-001', 'uploaded', {
         fileHash: 'hash-abc',
         cid: 'cid-1',
-        url: 'https://cdn/1'
+        url: 'https://cdn/1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
       }),
       makeEntry('cut-002', 'pending')
     ])
@@ -109,7 +111,9 @@ describe('buildUploadPlan', () => {
       makeEntry('cut-001', 'uploaded', {
         fileHash: 'hash-old',
         cid: 'cid-1',
-        url: 'https://cdn/1'
+        url: 'https://cdn/1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
       })
     ])
     const metas = [makeMeta('cut-001', 'hash-new')]
@@ -130,8 +134,20 @@ describe('buildUploadPlan', () => {
 
   it('reports ready when all cuts are uploaded and hashes match', () => {
     const status = makeStatus([
-      makeEntry('cut-001', 'uploaded', { fileHash: 'h1', cid: 'c1', url: 'u1' }),
-      makeEntry('cut-002', 'uploaded', { fileHash: 'h2', cid: 'c2', url: 'u2' })
+      makeEntry('cut-001', 'uploaded', {
+        fileHash: 'h1',
+        cid: 'c1',
+        url: 'u1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
+      }),
+      makeEntry('cut-002', 'uploaded', {
+        fileHash: 'h2',
+        cid: 'c2',
+        url: 'u2',
+        mimeType: 'image/webp',
+        sizeBytes: 600
+      })
     ])
     const metas = [makeMeta('cut-001', 'h1'), makeMeta('cut-002', 'h2')]
     const plan = buildUploadPlan(status, metas)
@@ -147,12 +163,30 @@ describe('buildUploadPlan', () => {
     expect(plan.cuts[0].action).toBe('upload')
     expect(plan.cuts[0].reason).toContain('No export hash')
   })
+
+  it('retries uploaded cut with matching hash but incomplete metadata', () => {
+    const status = makeStatus([
+      makeEntry('cut-001', 'uploaded', { fileHash: 'h1', cid: null, url: 'u1' })
+    ])
+    const metas = [makeMeta('cut-001', 'h1')]
+    const plan = buildUploadPlan(status, metas)
+
+    expect(plan.cuts[0].action).toBe('retry')
+    expect(plan.cuts[0].reason).toContain('Incomplete upload metadata')
+    expect(plan.readyToPublish).toBe(false)
+  })
 })
 
 describe('getCutsToUpload', () => {
   it('returns only upload and retry cuts', () => {
     const status = makeStatus([
-      makeEntry('cut-001', 'uploaded', { fileHash: 'h1', cid: 'c1', url: 'u1' }),
+      makeEntry('cut-001', 'uploaded', {
+        fileHash: 'h1',
+        cid: 'c1',
+        url: 'u1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
+      }),
       makeEntry('cut-002', 'pending'),
       makeEntry('cut-003', 'failed', { error: 'err' })
     ])
@@ -167,15 +201,33 @@ describe('getCutsToUpload', () => {
 describe('canTransitionToPublishing', () => {
   it('returns true when all cuts uploaded with full metadata', () => {
     const status = makeStatus([
-      makeEntry('cut-001', 'uploaded', { cid: 'c1', url: 'u1', fileHash: 'h1' }),
-      makeEntry('cut-002', 'uploaded', { cid: 'c2', url: 'u2', fileHash: 'h2' })
+      makeEntry('cut-001', 'uploaded', {
+        cid: 'c1',
+        url: 'u1',
+        fileHash: 'h1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
+      }),
+      makeEntry('cut-002', 'uploaded', {
+        cid: 'c2',
+        url: 'u2',
+        fileHash: 'h2',
+        mimeType: 'image/webp',
+        sizeBytes: 600
+      })
     ])
     expect(canTransitionToPublishing(status)).toBe(true)
   })
 
   it('returns false when a cut is still pending', () => {
     const status = makeStatus([
-      makeEntry('cut-001', 'uploaded', { cid: 'c1', url: 'u1', fileHash: 'h1' }),
+      makeEntry('cut-001', 'uploaded', {
+        cid: 'c1',
+        url: 'u1',
+        fileHash: 'h1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
+      }),
       makeEntry('cut-002', 'pending')
     ])
     expect(canTransitionToPublishing(status)).toBe(false)
@@ -183,14 +235,28 @@ describe('canTransitionToPublishing', () => {
 
   it('returns false when a cut is missing metadata', () => {
     const status = makeStatus([
-      makeEntry('cut-001', 'uploaded', { cid: null, url: 'u1', fileHash: 'h1' })
+      makeEntry('cut-001', 'uploaded', {
+        cid: null,
+        url: 'u1',
+        fileHash: 'h1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
+      })
     ])
     expect(canTransitionToPublishing(status)).toBe(false)
   })
 
   it('returns false when already published', () => {
     const status = makeStatus(
-      [makeEntry('cut-001', 'uploaded', { cid: 'c1', url: 'u1', fileHash: 'h1' })],
+      [
+        makeEntry('cut-001', 'uploaded', {
+          cid: 'c1',
+          url: 'u1',
+          fileHash: 'h1',
+          mimeType: 'image/webp',
+          sizeBytes: 500
+        })
+      ],
       'published'
     )
     expect(canTransitionToPublishing(status)).toBe(false)
@@ -200,8 +266,20 @@ describe('canTransitionToPublishing', () => {
 describe('canPublish', () => {
   it('allows publish when all uploaded and hashes match', () => {
     const status = makeStatus([
-      makeEntry('cut-001', 'uploaded', { cid: 'c1', url: 'u1', fileHash: 'h1' }),
-      makeEntry('cut-002', 'uploaded', { cid: 'c2', url: 'u2', fileHash: 'h2' })
+      makeEntry('cut-001', 'uploaded', {
+        cid: 'c1',
+        url: 'u1',
+        fileHash: 'h1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
+      }),
+      makeEntry('cut-002', 'uploaded', {
+        cid: 'c2',
+        url: 'u2',
+        fileHash: 'h2',
+        mimeType: 'image/webp',
+        sizeBytes: 600
+      })
     ])
     const metas = [makeMeta('cut-001', 'h1'), makeMeta('cut-002', 'h2')]
     const result = canPublish(status, metas)
@@ -212,7 +290,13 @@ describe('canPublish', () => {
 
   it('blocks publish when cuts have stale hashes', () => {
     const status = makeStatus([
-      makeEntry('cut-001', 'uploaded', { cid: 'c1', url: 'u1', fileHash: 'h-old' })
+      makeEntry('cut-001', 'uploaded', {
+        cid: 'c1',
+        url: 'u1',
+        fileHash: 'h-old',
+        mimeType: 'image/webp',
+        sizeBytes: 500
+      })
     ])
     const metas = [makeMeta('cut-001', 'h-new')]
     const result = canPublish(status, metas)
@@ -232,7 +316,13 @@ describe('canPublish', () => {
 
   it('blocks publish when cuts are missing required metadata', () => {
     const status = makeStatus([
-      makeEntry('cut-001', 'uploaded', { cid: null, url: 'u1', fileHash: 'h1' })
+      makeEntry('cut-001', 'uploaded', {
+        cid: null,
+        url: 'u1',
+        fileHash: 'h1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
+      })
     ])
     const metas = [makeMeta('cut-001', 'h1')]
     const result = canPublish(status, metas)
@@ -276,7 +366,13 @@ describe('canPlotTransition', () => {
 describe('nextPlotState', () => {
   it('suggests ready when all uploads complete', () => {
     const status = makeStatus([
-      makeEntry('cut-001', 'uploaded', { fileHash: 'h1', cid: 'c1', url: 'u1' })
+      makeEntry('cut-001', 'uploaded', {
+        fileHash: 'h1',
+        cid: 'c1',
+        url: 'u1',
+        mimeType: 'image/webp',
+        sizeBytes: 500
+      })
     ])
     const metas = [makeMeta('cut-001', 'h1')]
     expect(nextPlotState(status, metas)).toBe('ready')

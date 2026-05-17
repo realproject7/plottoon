@@ -26,7 +26,15 @@ function planCut(entry: CutPublishEntry, exportHash: string | null): CutUploadPl
   }
 
   if (entry.state === 'uploaded' && entry.fileHash === exportHash) {
-    return { cutId: entry.cutId, action: 'skip', reason: 'Already uploaded and hash matches' }
+    const hasFullMeta =
+      entry.cid !== null &&
+      entry.url !== null &&
+      entry.mimeType !== null &&
+      entry.sizeBytes !== null
+    if (hasFullMeta) {
+      return { cutId: entry.cutId, action: 'skip', reason: 'Already uploaded and hash matches' }
+    }
+    return { cutId: entry.cutId, action: 'retry', reason: 'Incomplete upload metadata' }
   }
 
   if (entry.state === 'uploaded' && entry.fileHash !== exportHash) {
@@ -66,7 +74,12 @@ export function canTransitionToPublishing(status: PublishStatusFile): boolean {
   if (status.plotState === 'published') return false
   const allUploaded = status.cuts.every((c) => c.state === 'uploaded')
   const allHaveMetadata = status.cuts.every(
-    (c) => c.cid !== null && c.url !== null && c.fileHash !== null
+    (c) =>
+      c.cid !== null &&
+      c.url !== null &&
+      c.fileHash !== null &&
+      c.mimeType !== null &&
+      c.sizeBytes !== null
   )
   return allUploaded && allHaveMetadata
 }

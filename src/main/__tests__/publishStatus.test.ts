@@ -123,26 +123,30 @@ describe('readPublishStatus / writePublishStatus', () => {
 })
 
 describe('state transitions', () => {
-  it('markCutUploaded sets state, cid, url, fileHash', () => {
+  it('markCutUploaded sets state, cid, url, fileHash, mimeType, sizeBytes', () => {
     const status = fixture()
     const updated = markCutUploaded(
       status,
       'cut-001',
       'QmABC123',
       'https://example.com/cut-001.png',
-      'sha256:abc'
+      'sha256:abc',
+      'image/webp',
+      4096
     )
     const cut = updated.cuts.find((c) => c.cutId === 'cut-001')!
     expect(cut.state).toBe('uploaded')
     expect(cut.cid).toBe('QmABC123')
     expect(cut.url).toBe('https://example.com/cut-001.png')
     expect(cut.fileHash).toBe('sha256:abc')
+    expect(cut.mimeType).toBe('image/webp')
+    expect(cut.sizeBytes).toBe(4096)
     expect(cut.error).toBeNull()
   })
 
   it('markCutUploaded does not affect other cuts', () => {
     const status = fixture()
-    const updated = markCutUploaded(status, 'cut-001', 'cid', 'url', 'hash')
+    const updated = markCutUploaded(status, 'cut-001', 'cid', 'url', 'hash', 'image/webp', 500)
     expect(updated.cuts.find((c) => c.cutId === 'cut-002')!.state).toBe('pending')
   })
 
@@ -181,8 +185,8 @@ describe('state transitions', () => {
 describe('idempotency', () => {
   it('markCutUploaded returns same reference on no-op', () => {
     const status = fixture()
-    const first = markCutUploaded(status, 'cut-001', 'cid', 'url', 'hash')
-    const second = markCutUploaded(first, 'cut-001', 'cid', 'url', 'hash')
+    const first = markCutUploaded(status, 'cut-001', 'cid', 'url', 'hash', 'image/webp', 500)
+    const second = markCutUploaded(first, 'cut-001', 'cid', 'url', 'hash', 'image/webp', 500)
     expect(second).toBe(first)
     expect(second.updatedAt).toBe(first.updatedAt)
   })
