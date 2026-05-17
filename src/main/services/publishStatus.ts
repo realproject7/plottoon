@@ -10,6 +10,8 @@ export interface CutPublishEntry {
   cid: string | null
   url: string | null
   fileHash: string | null
+  mimeType: string | null
+  sizeBytes: number | null
   error: string | null
   protected: boolean
   updatedAt: string
@@ -69,6 +71,16 @@ function validateCutEntry(data: unknown, index: number, filePath: string): CutPu
   if (c.fileHash !== null && typeof c.fileHash !== 'string') {
     fail(`cut "${c.cutId}": fileHash must be a string or null`, filePath)
   }
+  if (c.mimeType !== null && c.mimeType !== undefined && typeof c.mimeType !== 'string') {
+    fail(`cut "${c.cutId}": mimeType must be a string or null`, filePath)
+  }
+  if (
+    c.sizeBytes !== null &&
+    c.sizeBytes !== undefined &&
+    (typeof c.sizeBytes !== 'number' || c.sizeBytes < 0)
+  ) {
+    fail(`cut "${c.cutId}": sizeBytes must be a non-negative number or null`, filePath)
+  }
   if (c.error !== null && typeof c.error !== 'string') {
     fail(`cut "${c.cutId}": error must be a string or null`, filePath)
   }
@@ -85,6 +97,8 @@ function validateCutEntry(data: unknown, index: number, filePath: string): CutPu
     cid: (c.cid as string) ?? null,
     url: (c.url as string) ?? null,
     fileHash: (c.fileHash as string) ?? null,
+    mimeType: (c.mimeType as string) ?? null,
+    sizeBytes: (c.sizeBytes as number) ?? null,
     error: (c.error as string) ?? null,
     protected: c.protected as boolean,
     updatedAt: c.updatedAt as string
@@ -185,6 +199,8 @@ export function createPublishStatus(cutIds: string[]): PublishStatusFile {
       cid: null,
       url: null,
       fileHash: null,
+      mimeType: null,
+      sizeBytes: null,
       error: null,
       protected: false,
       updatedAt: now
@@ -197,7 +213,9 @@ export function markCutUploaded(
   cutId: string,
   cid: string,
   url: string,
-  fileHash: string
+  fileHash: string,
+  mimeType: string,
+  sizeBytes: number
 ): PublishStatusFile {
   const entry = status.cuts.find((c) => c.cutId === cutId)
   if (
@@ -206,6 +224,8 @@ export function markCutUploaded(
     entry.cid === cid &&
     entry.url === url &&
     entry.fileHash === fileHash &&
+    entry.mimeType === mimeType &&
+    entry.sizeBytes === sizeBytes &&
     entry.error === null
   ) {
     return status
@@ -213,7 +233,17 @@ export function markCutUploaded(
   const now = nowIso()
   const cuts = status.cuts.map((c) =>
     c.cutId === cutId
-      ? { ...c, state: 'uploaded' as CutState, cid, url, fileHash, error: null, updatedAt: now }
+      ? {
+          ...c,
+          state: 'uploaded' as CutState,
+          cid,
+          url,
+          fileHash,
+          mimeType,
+          sizeBytes,
+          error: null,
+          updatedAt: now
+        }
       : c
   )
   return { ...status, cuts, updatedAt: now }
