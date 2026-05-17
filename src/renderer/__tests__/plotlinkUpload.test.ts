@@ -17,8 +17,8 @@ function makeInput(
   magic?: number[]
 ): CutUploadInput {
   const bytes = new Uint8Array(size)
-  const magicBytes =
-    magic ?? (mimeType === 'image/webp' ? [0x52, 0x49, 0x46, 0x46] : [0xff, 0xd8, 0xff])
+  const webpFull = [0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]
+  const magicBytes = magic ?? (mimeType === 'image/webp' ? webpFull : [0xff, 0xd8, 0xff])
   for (let i = 0; i < magicBytes.length; i++) bytes[i] = magicBytes[i]
   return {
     cutId,
@@ -81,6 +81,15 @@ describe('validateCutForUpload', () => {
     expect(err).not.toBeNull()
     expect(err!.reason).toContain('Magic bytes do not match')
   })
+
+  it('rejects non-WebP RIFF container (e.g. AVI)', () => {
+    // RIFF header but with AVI marker at bytes 8-11 instead of WEBP
+    const aviMagic = [0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x41, 0x56, 0x49, 0x20]
+    const input = makeInput('cut-001', 'image/webp', 500, aviMagic)
+    const err = validateCutForUpload(input)
+    expect(err).not.toBeNull()
+    expect(err!.reason).toContain('Magic bytes do not match')
+  })
 })
 
 describe('validateAll', () => {
@@ -137,8 +146,20 @@ describe('uploadCutImages', () => {
     const inputs = [makeInput('cut-001'), makeInput('cut-002')]
     const config = mockConfig({
       results: [
-        { index: 0, url: 'https://cdn.example/a.webp', cid: 'cid-a', mimeType: 'image/webp', sizeBytes: 500 },
-        { index: 1, url: 'https://cdn.example/b.webp', cid: 'cid-b', mimeType: 'image/webp', sizeBytes: 600 }
+        {
+          index: 0,
+          url: 'https://cdn.example/a.webp',
+          cid: 'cid-a',
+          mimeType: 'image/webp',
+          sizeBytes: 500
+        },
+        {
+          index: 1,
+          url: 'https://cdn.example/b.webp',
+          cid: 'cid-b',
+          mimeType: 'image/webp',
+          sizeBytes: 600
+        }
       ]
     })
 
@@ -168,7 +189,13 @@ describe('uploadCutImages', () => {
     const inputs = [makeInput('cut-001'), makeInput('cut-002')]
     const config = mockConfig({
       results: [
-        { index: 0, url: 'https://cdn.example/a.webp', cid: 'cid-a', mimeType: 'image/webp', sizeBytes: 500 },
+        {
+          index: 0,
+          url: 'https://cdn.example/a.webp',
+          cid: 'cid-a',
+          mimeType: 'image/webp',
+          sizeBytes: 500
+        },
         { index: 1, error: 'corrupt file' }
       ]
     })
@@ -184,8 +211,20 @@ describe('uploadCutImages', () => {
     const inputs = [makeInput('cut-001'), makeInput('cut-002')]
     const config = mockConfig({
       results: [
-        { index: 1, url: 'https://cdn.example/b.webp', cid: 'cid-b', mimeType: 'image/webp', sizeBytes: 600 },
-        { index: 0, url: 'https://cdn.example/a.webp', cid: 'cid-a', mimeType: 'image/webp', sizeBytes: 500 }
+        {
+          index: 1,
+          url: 'https://cdn.example/b.webp',
+          cid: 'cid-b',
+          mimeType: 'image/webp',
+          sizeBytes: 600
+        },
+        {
+          index: 0,
+          url: 'https://cdn.example/a.webp',
+          cid: 'cid-a',
+          mimeType: 'image/webp',
+          sizeBytes: 500
+        }
       ]
     })
 
@@ -204,7 +243,13 @@ describe('uploadCutImages', () => {
     ]
     const config = mockConfig({
       results: [
-        { index: 0, url: 'https://cdn.example/b.webp', cid: 'cid-b', mimeType: 'image/webp', sizeBytes: 500 }
+        {
+          index: 0,
+          url: 'https://cdn.example/b.webp',
+          cid: 'cid-b',
+          mimeType: 'image/webp',
+          sizeBytes: 500
+        }
       ]
     })
 
@@ -252,7 +297,15 @@ describe('uploadCutImages', () => {
   it('calls signMessage with correct format', async () => {
     const inputs = [makeInput('cut-001')]
     const config = mockConfig({
-      results: [{ index: 0, url: 'https://cdn.example/a.webp', cid: 'cid-a', mimeType: 'image/webp', sizeBytes: 500 }]
+      results: [
+        {
+          index: 0,
+          url: 'https://cdn.example/a.webp',
+          cid: 'cid-a',
+          mimeType: 'image/webp',
+          sizeBytes: 500
+        }
+      ]
     })
 
     await uploadCutImages(inputs, config)
@@ -266,7 +319,15 @@ describe('uploadCutImages', () => {
   it('sends signature in request headers', async () => {
     const inputs = [makeInput('cut-001')]
     const config = mockConfig({
-      results: [{ index: 0, url: 'https://cdn.example/a.webp', cid: 'cid-a', mimeType: 'image/webp', sizeBytes: 500 }]
+      results: [
+        {
+          index: 0,
+          url: 'https://cdn.example/a.webp',
+          cid: 'cid-a',
+          mimeType: 'image/webp',
+          sizeBytes: 500
+        }
+      ]
     })
 
     await uploadCutImages(inputs, config)
@@ -282,7 +343,13 @@ describe('uploadCutImages', () => {
     const inputs = [makeInput('cut-001'), makeInput('cut-002')]
     const config = mockConfig({
       results: [
-        { index: 0, url: 'https://cdn.example/a.webp', cid: 'cid-a', mimeType: 'image/webp', sizeBytes: 500 }
+        {
+          index: 0,
+          url: 'https://cdn.example/a.webp',
+          cid: 'cid-a',
+          mimeType: 'image/webp',
+          sizeBytes: 500
+        }
       ]
     })
 
@@ -290,5 +357,27 @@ describe('uploadCutImages', () => {
 
     expect(results[1].success).toBe(false)
     expect(results[1].error).toBe('No response for this index')
+  })
+
+  it('treats incomplete success response (missing required fields) as failure', async () => {
+    const inputs = [makeInput('cut-001'), makeInput('cut-002')]
+    const config = mockConfig({
+      results: [
+        { index: 0, url: 'https://cdn.example/a.webp' },
+        {
+          index: 1,
+          url: 'https://cdn.example/b.webp',
+          cid: 'cid-b',
+          mimeType: 'image/webp',
+          sizeBytes: 600
+        }
+      ]
+    })
+
+    const { results } = await uploadCutImages(inputs, config)
+
+    expect(results[0].success).toBe(false)
+    expect(results[0].error).toContain('Incomplete response')
+    expect(results[1].success).toBe(true)
   })
 })

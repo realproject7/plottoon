@@ -53,17 +53,22 @@ export interface ValidationError {
   reason: string
 }
 
-const WEBP_MAGIC = [0x52, 0x49, 0x46, 0x46] // RIFF
+const WEBP_RIFF = [0x52, 0x49, 0x46, 0x46] // RIFF
+const WEBP_MARKER = [0x57, 0x45, 0x42, 0x50] // WEBP at bytes 8-11
 const JPEG_MAGIC = [0xff, 0xd8, 0xff]
 
 function matchesMagicBytes(bytes: Uint8Array, mimeType: string): boolean {
   if (mimeType === 'image/webp') {
     return (
-      bytes.length >= 4 &&
-      bytes[0] === WEBP_MAGIC[0] &&
-      bytes[1] === WEBP_MAGIC[1] &&
-      bytes[2] === WEBP_MAGIC[2] &&
-      bytes[3] === WEBP_MAGIC[3]
+      bytes.length >= 12 &&
+      bytes[0] === WEBP_RIFF[0] &&
+      bytes[1] === WEBP_RIFF[1] &&
+      bytes[2] === WEBP_RIFF[2] &&
+      bytes[3] === WEBP_RIFF[3] &&
+      bytes[8] === WEBP_MARKER[0] &&
+      bytes[9] === WEBP_MARKER[1] &&
+      bytes[10] === WEBP_MARKER[2] &&
+      bytes[11] === WEBP_MARKER[3]
     )
   }
   if (mimeType === 'image/jpeg') {
@@ -130,7 +135,11 @@ async function uploadBatch(
   const formData = new FormData()
   for (const input of batch) {
     const blob = new Blob([input.fileBytes], { type: input.meta.mimeType })
-    formData.append('files', blob, `${input.cutId}.${input.meta.mimeType === 'image/webp' ? 'webp' : 'jpg'}`)
+    formData.append(
+      'files',
+      blob,
+      `${input.cutId}.${input.meta.mimeType === 'image/webp' ? 'webp' : 'jpg'}`
+    )
   }
 
   const fetchFn = config.fetch ?? globalThis.fetch
@@ -185,6 +194,13 @@ async function uploadBatch(
     }
     if (item.error) {
       return { cutId: input.cutId, success: false, error: item.error }
+    }
+    if (!item.cid || !item.url || !item.mimeType || !item.sizeBytes) {
+      return {
+        cutId: input.cutId,
+        success: false,
+        error: 'Incomplete response: missing required success fields'
+      }
     }
     return {
       cutId: input.cutId,
