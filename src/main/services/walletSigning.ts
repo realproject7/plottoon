@@ -31,7 +31,10 @@ export function createWalletSigner(config: WalletSigningConfig) {
   }
 
   async function requestSignature(request: SigningRequest): Promise<SigningResult> {
-    if (request.requireConfirmation && config.onConfirmation) {
+    if (request.requireConfirmation) {
+      if (!config.onConfirmation) {
+        throw new SigningError('Confirmation required but no confirmation handler configured')
+      }
       const confirmed = await config.onConfirmation(request.message)
       if (!confirmed) {
         throw new SigningError('User rejected signing request')

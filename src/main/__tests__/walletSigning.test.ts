@@ -88,6 +88,17 @@ describe('createWalletSigner', () => {
       expect(onConfirmation).not.toHaveBeenCalled()
       expect(sign).toHaveBeenCalled()
     })
+
+    it('fails closed when requireConfirmation is true but no callback configured', async () => {
+      const sign = vi.fn().mockResolvedValue('sig')
+      const signer = createWalletSigner({ mode: 'live', sign })
+
+      await expect(
+        signer.requestSignature({ message: 'msg', requireConfirmation: true })
+      ).rejects.toThrow('Confirmation required but no confirmation handler configured')
+
+      expect(sign).not.toHaveBeenCalled()
+    })
   })
 })
 

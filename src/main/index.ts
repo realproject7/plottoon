@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url'
 import { registerFsHandlers } from './ipc/fsHandlers'
 import { registerProjectHandlers } from './ipc/projectHandlers'
 import { registerTerminalHandlers } from './ipc/terminalHandlers'
+import { registerSigningHandlers } from './ipc/signingHandlers'
 import { destroyAllSessions } from './services/terminalSession'
+import { createWalletSigner } from './services/walletSigning'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -32,6 +34,10 @@ app.whenReady().then(() => {
   registerFsHandlers()
   registerProjectHandlers()
   registerTerminalHandlers()
+
+  const signer = createWalletSigner({ mode: 'mock' })
+  registerSigningHandlers(signer)
+
   createWindow()
 
   app.on('activate', () => {
