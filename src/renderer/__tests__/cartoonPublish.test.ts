@@ -11,6 +11,7 @@ import {
 } from '../cartoonPublish'
 import type { Cut } from '../CutList'
 import type { CutUrl } from '../publishGenerator'
+import type { ProjectPublishMeta } from '../publishMetadata'
 
 function makeCut(id: string): Cut {
   return {
@@ -198,6 +199,26 @@ describe('publishCartoon', () => {
     expect(result.publishId).toBe('real-pub-1')
   })
 
+  it('passes publishMeta through to buildOutboundRequest in live mode', async () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline(), { plotTitle: 'Ep' })
+    const publishFn = vi.fn().mockResolvedValue({
+      success: true,
+      publishId: 'pub-2',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      isDryRun: false
+    })
+    const meta: ProjectPublishMeta = { publishIntent: 'prose' }
+    const config: CartoonPublishConfig = { mode: 'live', publish: publishFn, publishMeta: meta }
+
+    await publishCartoon(payload, config)
+
+    const outbound = publishFn.mock.calls[0][0]
+    expect(outbound.contentType).toBeUndefined()
+    expect(outbound.storylineTitle).toBe('My Cartoon')
+  })
+
   it('returns error when live mode has no publish function', async () => {
     const cuts = [makeCut('cut-001')]
     const urls = makeUrls(['cut-001'])
@@ -249,7 +270,7 @@ describe('includesContentType', () => {
 })
 
 describe('buildOutboundRequest', () => {
-  it('includes contentType for new storyline', () => {
+  it('includes contentType for new storyline without publishMeta (legacy fallback)', () => {
     const cuts = [makeCut('cut-001')]
     const urls = makeUrls(['cut-001'])
     const payload = buildCartoonPayload(cuts, urls, newStoryline('New Story'), { plotTitle: 'Ep' })
@@ -258,6 +279,40 @@ describe('buildOutboundRequest', () => {
     expect(outbound.contentType).toBe('cartoon')
     expect(outbound.storylineTitle).toBe('New Story')
     expect(outbound.storylineId).toBeUndefined()
+  })
+
+  it('includes contentType when publishMeta is cartoon', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline('New Story'), { plotTitle: 'Ep' })
+    const meta: ProjectPublishMeta = { publishIntent: 'cartoon' }
+    const outbound = buildOutboundRequest(payload, meta)
+
+    expect(outbound.contentType).toBe('cartoon')
+    expect(outbound.storylineTitle).toBe('New Story')
+  })
+
+  it('omits contentType when publishMeta is prose', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline('Prose Story'), {
+      plotTitle: 'Ep'
+    })
+    const meta: ProjectPublishMeta = { publishIntent: 'prose' }
+    const outbound = buildOutboundRequest(payload, meta)
+
+    expect(outbound.contentType).toBeUndefined()
+    expect(outbound.storylineTitle).toBe('Prose Story')
+  })
+
+  it('omits contentType when publishMeta has undefined intent', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline('Unknown'), { plotTitle: 'Ep' })
+    const meta: ProjectPublishMeta = { publishIntent: undefined }
+    const outbound = buildOutboundRequest(payload, meta)
+
+    expect(outbound.contentType).toBeUndefined()
   })
 
   it('omits contentType for existing storyline', () => {
@@ -269,6 +324,17 @@ describe('buildOutboundRequest', () => {
     expect(outbound.contentType).toBeUndefined()
     expect(outbound.storylineId).toBe('sl-99')
     expect(outbound.storylineTitle).toBeUndefined()
+  })
+
+  it('omits contentType for existing storyline even with cartoon meta', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, existingStoryline('sl-99'), { plotTitle: 'Ep' })
+    const meta: ProjectPublishMeta = { publishIntent: 'cartoon' }
+    const outbound = buildOutboundRequest(payload, meta)
+
+    expect(outbound.contentType).toBeUndefined()
+    expect(outbound.storylineId).toBe('sl-99')
   })
 })
 

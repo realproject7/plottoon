@@ -18,12 +18,20 @@ describe('resolvePublishIntent', () => {
     expect(intent.storylineLevel).toBe(true)
   })
 
-  it('defaults to cartoon intent when publishIntent is undefined', () => {
+  it('resolves prose intent for explicit prose publishIntent', () => {
+    const meta: ProjectPublishMeta = { publishIntent: 'prose' }
+    const intent = resolvePublishIntent(meta)
+
+    expect(intent.contentType).toBeNull()
+    expect(intent.storylineLevel).toBe(false)
+  })
+
+  it('resolves to prose (no contentType) when publishIntent is undefined', () => {
     const meta: ProjectPublishMeta = { publishIntent: undefined }
     const intent = resolvePublishIntent(meta)
 
-    expect(intent.contentType).toBe('cartoon')
-    expect(intent.storylineLevel).toBe(true)
+    expect(intent.contentType).toBeNull()
+    expect(intent.storylineLevel).toBe(false)
   })
 })
 
@@ -32,8 +40,12 @@ describe('isCartoonProject', () => {
     expect(isCartoonProject({ publishIntent: 'cartoon' })).toBe(true)
   })
 
-  it('returns true for undefined publishIntent (defaults to cartoon)', () => {
-    expect(isCartoonProject({ publishIntent: undefined })).toBe(true)
+  it('returns false for prose publishIntent', () => {
+    expect(isCartoonProject({ publishIntent: 'prose' })).toBe(false)
+  })
+
+  it('returns false for undefined publishIntent', () => {
+    expect(isCartoonProject({ publishIntent: undefined })).toBe(false)
   })
 })
 
@@ -42,8 +54,12 @@ describe('getContentTypeForNewStoryline', () => {
     expect(getContentTypeForNewStoryline({ publishIntent: 'cartoon' })).toBe('cartoon')
   })
 
-  it('returns cartoon for projects without explicit intent', () => {
-    expect(getContentTypeForNewStoryline({ publishIntent: undefined })).toBe('cartoon')
+  it('returns null for prose projects', () => {
+    expect(getContentTypeForNewStoryline({ publishIntent: 'prose' })).toBeNull()
+  })
+
+  it('returns null for projects without explicit intent', () => {
+    expect(getContentTypeForNewStoryline({ publishIntent: undefined })).toBeNull()
   })
 })
 
@@ -58,9 +74,14 @@ describe('shouldIncludeContentType', () => {
     expect(shouldIncludeContentType(meta, 'existing')).toBe(false)
   })
 
-  it('returns true for new storyline with undefined intent (defaults to cartoon)', () => {
+  it('returns false for new storyline with prose intent', () => {
+    const meta: ProjectPublishMeta = { publishIntent: 'prose' }
+    expect(shouldIncludeContentType(meta, 'new')).toBe(false)
+  })
+
+  it('returns false for new storyline with undefined intent', () => {
     const meta: ProjectPublishMeta = { publishIntent: undefined }
-    expect(shouldIncludeContentType(meta, 'new')).toBe(true)
+    expect(shouldIncludeContentType(meta, 'new')).toBe(false)
   })
 })
 
@@ -71,8 +92,14 @@ describe('migrateProjectPublishMeta', () => {
     expect(meta.publishIntent).toBe('cartoon')
   })
 
-  it('returns undefined publishIntent for unknown values', () => {
+  it('preserves prose publishIntent from raw data', () => {
     const raw = { publishIntent: 'prose' }
+    const meta = migrateProjectPublishMeta(raw)
+    expect(meta.publishIntent).toBe('prose')
+  })
+
+  it('returns undefined publishIntent for unknown values', () => {
+    const raw = { publishIntent: 'manga' }
     const meta = migrateProjectPublishMeta(raw)
     expect(meta.publishIntent).toBeUndefined()
   })
@@ -91,29 +118,50 @@ describe('migrateProjectPublishMeta', () => {
 })
 
 describe('defaultPublishMeta', () => {
-  it('defaults to cartoon publishIntent', () => {
+  it('defaults to cartoon publishIntent for new PlotToon projects', () => {
     const meta = defaultPublishMeta()
     expect(meta.publishIntent).toBe('cartoon')
   })
 })
 
-describe('backward compatibility', () => {
-  it('older projects without publishIntent still resolve to cartoon', () => {
+describe('prose/fiction preservation', () => {
+  it('prose projects never emit contentType for new storylines', () => {
+    const meta: ProjectPublishMeta = { publishIntent: 'prose' }
+    expect(shouldIncludeContentType(meta, 'new')).toBe(false)
+    expect(getContentTypeForNewStoryline(meta)).toBeNull()
+  })
+
+  it('older projects without publishIntent do not emit cartoon contentType', () => {
     const oldProjectData = { name: 'Legacy Project', version: 1 }
     const meta = migrateProjectPublishMeta(oldProjectData)
-    const intent = resolvePublishIntent(meta)
 
-    expect(intent.contentType).toBe('cartoon')
-    expect(intent.storylineLevel).toBe(true)
+    expect(shouldIncludeContentType(meta, 'new')).toBe(false)
+    expect(getContentTypeForNewStoryline(meta)).toBeNull()
   })
 
-  it('shouldIncludeContentType works with migrated old data for new storyline', () => {
-    const meta = migrateProjectPublishMeta({ name: 'Old' })
+  it('only explicit cartoon intent emits contentType', () => {
+    const cartoonMeta: ProjectPublishMeta = { publishIntent: 'cartoon' }
+    const proseMeta: ProjectPublishMeta = { publishIntent: 'prose' }
+    const undefinedMeta: ProjectPublishMeta = { publishIntent: undefined }
+
+    expect(shouldIncludeContentType(cartoonMeta, 'new')).toBe(true)
+    expect(shouldIncludeContentType(proseMeta, 'new')).toBe(false)
+    expect(shouldIncludeContentType(undefinedMeta, 'new')).toBe(false)
+  })
+})
+
+describe('wiring integration', () => {
+  it('cartoon project metadata drives contentType inclusion for new storyline', () => {
+    const meta = defaultPublishMeta()
+    expect(isCartoonProject(meta)).toBe(true)
     expect(shouldIncludeContentType(meta, 'new')).toBe(true)
+    expect(getContentTypeForNewStoryline(meta)).toBe('cartoon')
   })
 
-  it('shouldIncludeContentType blocks contentType for existing storyline on old data', () => {
-    const meta = migrateProjectPublishMeta({ name: 'Old' })
+  it('prose project metadata blocks contentType for any storyline type', () => {
+    const meta: ProjectPublishMeta = { publishIntent: 'prose' }
+    expect(isCartoonProject(meta)).toBe(false)
+    expect(shouldIncludeContentType(meta, 'new')).toBe(false)
     expect(shouldIncludeContentType(meta, 'existing')).toBe(false)
   })
 })

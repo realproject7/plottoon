@@ -1,12 +1,13 @@
 export type PublishContentType = 'cartoon'
+export type PublishIntentKind = 'cartoon' | 'prose'
 
 export interface PublishIntent {
-  contentType: PublishContentType
+  contentType: PublishContentType | null
   storylineLevel: boolean
 }
 
 export interface ProjectPublishMeta {
-  publishIntent: PublishContentType | undefined
+  publishIntent: PublishIntentKind | undefined
 }
 
 const CARTOON_INTENT: PublishIntent = {
@@ -14,18 +15,26 @@ const CARTOON_INTENT: PublishIntent = {
   storylineLevel: true
 }
 
+const PROSE_INTENT: PublishIntent = {
+  contentType: null,
+  storylineLevel: false
+}
+
 export function resolvePublishIntent(meta: ProjectPublishMeta): PublishIntent {
   if (meta.publishIntent === 'cartoon') {
     return CARTOON_INTENT
   }
-  return CARTOON_INTENT
+  if (meta.publishIntent === 'prose') {
+    return PROSE_INTENT
+  }
+  return PROSE_INTENT
 }
 
 export function isCartoonProject(meta: ProjectPublishMeta): boolean {
   return resolvePublishIntent(meta).contentType === 'cartoon'
 }
 
-export function getContentTypeForNewStoryline(meta: ProjectPublishMeta): PublishContentType {
+export function getContentTypeForNewStoryline(meta: ProjectPublishMeta): PublishContentType | null {
   return resolvePublishIntent(meta).contentType
 }
 
@@ -34,13 +43,17 @@ export function shouldIncludeContentType(
   storylineType: 'new' | 'existing'
 ): boolean {
   if (storylineType !== 'new') return false
-  return resolvePublishIntent(meta).storylineLevel
+  const intent = resolvePublishIntent(meta)
+  return intent.storylineLevel && intent.contentType !== null
 }
 
 export function migrateProjectPublishMeta(raw: Record<string, unknown>): ProjectPublishMeta {
   const intent = raw.publishIntent
   if (intent === 'cartoon') {
     return { publishIntent: 'cartoon' }
+  }
+  if (intent === 'prose') {
+    return { publishIntent: 'prose' }
   }
   return { publishIntent: undefined }
 }
