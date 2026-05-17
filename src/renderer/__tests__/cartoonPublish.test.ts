@@ -12,6 +12,7 @@ import {
 import type { Cut } from '../CutList'
 import type { CutUrl } from '../publishGenerator'
 import type { ProjectPublishMeta } from '../publishMetadata'
+import type { ContentRating } from '../contentRating'
 
 function makeCut(id: string): Cut {
   return {
@@ -286,7 +287,7 @@ describe('buildOutboundRequest', () => {
     const urls = makeUrls(['cut-001'])
     const payload = buildCartoonPayload(cuts, urls, newStoryline('New Story'), { plotTitle: 'Ep' })
     const meta: ProjectPublishMeta = { publishIntent: 'cartoon' }
-    const outbound = buildOutboundRequest(payload, meta)
+    const outbound = buildOutboundRequest(payload, { publishMeta: meta })
 
     expect(outbound.contentType).toBe('cartoon')
     expect(outbound.storylineTitle).toBe('New Story')
@@ -299,7 +300,7 @@ describe('buildOutboundRequest', () => {
       plotTitle: 'Ep'
     })
     const meta: ProjectPublishMeta = { publishIntent: 'prose' }
-    const outbound = buildOutboundRequest(payload, meta)
+    const outbound = buildOutboundRequest(payload, { publishMeta: meta })
 
     expect(outbound.contentType).toBeUndefined()
     expect(outbound.storylineTitle).toBe('Prose Story')
@@ -310,7 +311,7 @@ describe('buildOutboundRequest', () => {
     const urls = makeUrls(['cut-001'])
     const payload = buildCartoonPayload(cuts, urls, newStoryline('Unknown'), { plotTitle: 'Ep' })
     const meta: ProjectPublishMeta = { publishIntent: undefined }
-    const outbound = buildOutboundRequest(payload, meta)
+    const outbound = buildOutboundRequest(payload, { publishMeta: meta })
 
     expect(outbound.contentType).toBeUndefined()
   })
@@ -331,10 +332,46 @@ describe('buildOutboundRequest', () => {
     const urls = makeUrls(['cut-001'])
     const payload = buildCartoonPayload(cuts, urls, existingStoryline('sl-99'), { plotTitle: 'Ep' })
     const meta: ProjectPublishMeta = { publishIntent: 'cartoon' }
-    const outbound = buildOutboundRequest(payload, meta)
+    const outbound = buildOutboundRequest(payload, { publishMeta: meta })
 
     expect(outbound.contentType).toBeUndefined()
     expect(outbound.storylineId).toBe('sl-99')
+  })
+
+  it('includes matureFlag true for mature content rating', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline(), { plotTitle: 'Ep' })
+    const outbound = buildOutboundRequest(payload, { contentRating: 'mature' })
+
+    expect(outbound.matureFlag).toBe(true)
+  })
+
+  it('includes matureFlag false for all-ages content rating', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline(), { plotTitle: 'Ep' })
+    const outbound = buildOutboundRequest(payload, { contentRating: 'all-ages' })
+
+    expect(outbound.matureFlag).toBe(false)
+  })
+
+  it('includes matureFlag false for teen content rating', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline(), { plotTitle: 'Ep' })
+    const outbound = buildOutboundRequest(payload, { contentRating: 'teen' })
+
+    expect(outbound.matureFlag).toBe(false)
+  })
+
+  it('omits matureFlag when no content rating provided', () => {
+    const cuts = [makeCut('cut-001')]
+    const urls = makeUrls(['cut-001'])
+    const payload = buildCartoonPayload(cuts, urls, newStoryline(), { plotTitle: 'Ep' })
+    const outbound = buildOutboundRequest(payload)
+
+    expect(outbound.matureFlag).toBeUndefined()
   })
 })
 

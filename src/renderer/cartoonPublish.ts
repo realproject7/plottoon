@@ -3,6 +3,8 @@ import type { CutUrl, GenerateOptions } from './publishGenerator'
 import { generatePublishMarkdown } from './publishGenerator'
 import type { ProjectPublishMeta } from './publishMetadata'
 import { shouldIncludeContentType, getContentTypeForNewStoryline } from './publishMetadata'
+import type { ContentRating } from './contentRating'
+import { contentRatingToMatureFlag } from './contentRating'
 
 export interface StorylineTarget {
   type: 'new' | 'existing'
@@ -34,6 +36,7 @@ export interface OutboundPublishRequest {
   storylineId?: string
   storylineTitle?: string
   contentType?: 'cartoon'
+  matureFlag?: boolean
   plotTitle: string
   markdown: string
   imageCount: number
@@ -47,6 +50,7 @@ export interface CartoonPublishConfig {
   publish?: PublishFn
   persist?: PersistFn
   publishMeta?: ProjectPublishMeta
+  contentRating?: ContentRating
   mode: 'live' | 'mock'
 }
 
@@ -122,7 +126,7 @@ export function validatePayload(payload: CartoonPublishPayload): string[] {
 
 export function buildOutboundRequest(
   payload: CartoonPublishPayload,
-  publishMeta?: ProjectPublishMeta
+  opts?: { publishMeta?: ProjectPublishMeta; contentRating?: ContentRating }
 ): OutboundPublishRequest {
   const request: OutboundPublishRequest = {
     plotTitle: payload.plotTitle,
@@ -133,9 +137,9 @@ export function buildOutboundRequest(
 
   if (payload.storyline.type === 'new') {
     request.storylineTitle = payload.storyline.title
-    if (publishMeta) {
-      if (shouldIncludeContentType(publishMeta, 'new')) {
-        const ct = getContentTypeForNewStoryline(publishMeta)
+    if (opts?.publishMeta) {
+      if (shouldIncludeContentType(opts.publishMeta, 'new')) {
+        const ct = getContentTypeForNewStoryline(opts.publishMeta)
         if (ct) request.contentType = ct
       }
     } else {
@@ -143,6 +147,10 @@ export function buildOutboundRequest(
     }
   } else {
     request.storylineId = payload.storyline.storylineId
+  }
+
+  if (opts?.contentRating) {
+    request.matureFlag = contentRatingToMatureFlag(opts.contentRating)
   }
 
   return request
@@ -181,7 +189,10 @@ export async function publishCartoon(
     return result
   }
 
-  const outbound = buildOutboundRequest(payload, config.publishMeta)
+  const outbound = buildOutboundRequest(payload, {
+    publishMeta: config.publishMeta,
+    contentRating: config.contentRating
+  })
   const result = await config.publish(outbound)
   if (config.persist) await config.persist(result)
   return result
