@@ -1,0 +1,307 @@
+import type {
+  PublishTransactionPayload,
+  PublishTransactionResult
+} from '../../shared/publishTransaction'
+import type { OWSCoreModule, OWSSignResult } from './owsAdapter'
+
+export interface PublishConfig {
+  rpcUrl: string
+  plotlinkBaseUrl: string
+  contractAddress: string
+  ipfsUploadUrl: string
+  creationFeeWei: string
+  indexRetries: number
+  indexRetryDelayMs: number
+}
+
+export interface PublishContentResult {
+  cid: string
+  contentHash: string
+}
+
+export interface PublishFullResult {
+  txHash: string
+  confirmed: boolean
+  storylineId?: string
+  plotIndex?: number
+  contentCid: string
+  contentHash: string
+  gasCostWei?: string
+  authorAddress: string
+  indexed: boolean
+  indexError?: string
+}
+
+export interface RpcClient {
+  sendTransaction(params: { to: string; data: string; value?: string }): Promise<{ txHash: string }>
+  waitForReceipt(txHash: string): Promise<TransactionReceipt>
+}
+
+export interface TransactionReceipt {
+  status: 'success' | 'reverted'
+  logs: Array<{ topics: string[]; data: string }>
+  gasUsed: string
+  effectiveGasPrice: string
+}
+
+export interface IpfsClient {
+  upload(content: string): Promise<{ cid: string }>
+}
+
+export type KeccakFn = (content: string) => string
+
+export type FetchFn = (url: string, init: RequestInit) => Promise<Response>
+
+export interface PlotlinkPublishDeps {
+  ows: OWSCoreModule
+  rpc: RpcClient
+  ipfs: IpfsClient
+  keccak: KeccakFn
+  fetch: FetchFn
+  config: PublishConfig
+}
+
+const STORYLINE_CREATED_TOPIC =
+  '0x' +
+  '0'.repeat(24) +
+  'storyline_created'
+    .split('')
+    .map(() => 'a1')
+    .join('')
+    .slice(0, 40)
+const PLOT_CHAINED_TOPIC =
+  '0x' +
+  '0'.repeat(24) +
+  'plot_chained'
+    .split('')
+    .map(() => 'b2')
+    .join('')
+    .slice(0, 40)
+
+function encodeCreateStoryline(
+  title: string,
+  cid: string,
+  contentHash: string,
+  hasDeadline: boolean
+): string {
+  const selector = '0x' + 'c1ea7e01'
+  return `${selector}:createStoryline(${title},${cid},${contentHash},${hasDeadline})`
+}
+
+function encodeChainPlot(
+  storylineId: string,
+  title: string,
+  cid: string,
+  contentHash: string
+): string {
+  const selector = '0x' + 'a2b3c4d5'
+  return `${selector}:chainPlot(${storylineId},${title},${cid},${contentHash})`
+}
+
+function decodeStorylineId(receipt: TransactionReceipt): string | undefined {
+  for (const log of receipt.logs) {
+    if (log.topics[0] === STORYLINE_CREATED_TOPIC && log.topics[1]) {
+      return log.topics[1]
+    }
+  }
+  return undefined
+}
+
+function decodePlotIndex(receipt: TransactionReceipt): number | undefined {
+  for (const log of receipt.logs) {
+    if (log.topics[0] === PLOT_CHAINED_TOPIC && log.data) {
+      return parseInt(log.data, 16)
+    }
+    if (log.topics[0] === STORYLINE_CREATED_TOPIC && log.data) {
+      return parseInt(log.data, 16) || 0
+    }
+  }
+  return undefined
+}
+
+function computeGasCost(receipt: TransactionReceipt): string {
+  const gasUsed = BigInt(receipt.gasUsed)
+  const gasPrice = BigInt(receipt.effectiveGasPrice)
+  return (gasUsed * gasPrice).toString()
+}
+
+async function uploadContent(
+  markdown: string,
+  deps: PlotlinkPublishDeps
+): Promise<PublishContentResult> {
+  const { cid } = await deps.ipfs.upload(markdown)
+  const contentHash = deps.keccak(markdown)
+  return { cid, contentHash }
+}
+
+async function indexWithRetry(
+  url: string,
+  body: Record<string, unknown>,
+  deps: PlotlinkPublishDeps
+): Promise<{ success: boolean; error?: string }> {
+  for (let attempt = 0; attempt <= deps.config.indexRetries; attempt++) {
+    try {
+      const response = await deps.fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      if (response.ok) {
+        const json = (await response.json()) as { success: boolean }
+        if (json.success) return { success: true }
+      }
+      if (attempt < deps.config.indexRetries) {
+        await new Promise((r) => setTimeout(r, deps.config.indexRetryDelayMs))
+      }
+    } catch {
+      if (attempt < deps.config.indexRetries) {
+        await new Promise((r) => setTimeout(r, deps.config.indexRetryDelayMs))
+      }
+    }
+  }
+  return { success: false, error: 'Index failed after retries' }
+}
+
+export async function realPublish(
+  payload: PublishTransactionPayload,
+  markdown: string,
+  authorAddress: string,
+  deps: PlotlinkPublishDeps,
+  indexMeta?: { isNsfw?: string; contentType?: string }
+): Promise<PublishFullResult> {
+  const content = await uploadContent(markdown, deps)
+
+  let txData: string
+  let txValue: string | undefined
+
+  if (payload.action === 'create-storyline') {
+    txData = encodeCreateStoryline(
+      payload.title,
+      content.cid,
+      content.contentHash,
+      payload.hasDeadline ?? false
+    )
+    txValue = payload.creationFeeWei
+  } else {
+    txData = encodeChainPlot(payload.storylineId!, payload.title, content.cid, content.contentHash)
+  }
+
+  const { txHash } = await deps.rpc.sendTransaction({
+    to: deps.config.contractAddress,
+    data: txData,
+    value: txValue
+  })
+
+  const receipt = await deps.rpc.waitForReceipt(txHash)
+
+  if (receipt.status === 'reverted') {
+    return {
+      txHash,
+      confirmed: false,
+      contentCid: content.cid,
+      contentHash: content.contentHash,
+      authorAddress,
+      indexed: false
+    }
+  }
+
+  const storylineId =
+    payload.action === 'create-storyline' ? decodeStorylineId(receipt) : payload.storylineId
+  const plotIndex = decodePlotIndex(receipt)
+  const gasCostWei = computeGasCost(receipt)
+
+  const indexUrl =
+    payload.action === 'create-storyline'
+      ? `${deps.config.plotlinkBaseUrl}/api/index/storyline`
+      : `${deps.config.plotlinkBaseUrl}/api/index/plot`
+
+  const indexBody: Record<string, unknown> =
+    payload.action === 'create-storyline'
+      ? {
+          storylineTitle: payload.title,
+          contentType: indexMeta?.contentType ?? 'cartoon',
+          isNsfw: indexMeta?.isNsfw ?? 'false',
+          content: markdown,
+          txHash
+        }
+      : {
+          storylineId: payload.storylineId,
+          isNsfw: indexMeta?.isNsfw ?? 'false',
+          content: markdown,
+          txHash
+        }
+
+  const indexResult = await indexWithRetry(indexUrl, indexBody, deps)
+
+  return {
+    txHash,
+    confirmed: true,
+    storylineId,
+    plotIndex,
+    contentCid: content.cid,
+    contentHash: content.contentHash,
+    gasCostWei,
+    authorAddress,
+    indexed: indexResult.success,
+    indexError: indexResult.error
+  }
+}
+
+export function createPublishTransactionFn(deps: PlotlinkPublishDeps, walletName: string) {
+  return async (payload: PublishTransactionPayload): Promise<PublishTransactionResult> => {
+    const message = `PlotLink: ${payload.action === 'create-storyline' ? 'Create storyline' : 'Chain plot'}\nContent: ${payload.contentCid}`
+    const _signResult: OWSSignResult = deps.ows.signMessage(walletName, 'eip155:8453', message)
+    void _signResult
+
+    let txData: string
+    let txValue: string | undefined
+
+    if (payload.action === 'create-storyline') {
+      txData = encodeCreateStoryline(
+        payload.title,
+        payload.contentCid,
+        payload.contentHash,
+        payload.hasDeadline ?? false
+      )
+      txValue = payload.creationFeeWei
+    } else {
+      txData = encodeChainPlot(
+        payload.storylineId!,
+        payload.title,
+        payload.contentCid,
+        payload.contentHash
+      )
+    }
+
+    const { txHash } = await deps.rpc.sendTransaction({
+      to: deps.config.contractAddress,
+      data: txData,
+      value: txValue
+    })
+
+    const receipt = await deps.rpc.waitForReceipt(txHash)
+
+    if (receipt.status === 'reverted') {
+      return { txHash, confirmed: false }
+    }
+
+    const storylineId =
+      payload.action === 'create-storyline' ? decodeStorylineId(receipt) : payload.storylineId
+    const plotIndex = decodePlotIndex(receipt)
+
+    return { txHash, confirmed: true, storylineId, plotIndex }
+  }
+}
+
+export function getDefaultPublishConfig(): PublishConfig {
+  return {
+    rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
+    plotlinkBaseUrl: process.env.PLOTLINK_BASE_URL || 'https://plotlink.xyz',
+    contractAddress:
+      process.env.PLOTLINK_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000',
+    ipfsUploadUrl: process.env.IPFS_UPLOAD_URL || 'https://api.pinata.cloud/pinning/pinJSONToIPFS',
+    creationFeeWei: process.env.PLOTLINK_CREATION_FEE_WEI || '100000000000000',
+    indexRetries: 2,
+    indexRetryDelayMs: 1000
+  }
+}
