@@ -294,7 +294,7 @@ describe('uploadCutImages', () => {
     expect(results[0].error).toContain('Rate limited')
   })
 
-  it('calls signMessage with correct format', async () => {
+  it('calls signMessage with numeric timestamp format', async () => {
     const inputs = [makeInput('cut-001')]
     const config = mockConfig({
       results: [
@@ -313,10 +313,10 @@ describe('uploadCutImages', () => {
     const signMessage = config.signMessage as ReturnType<typeof vi.fn>
     expect(signMessage).toHaveBeenCalledTimes(1)
     const msg = signMessage.mock.calls[0][0] as string
-    expect(msg).toMatch(/^PlotLink: Upload plot images\nTimestamp: \d{4}-/)
+    expect(msg).toMatch(/^PlotLink: Upload plot images\nTimestamp: \d+$/)
   })
 
-  it('sends signature in request headers', async () => {
+  it('sends message and signature as FormData fields', async () => {
     const inputs = [makeInput('cut-001')]
     const config = mockConfig({
       results: [
@@ -335,8 +335,37 @@ describe('uploadCutImages', () => {
     const fetchFn = config.fetch as ReturnType<typeof vi.fn>
     const [url, init] = fetchFn.mock.calls[0]
     expect(url).toBe('https://plotlink.example/api/upload-plot-images')
-    expect(init.headers['X-Signature']).toBe('mock-signature')
-    expect(init.headers['X-Signature-Message']).toMatch(/^PlotLink: Upload plot images/)
+    expect(init.headers).toBeUndefined()
+    const body = init.body as FormData
+    expect(body.get('message')).toMatch(/^PlotLink: Upload plot images\nTimestamp: \d+$/)
+    expect(body.get('signature')).toBe('mock-signature')
+  })
+
+  it('regression: request fails without message/signature FormData fields', async () => {
+    const inputs = [makeInput('cut-001')]
+    const config = mockConfig({
+      results: [
+        {
+          index: 0,
+          url: 'https://cdn.example/a.webp',
+          cid: 'cid-a',
+          mimeType: 'image/webp',
+          sizeBytes: 500
+        }
+      ]
+    })
+
+    await uploadCutImages(inputs, config)
+
+    const fetchFn = config.fetch as ReturnType<typeof vi.fn>
+    const [, init] = fetchFn.mock.calls[0]
+    const body = init.body as FormData
+    const messageField = body.get('message')
+    const signatureField = body.get('signature')
+    expect(messageField).not.toBeNull()
+    expect(signatureField).not.toBeNull()
+    expect(typeof messageField).toBe('string')
+    expect(typeof signatureField).toBe('string')
   })
 
   it('handles missing response item for an index', async () => {
