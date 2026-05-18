@@ -17,8 +17,9 @@ import { getDefaultRoyaltyConfig } from './services/royaltyClaim'
 import { getDefaultAgentRegistrationConfig } from './services/agentRegistration'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
-import { createOWSConfig, createOWSFromCore, type OWSVaultConfig } from './services/owsAdapter'
+import { createOWSConfig, createOWSFromCore } from './services/owsAdapter'
 import { getDefaultPublishConfig, createPlotlinkUploadClient } from './services/plotlinkPublish'
+import { resolveOwsVaultConfig } from './services/owsRuntimeConfig'
 import { resolveProjectFilePath } from './services/fsService'
 import { keccak256, toBytes } from 'viem'
 
@@ -50,15 +51,12 @@ app.whenReady().then(async () => {
   registerTerminalHandlers()
 
   const owsModule = await createOWSFromCore()
-  const vaultConfig: OWSVaultConfig = {
-    vaultPath: process.env.OWS_VAULT_PATH,
-    passphrase: process.env.OWS_PASSPHRASE,
-    chain: process.env.OWS_DEFAULT_CHAIN || 'eip155:8453'
-  }
+  const vaultConfig = resolveOwsVaultConfig()
 
   const signerMode = (process.env.PLOTLINK_SIGNER_MODE === 'live' ? 'live' : 'mock') as
     | 'live'
     | 'mock'
+
   const walletState = createSelectedWalletState()
 
   const signer = createWalletSigner({

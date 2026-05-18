@@ -230,6 +230,28 @@ describe('publish:preflight', () => {
     expect(result.ready).toBe(false)
     expect(result.errors).toContain('BASE_RPC_URL is required for live publish')
   })
+
+  it('rejects non-Base chain in live mode', () => {
+    const deps = createDeps({
+      signer: mockSigner(false),
+      walletState: {
+        wallet: {
+          address: '0xabc',
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-18T00:00:00Z'
+        }
+      },
+      vaultConfig: { chain: 'eip155:1' }
+    })
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:preflight')
+    const result = handler() as PublishPreflightResult
+
+    expect(result.ready).toBe(false)
+    expect(result.errors.some((e: string) => e.includes('eip155:8453'))).toBe(true)
+  })
 })
 
 describe('publish:execute', () => {
@@ -247,6 +269,28 @@ describe('publish:execute', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('requires explicit confirmation')
+  })
+
+  it('rejects non-Base chain in live execute', async () => {
+    const deps = createDeps({
+      signer: mockSigner(false),
+      walletState: {
+        wallet: {
+          address: '0xabc',
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-18T00:00:00Z'
+        }
+      },
+      vaultConfig: { chain: 'eip155:1' }
+    })
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:execute')
+    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('eip155:8453')
   })
 
   it('returns mock result in mock mode with estimating state', async () => {

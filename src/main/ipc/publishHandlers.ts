@@ -16,6 +16,7 @@ import {
   validatePublishConfig,
   fetchCreationFee
 } from '../services/plotlinkPublish'
+import { validatePublishChain } from '../services/owsRuntimeConfig'
 import type { OWSCoreModule, OWSVaultConfig } from '../services/owsAdapter'
 import type {
   PublishPreflightResult,
@@ -145,6 +146,7 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
         errors.push('No wallet connected')
       }
       errors.push(...validatePublishConfig(deps.config))
+      errors.push(...validatePublishChain(deps.vaultConfig.chain))
     }
 
     return {
@@ -182,7 +184,10 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
         return { success: false, error: 'No wallet connected' }
       }
 
-      const configErrors = validatePublishConfig(deps.config)
+      const configErrors = [
+        ...validatePublishConfig(deps.config),
+        ...validatePublishChain(deps.vaultConfig.chain)
+      ]
       if (configErrors.length > 0) {
         return { success: false, error: configErrors.join('; ') }
       }

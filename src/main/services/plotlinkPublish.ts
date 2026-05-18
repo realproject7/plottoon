@@ -13,6 +13,7 @@ import type {
 } from '../../shared/publishTransaction'
 import type { OWSCoreModule } from './owsAdapter'
 import { createOwsViemAccount } from './owsViemAccount'
+import { resolvePublishContractDefaults } from './owsRuntimeConfig'
 
 export interface PublishConfig {
   rpcUrl: string
@@ -544,11 +545,12 @@ export function createPlotlinkUploadClient(
 }
 
 export function getDefaultPublishConfig(): PublishConfig {
+  const { storyFactoryAddress, mcv2BondAddress } = resolvePublishContractDefaults()
   return {
     rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
     plotlinkBaseUrl: process.env.PLOTLINK_BASE_URL || 'https://plotlink.xyz',
-    storyFactoryAddress: process.env.PLOTLINK_STORY_FACTORY_ADDRESS || '',
-    mcv2BondAddress: process.env.MCV2_BOND_ADDRESS || '',
+    storyFactoryAddress,
+    mcv2BondAddress,
     creationFeeWei: process.env.PLOTLINK_CREATION_FEE_WEI || undefined,
     indexRetries: 10,
     indexRetryDelayMs: 30000,
