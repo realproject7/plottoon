@@ -207,9 +207,8 @@ export async function executeAgentRegistration(
   }
 
   const postStatus = await readAgentStatus(deps.walletAddress, { config: deps.config })
-  const agentId = postStatus.agentId ?? txHash
 
-  return { success: true, agentId, txHash }
+  return { success: true, agentId: postStatus.agentId ?? undefined, txHash }
 }
 
 export function buildOwnerBindingMessage(humanWallet: string, owsWallet: string): string {
