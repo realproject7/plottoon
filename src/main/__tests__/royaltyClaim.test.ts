@@ -31,9 +31,10 @@ describe('getDefaultRoyaltyConfig', () => {
     expect(config.plotTokenAddress).toBeTruthy()
   })
 
-  it('defaults PLOT token to Base mainnet constant', () => {
+  it('defaults PLOT token to Base mainnet constant with valid EIP-55 checksum', () => {
     const config = getDefaultRoyaltyConfig()
     expect(config.plotTokenAddress).toBe(PLOT_TOKEN_BASE_MAINNET)
+    expect(config.plotTokenAddress).toBe('0x7C12CafB7A3584f6b4d4fB0cCE2a3968CB89B5c7')
     expect(config.plotTokenAddress).not.toBe('0x0000000000000000000000000000000000000000')
   })
 
@@ -72,6 +73,24 @@ describe('validateRoyaltyConfig', () => {
     expect(errors).toContain('MCV2_BOND_ADDRESS is required for royalty operations')
   })
 
+  it('rejects empty PLOT token address', () => {
+    const errors = validateRoyaltyConfig({
+      rpcUrl: 'https://rpc.example',
+      mcv2BondAddress: '0x1234567890abcdef1234567890abcdef12345678',
+      plotTokenAddress: ''
+    })
+    expect(errors).toContain('PLOT_TOKEN_ADDRESS is required for royalty operations')
+  })
+
+  it('rejects zero PLOT token address', () => {
+    const errors = validateRoyaltyConfig({
+      rpcUrl: 'https://rpc.example',
+      mcv2BondAddress: '0x1234567890abcdef1234567890abcdef12345678',
+      plotTokenAddress: '0x0000000000000000000000000000000000000000'
+    })
+    expect(errors).toContain('PLOT_TOKEN_ADDRESS is required for royalty operations')
+  })
+
   it('rejects empty RPC URL', () => {
     const errors = validateRoyaltyConfig({
       rpcUrl: '',
@@ -79,6 +98,32 @@ describe('validateRoyaltyConfig', () => {
       plotTokenAddress: PLOT_TOKEN_BASE_MAINNET
     })
     expect(errors).toContain('BASE_RPC_URL is required for royalty operations')
+  })
+
+  it('collects multiple validation errors', () => {
+    const errors = validateRoyaltyConfig({
+      rpcUrl: '',
+      mcv2BondAddress: '',
+      plotTokenAddress: ''
+    })
+    expect(errors).toHaveLength(3)
+    expect(errors).toContain('MCV2_BOND_ADDRESS is required for royalty operations')
+    expect(errors).toContain('PLOT_TOKEN_ADDRESS is required for royalty operations')
+    expect(errors).toContain('BASE_RPC_URL is required for royalty operations')
+  })
+})
+
+describe('PLOT_TOKEN_BASE_MAINNET parity with plotlink-ows', () => {
+  it('matches the known PlotLink Base mainnet PLOT token address', () => {
+    expect(PLOT_TOKEN_BASE_MAINNET).toBe('0x7C12CafB7A3584f6b4d4fB0cCE2a3968CB89B5c7')
+  })
+
+  it('has valid EIP-55 checksum (lowercase matches expected)', () => {
+    expect(PLOT_TOKEN_BASE_MAINNET.toLowerCase()).toBe('0x7c12cafb7a3584f6b4d4fb0cce2a3968cb89b5c7')
+  })
+
+  it('is a valid 20-byte hex address', () => {
+    expect(PLOT_TOKEN_BASE_MAINNET).toMatch(/^0x[0-9a-fA-F]{40}$/)
   })
 })
 
