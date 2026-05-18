@@ -9,9 +9,13 @@ import {
   registerWalletConnectionHandlers,
   createSelectedWalletState
 } from './ipc/walletConnectionHandlers'
+import { registerPublishHandlers } from './ipc/publishHandlers'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
 import { createOWSConfig, createOWSFromCore, type OWSVaultConfig } from './services/owsAdapter'
+import { getDefaultPublishConfig } from './services/plotlinkPublish'
+import { resolveProjectFilePath } from './services/fsService'
+import { keccak256, toBytes } from 'viem'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -40,18 +44,64 @@ app.whenReady().then(async () => {
   registerProjectHandlers()
   registerTerminalHandlers()
 
-  const signer = createWalletSigner({ mode: 'mock' })
-  registerSigningHandlers(signer)
-
   const owsModule = await createOWSFromCore()
   const vaultConfig: OWSVaultConfig = {
     vaultPath: process.env.OWS_VAULT_PATH,
     passphrase: process.env.OWS_PASSPHRASE,
     chain: process.env.OWS_DEFAULT_CHAIN || 'eip155:8453'
   }
-  const walletConfig = createOWSConfig(owsModule, vaultConfig)
+
+  const signerMode = (process.env.PLOTLINK_SIGNER_MODE === 'live' ? 'live' : 'mock') as
+    | 'live'
+    | 'mock'
   const walletState = createSelectedWalletState()
+
+  const signer = createWalletSigner({
+    mode: signerMode,
+    sign:
+      signerMode === 'live'
+        ? async (message: string) => {
+            const wallet = walletState.wallet
+            if (!wallet) throw new Error('No wallet connected for signing')
+            const result = owsModule.signMessage(
+              wallet.name,
+              vaultConfig.chain,
+              message,
+              vaultConfig.passphrase ?? null
+            )
+            return result.signature
+          }
+        : undefined
+  })
+  registerSigningHandlers(signer)
+
+  const walletConfig = createOWSConfig(owsModule, vaultConfig)
   registerWalletConnectionHandlers(walletConfig, walletState, signer)
+
+  const publishConfig = getDefaultPublishConfig()
+  registerPublishHandlers({
+    walletState,
+    signer,
+    owsModule,
+    vaultConfig,
+    config: publishConfig,
+    ipfs: {
+      async upload(content: string) {
+        const response = await fetch(publishConfig.ipfsUploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pinataContent: content })
+        })
+        const json = (await response.json()) as { IpfsHash: string }
+        return { cid: json.IpfsHash }
+      }
+    },
+    keccak: (content: string) => keccak256(toBytes(content)),
+    fetchFn: fetch as unknown as (url: string, init: RequestInit) => Promise<Response>,
+    getWindow: () => BrowserWindow.getAllWindows()[0] ?? null,
+    resolvePlotDir: async (projectId: string, plotSlug: string) =>
+      resolveProjectFilePath(projectId, 'plots', plotSlug)
+  })
 
   createWindow()
 

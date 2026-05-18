@@ -67,6 +67,19 @@ contextBridge.exposeInMainWorld('plottoon', {
     disconnect: () => ipcRenderer.invoke('wallet:disconnect'),
     getSignerMode: () => ipcRenderer.invoke('wallet:getSignerMode')
   },
+  publish: {
+    preflight: () => ipcRenderer.invoke('publish:preflight'),
+    execute: (request: unknown, confirmed: boolean) =>
+      ipcRenderer.invoke('publish:execute', request, confirmed),
+    onProgress: (callback: (progress: { state: string; detail?: string }) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        progress: { state: string; detail?: string }
+      ) => callback(progress)
+      ipcRenderer.on('publish:progress', handler)
+      return () => ipcRenderer.removeListener('publish:progress', handler)
+    }
+  },
   project: {
     discover: () => ipcRenderer.invoke('project:discover'),
     readMeta: (projectId: string) => ipcRenderer.invoke('project:readMeta', projectId),

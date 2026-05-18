@@ -1,7 +1,13 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-export type PlotState = 'draft' | 'ready' | 'publishing' | 'published' | 'failed'
+export type PlotState =
+  | 'draft'
+  | 'ready'
+  | 'publishing'
+  | 'published'
+  | 'published-not-indexed'
+  | 'failed'
 export type CutState = 'pending' | 'uploaded' | 'failed'
 
 export interface CutPublishEntry {
@@ -17,6 +23,21 @@ export interface CutPublishEntry {
   updatedAt: string
 }
 
+export interface PublishResultRecord {
+  txHash: string | null
+  storylineId: string | null
+  plotIndex: number | null
+  contentCid: string | null
+  contentHash: string | null
+  authorAddress: string | null
+  gasCostWei: string | null
+  plotlinkUrl: string | null
+  walletAddress: string | null
+  walletSource: string | null
+  indexed: boolean
+  indexError: string | null
+}
+
 export interface PublishStatusFile {
   version: number
   plotState: PlotState
@@ -24,6 +45,7 @@ export interface PublishStatusFile {
   publishedAt: string | null
   updatedAt: string
   cuts: CutPublishEntry[]
+  publishResult: PublishResultRecord | null
 }
 
 export class PublishStatusError extends Error {
@@ -47,7 +69,14 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-const VALID_PLOT_STATES: PlotState[] = ['draft', 'ready', 'publishing', 'published', 'failed']
+const VALID_PLOT_STATES: PlotState[] = [
+  'draft',
+  'ready',
+  'publishing',
+  'published',
+  'published-not-indexed',
+  'failed'
+]
 const VALID_CUT_STATES: CutState[] = ['pending', 'uploaded', 'failed']
 
 function validateCutEntry(data: unknown, index: number, filePath: string): CutPublishEntry {
@@ -143,13 +172,36 @@ export function validatePublishStatus(data: unknown, filePath: string): PublishS
     ids.add(cut.cutId)
   }
 
+  let publishResult: PublishResultRecord | null = null
+  if (obj.publishResult !== null && obj.publishResult !== undefined) {
+    if (typeof obj.publishResult !== 'object') {
+      fail('"publishResult" must be an object or null', filePath)
+    }
+    const pr = obj.publishResult as Record<string, unknown>
+    publishResult = {
+      txHash: (pr.txHash as string) ?? null,
+      storylineId: (pr.storylineId as string) ?? null,
+      plotIndex: typeof pr.plotIndex === 'number' ? pr.plotIndex : null,
+      contentCid: (pr.contentCid as string) ?? null,
+      contentHash: (pr.contentHash as string) ?? null,
+      authorAddress: (pr.authorAddress as string) ?? null,
+      gasCostWei: (pr.gasCostWei as string) ?? null,
+      plotlinkUrl: (pr.plotlinkUrl as string) ?? null,
+      walletAddress: (pr.walletAddress as string) ?? null,
+      walletSource: (pr.walletSource as string) ?? null,
+      indexed: typeof pr.indexed === 'boolean' ? pr.indexed : false,
+      indexError: (pr.indexError as string) ?? null
+    }
+  }
+
   return {
     version: obj.version as number,
     plotState: obj.plotState as PlotState,
     error: (obj.error as string) ?? null,
     publishedAt: (obj.publishedAt as string) ?? null,
     updatedAt: obj.updatedAt as string,
-    cuts
+    cuts,
+    publishResult
   }
 }
 
@@ -193,6 +245,7 @@ export function createPublishStatus(cutIds: string[]): PublishStatusFile {
     error: null,
     publishedAt: null,
     updatedAt: now,
+    publishResult: null,
     cuts: cutIds.map((cutId) => ({
       cutId,
       state: 'pending' as CutState,
@@ -265,12 +318,37 @@ export function markCutFailed(
   return { ...status, cuts, updatedAt: now }
 }
 
-export function markPlotPublished(status: PublishStatusFile): PublishStatusFile {
-  if (status.plotState === 'published' && status.error === null) {
+export function markPlotPublished(
+  status: PublishStatusFile,
+  result?: PublishResultRecord
+): PublishStatusFile {
+  if (status.plotState === 'published' && status.error === null && !result) {
     return status
   }
   const now = nowIso()
-  return { ...status, plotState: 'published', publishedAt: now, error: null, updatedAt: now }
+  return {
+    ...status,
+    plotState: 'published',
+    publishedAt: now,
+    error: null,
+    publishResult: result ?? status.publishResult,
+    updatedAt: now
+  }
+}
+
+export function markPublishedNotIndexed(
+  status: PublishStatusFile,
+  result: PublishResultRecord
+): PublishStatusFile {
+  const now = nowIso()
+  return {
+    ...status,
+    plotState: 'published-not-indexed',
+    publishedAt: now,
+    publishResult: result,
+    error: result.indexError ?? 'Indexing failed',
+    updatedAt: now
+  }
 }
 
 export function markPlotFailed(status: PublishStatusFile, error: string): PublishStatusFile {
