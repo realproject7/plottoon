@@ -1,14 +1,7 @@
-import {
-  encodeFunctionData,
-  createWalletClient,
-  createPublicClient,
-  http,
-  serializeTransaction,
-  type Hex
-} from 'viem'
-import { toAccount } from 'viem/accounts'
+import { encodeFunctionData, createWalletClient, createPublicClient, http, type Hex } from 'viem'
 import { base } from 'viem/chains'
 import type { OWSCoreModule } from './owsAdapter'
+import { createOwsViemAccount } from './owsViemAccount'
 import type { RoyaltyInfo, RoyaltyClaimResult } from '../../shared/royaltyFlow'
 
 export const PLOT_TOKEN_BASE_MAINNET = '0x7c12cAfb7a3584F6b4d4FB0cce2a3968cB89B5C7'
@@ -109,26 +102,12 @@ export async function executeRoyaltyClaim(
 
   progress('signing', 'Signing transaction with OWS wallet')
 
-  const account = toAccount({
-    address: deps.walletAddress as Hex,
-    async signMessage({ message }) {
-      const raw = typeof message === 'string' ? message : String(message.raw)
-      const result = deps.ows.signMessage(deps.walletName, deps.chain, raw, deps.passphrase ?? null)
-      return result.signature as Hex
-    },
-    async signTransaction(tx) {
-      const serialized = serializeTransaction(tx)
-      const result = deps.ows.signTransaction(
-        deps.walletName,
-        deps.chain,
-        serialized,
-        deps.passphrase ?? null
-      )
-      return result.signature as Hex
-    },
-    async signTypedData() {
-      throw new Error('signTypedData not supported by OWS signer')
-    }
+  const account = createOwsViemAccount({
+    ows: deps.ows,
+    walletName: deps.walletName,
+    walletAddress: deps.walletAddress,
+    chain: deps.chain,
+    passphrase: deps.passphrase
   })
 
   const walletClient = createWalletClient({
