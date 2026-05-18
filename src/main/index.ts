@@ -5,8 +5,13 @@ import { registerFsHandlers } from './ipc/fsHandlers'
 import { registerProjectHandlers } from './ipc/projectHandlers'
 import { registerTerminalHandlers } from './ipc/terminalHandlers'
 import { registerSigningHandlers } from './ipc/signingHandlers'
+import {
+  registerWalletConnectionHandlers,
+  createSelectedWalletState
+} from './ipc/walletConnectionHandlers'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
+import { createOWSConfig, createOWSFromCore } from './services/owsAdapter'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -30,13 +35,18 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerFsHandlers()
   registerProjectHandlers()
   registerTerminalHandlers()
 
   const signer = createWalletSigner({ mode: 'mock' })
   registerSigningHandlers(signer)
+
+  const owsModule = await createOWSFromCore()
+  const walletConfig = createOWSConfig(owsModule)
+  const walletState = createSelectedWalletState()
+  registerWalletConnectionHandlers(walletConfig, walletState, signer)
 
   createWindow()
 

@@ -128,6 +128,13 @@ beforeEach(() => {
     actionLog: {
       log: vi.fn(),
       get: vi.fn().mockResolvedValue([])
+    },
+    wallet: {
+      getOptions: vi.fn().mockResolvedValue({ options: [] }),
+      connect: vi.fn().mockResolvedValue({ success: true }),
+      getConnected: vi.fn().mockResolvedValue({ connected: false }),
+      disconnect: vi.fn().mockResolvedValue({ success: true }),
+      getSignerMode: vi.fn().mockResolvedValue({ mode: 'mock' })
     }
   }
 })
