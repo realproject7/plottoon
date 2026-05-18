@@ -203,6 +203,50 @@ describe('retryIndex', () => {
     expect(result.error).toContain('failed after all attempts')
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
+
+  it('treats cached storyline response as success', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, cached: true })
+    })
+    const result = await retryIndex({ txHash: '0x1' }, 'https://plotlink.xyz/api/index/storyline', {
+      plotlinkBaseUrl: 'https://plotlink.xyz',
+      indexRetries: 2,
+      indexRetryDelayMs: 0,
+      fetch: mockFetch
+    })
+    expect(result.success).toBe(true)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats cached plot response as success', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, cached: true })
+    })
+    const result = await retryIndex({ txHash: '0x1' }, 'https://plotlink.xyz/api/index/plot', {
+      plotlinkBaseUrl: 'https://plotlink.xyz',
+      indexRetries: 2,
+      indexRetryDelayMs: 0,
+      fetch: mockFetch
+    })
+    expect(result.success).toBe(true)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects ok:true without cached:true as not successful', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true })
+    })
+    const result = await retryIndex({ txHash: '0x1' }, 'https://plotlink.xyz/api/index/storyline', {
+      plotlinkBaseUrl: 'https://plotlink.xyz',
+      indexRetries: 0,
+      indexRetryDelayMs: 0,
+      fetch: mockFetch
+    })
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('markManualNotIndexed', () => {

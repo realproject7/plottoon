@@ -298,8 +298,10 @@ async function indexWithRetry(
         body: JSON.stringify(body)
       })
       if (response.ok) {
-        const json = (await response.json()) as { success: boolean }
-        if (json.success) return { success: true }
+        const json = (await response.json()) as Record<string, unknown>
+        if (json.success === true || (json.ok === true && json.cached === true)) {
+          return { success: true }
+        }
       }
       if (attempt < deps.config.indexRetries) {
         await new Promise((r) => setTimeout(r, deps.config.indexRetryDelayMs))

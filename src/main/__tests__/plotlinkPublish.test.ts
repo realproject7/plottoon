@@ -629,3 +629,82 @@ describe('realPublish — creation fee usage', () => {
     )
   })
 })
+
+describe('realPublish — cached index responses', () => {
+  it('marks cached storyline index response as indexed', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl-cached', plotIndex: 0 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { ok: true, cached: true } }])
+    const deps = createDeps({ signer, encoder, fetch: fetchFn })
+
+    const result = await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'Cached Story',
+        contentCid: '',
+        contentHash: '',
+        hasDeadline: false
+      },
+      '# Cached',
+      '0xauthor',
+      deps,
+      { isNsfw: 'false', contentType: 'cartoon' }
+    )
+
+    expect(result.indexed).toBe(true)
+    expect(result.indexError).toBeUndefined()
+    const [url] = fetchFn.mock.calls[0]
+    expect(url).toContain('/api/index/storyline')
+  })
+
+  it('marks cached plot index response as indexed', async () => {
+    const encoder = mockEncoder({ plotIndex: 2 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { ok: true, cached: true } }])
+    const deps = createDeps({ signer, encoder, fetch: fetchFn })
+
+    const result = await realPublish(
+      {
+        action: 'chain-plot',
+        storylineId: '42',
+        title: 'Cached Plot',
+        contentCid: '',
+        contentHash: ''
+      },
+      '# Cached Plot',
+      '0xauthor',
+      deps
+    )
+
+    expect(result.indexed).toBe(true)
+    expect(result.indexError).toBeUndefined()
+    const [url] = fetchFn.mock.calls[0]
+    expect(url).toContain('/api/index/plot')
+  })
+
+  it('rejects response with ok:true but cached:false', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl-id', plotIndex: 0 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([
+      { ok: true, body: { ok: true, cached: false } },
+      { ok: true, body: { ok: true, cached: false } }
+    ])
+    const deps = createDeps({ signer, encoder, fetch: fetchFn })
+
+    const result = await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'Story',
+        contentCid: '',
+        contentHash: '',
+        hasDeadline: false
+      },
+      '# Ep',
+      '0xauthor',
+      deps
+    )
+
+    expect(result.indexed).toBe(false)
+    expect(result.indexError).toContain('failed')
+  })
+})
