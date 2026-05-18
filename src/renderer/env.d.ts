@@ -212,7 +212,7 @@ interface DashboardStorylineGroup {
   publishedCount: number
   notIndexedCount: number
   latestPublishedAt: string | null
-  totalGasCostWei: string
+  totalPublishCostWei: string
 }
 
 interface DashboardLocalGroup {

@@ -173,7 +173,7 @@ function StorylineCard({ group }: { group: DashboardStorylineGroup }) {
             )}
           </div>
           <div style={{ color: 'var(--color-text-muted)' }}>
-            Gas: {formatGasWei(group.totalGasCostWei)}
+            Cost: {formatGasWei(group.totalPublishCostWei)}
           </div>
         </div>
       </div>
