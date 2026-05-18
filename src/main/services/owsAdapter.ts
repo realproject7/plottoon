@@ -30,14 +30,29 @@ export interface OWSCoreModule {
     wallet: string,
     chain: string,
     message: string,
-    passphrase?: string | null
+    passphrase?: string | null,
+    encoding?: string | null,
+    index?: number | null,
+    vaultPath?: string | null
   ): OWSSignResult
   signTransaction(
     wallet: string,
     chain: string,
     txHex: string,
-    passphrase?: string | null
+    passphrase?: string | null,
+    index?: number | null,
+    vaultPath?: string | null
   ): OWSSignResult
+}
+
+export interface OWSVaultConfig {
+  vaultPath?: string
+  passphrase?: string
+  chain: string
+}
+
+const DEFAULT_VAULT_CONFIG: OWSVaultConfig = {
+  chain: 'eip155:1'
 }
 
 function extractEvmAddress(accounts: OWSAccountInfo[]): string | undefined {
@@ -45,9 +60,12 @@ function extractEvmAddress(accounts: OWSAccountInfo[]): string | undefined {
   return evm?.address
 }
 
-export function createOWSDiscoverFn(module: OWSCoreModule): OWSVaultDiscoverFn {
+export function createOWSDiscoverFn(
+  module: OWSCoreModule,
+  vaultConfig: OWSVaultConfig = DEFAULT_VAULT_CONFIG
+): OWSVaultDiscoverFn {
   return async (): Promise<OWSVaultEntry[]> => {
-    const wallets = module.listWallets()
+    const wallets = module.listWallets(vaultConfig.vaultPath)
     return wallets
       .map((w) => {
         const address = extractEvmAddress(w.accounts)
@@ -58,9 +76,17 @@ export function createOWSDiscoverFn(module: OWSCoreModule): OWSVaultDiscoverFn {
   }
 }
 
-export function createOWSCreateFn(module: OWSCoreModule): OWSWalletCreateFn {
+export function createOWSCreateFn(
+  module: OWSCoreModule,
+  vaultConfig: OWSVaultConfig = DEFAULT_VAULT_CONFIG
+): OWSWalletCreateFn {
   return async (name: string): Promise<{ address: string }> => {
-    const wallet = module.createWallet(name)
+    const wallet = module.createWallet(
+      name,
+      vaultConfig.passphrase ?? null,
+      null,
+      vaultConfig.vaultPath ?? null
+    )
     const address = extractEvmAddress(wallet.accounts)
     if (!address) {
       throw new Error('Created wallet has no EVM account')
@@ -69,10 +95,48 @@ export function createOWSCreateFn(module: OWSCoreModule): OWSWalletCreateFn {
   }
 }
 
-export function createOWSConfig(module: OWSCoreModule) {
+export function createOWSSignMessageFn(
+  module: OWSCoreModule,
+  vaultConfig: OWSVaultConfig = DEFAULT_VAULT_CONFIG
+) {
+  return (walletName: string, message: string): OWSSignResult => {
+    return module.signMessage(
+      walletName,
+      vaultConfig.chain,
+      message,
+      vaultConfig.passphrase ?? null,
+      null,
+      null,
+      vaultConfig.vaultPath ?? null
+    )
+  }
+}
+
+export function createOWSSignTransactionFn(
+  module: OWSCoreModule,
+  vaultConfig: OWSVaultConfig = DEFAULT_VAULT_CONFIG
+) {
+  return (walletName: string, txHex: string): OWSSignResult => {
+    return module.signTransaction(
+      walletName,
+      vaultConfig.chain,
+      txHex,
+      vaultConfig.passphrase ?? null,
+      null,
+      vaultConfig.vaultPath ?? null
+    )
+  }
+}
+
+export function createOWSConfig(
+  module: OWSCoreModule,
+  vaultConfig: OWSVaultConfig = DEFAULT_VAULT_CONFIG
+) {
   return {
-    discoverVault: createOWSDiscoverFn(module),
-    createWallet: createOWSCreateFn(module)
+    discoverVault: createOWSDiscoverFn(module, vaultConfig),
+    createWallet: createOWSCreateFn(module, vaultConfig),
+    signMessage: createOWSSignMessageFn(module, vaultConfig),
+    signTransaction: createOWSSignTransactionFn(module, vaultConfig)
   }
 }
 
@@ -90,11 +154,26 @@ export async function createOWSFromCore(): Promise<OWSCoreModule> {
     ) {
       return ows.createWallet(name, passphrase, words, vaultPath)
     },
-    signMessage(wallet: string, chain: string, message: string, passphrase?: string | null) {
-      return ows.signMessage(wallet, chain, message, passphrase)
+    signMessage(
+      wallet: string,
+      chain: string,
+      message: string,
+      passphrase?: string | null,
+      encoding?: string | null,
+      index?: number | null,
+      vaultPath?: string | null
+    ) {
+      return ows.signMessage(wallet, chain, message, passphrase, encoding, index, vaultPath)
     },
-    signTransaction(wallet: string, chain: string, txHex: string, passphrase?: string | null) {
-      return ows.signTransaction(wallet, chain, txHex, passphrase)
+    signTransaction(
+      wallet: string,
+      chain: string,
+      txHex: string,
+      passphrase?: string | null,
+      index?: number | null,
+      vaultPath?: string | null
+    ) {
+      return ows.signTransaction(wallet, chain, txHex, passphrase, index, vaultPath)
     }
   }
 }

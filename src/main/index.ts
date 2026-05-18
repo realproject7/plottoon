@@ -11,7 +11,7 @@ import {
 } from './ipc/walletConnectionHandlers'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
-import { createOWSConfig, createOWSFromCore } from './services/owsAdapter'
+import { createOWSConfig, createOWSFromCore, type OWSVaultConfig } from './services/owsAdapter'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -44,7 +44,12 @@ app.whenReady().then(async () => {
   registerSigningHandlers(signer)
 
   const owsModule = await createOWSFromCore()
-  const walletConfig = createOWSConfig(owsModule)
+  const vaultConfig: OWSVaultConfig = {
+    vaultPath: process.env.OWS_VAULT_PATH,
+    passphrase: process.env.OWS_PASSPHRASE,
+    chain: 'eip155:1'
+  }
+  const walletConfig = createOWSConfig(owsModule, vaultConfig)
   const walletState = createSelectedWalletState()
   registerWalletConnectionHandlers(walletConfig, walletState, signer)
 
