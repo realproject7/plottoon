@@ -74,7 +74,14 @@ describe('Dashboard', () => {
     const slId = '0x' + 'aa'.repeat(32)
     mockGetData.mockResolvedValue({
       ...emptyDashboard(),
-      counts: { totalProjects: 1, totalPlots: 2, publishedPlots: 2, pendingPlots: 0, notIndexedPlots: 0, failedPlots: 0 },
+      counts: {
+        totalProjects: 1,
+        totalPlots: 2,
+        publishedPlots: 2,
+        pendingPlots: 0,
+        notIndexedPlots: 0,
+        failedPlots: 0
+      },
       storylines: [
         {
           storylineId: slId,
@@ -143,13 +150,23 @@ describe('Dashboard', () => {
       expect(screen.getByText('Episode 2')).toBeDefined()
       expect(screen.getByText('3 cuts')).toBeDefined()
       expect(screen.getByText('2 cuts')).toBeDefined()
+      const txLinks = screen.getAllByText('Tx')
+      expect(txLinks).toHaveLength(2)
+      expect(txLinks[0].closest('a')?.href).toContain('basescan.org/tx/0xtx1')
     })
   })
 
   it('renders local groups for unpublished plots', async () => {
     mockGetData.mockResolvedValue({
       ...emptyDashboard(),
-      counts: { totalProjects: 1, totalPlots: 1, publishedPlots: 0, pendingPlots: 1, notIndexedPlots: 0, failedPlots: 0 },
+      counts: {
+        totalProjects: 1,
+        totalPlots: 1,
+        publishedPlots: 0,
+        pendingPlots: 1,
+        notIndexedPlots: 0,
+        failedPlots: 0
+      },
       localGroups: [
         {
           groupKey: 'proj-1:Draft Comic',
@@ -284,7 +301,14 @@ describe('Dashboard', () => {
   it('renders plot state badges', async () => {
     mockGetData.mockResolvedValue({
       ...emptyDashboard(),
-      counts: { totalProjects: 1, totalPlots: 1, publishedPlots: 0, pendingPlots: 0, notIndexedPlots: 0, failedPlots: 1 },
+      counts: {
+        totalProjects: 1,
+        totalPlots: 1,
+        publishedPlots: 0,
+        pendingPlots: 0,
+        notIndexedPlots: 0,
+        failedPlots: 1
+      },
       localGroups: [
         {
           groupKey: 'proj-1:Comic',
@@ -316,7 +340,14 @@ describe('Dashboard', () => {
     await waitFor(() => screen.getByText('Refresh'))
     mockGetData.mockResolvedValue({
       ...emptyDashboard(),
-      counts: { totalProjects: 5, totalPlots: 0, publishedPlots: 0, pendingPlots: 0, notIndexedPlots: 0, failedPlots: 0 }
+      counts: {
+        totalProjects: 5,
+        totalPlots: 0,
+        publishedPlots: 0,
+        pendingPlots: 0,
+        notIndexedPlots: 0,
+        failedPlots: 0
+      }
     })
     fireEvent.click(screen.getByText('Refresh'))
     await waitFor(() => {

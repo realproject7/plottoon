@@ -106,7 +106,21 @@ app.whenReady().then(async () => {
 
   registerDashboardHandlers({
     getDashboardDeps: () => ({
-      getWallet: () => walletState.wallet
+      getWallet: () => walletState.wallet,
+      fetchBalance: publishConfig.rpcUrl
+        ? async (walletAddress: string) => {
+            const { createPublicClient, http } = await import('viem')
+            const { base } = await import('viem/chains')
+            const client = createPublicClient({
+              chain: base,
+              transport: http(publishConfig.rpcUrl)
+            })
+            const balance = await client.getBalance({
+              address: walletAddress as `0x${string}`
+            })
+            return balance.toString()
+          }
+        : undefined
     })
   })
 

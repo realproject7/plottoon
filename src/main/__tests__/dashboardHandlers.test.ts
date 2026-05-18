@@ -48,7 +48,13 @@ describe('dashboard:getData', () => {
       },
       storylines: [],
       localGroups: [],
-      wallet: { address: null, source: null, connected: false, balanceWei: null, balanceError: null },
+      wallet: {
+        address: null,
+        source: null,
+        connected: false,
+        balanceWei: null,
+        balanceError: null
+      },
       tokenPrice: { ethUsd: null, error: null },
       royalty: { earnedWei: null, claimedWei: null, unclaimedWei: null, error: null },
       generatedAt: '2026-05-18T00:00:00Z'

@@ -1,5 +1,9 @@
 import { ipcMain } from 'electron'
-import { buildDashboardData, type DashboardDeps, type DashboardData } from '../services/dashboardData'
+import {
+  buildDashboardData,
+  type DashboardDeps,
+  type DashboardData
+} from '../services/dashboardData'
 
 export interface DashboardHandlerDeps {
   getDashboardDeps: () => DashboardDeps

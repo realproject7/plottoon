@@ -121,6 +121,16 @@ function PlotRow({ plot }: { plot: DashboardPlotEntry }) {
       <span style={{ fontWeight: 500, flex: 1 }}>{plot.plotTitle}</span>
       <span style={{ color: 'var(--color-text-muted)' }}>{plot.cutCount} cuts</span>
       <PlotStateBadge state={plot.plotState} />
+      {plot.publishResult?.txHash && (
+        <a
+          href={`https://basescan.org/tx/${plot.publishResult.txHash}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--color-text-muted)', fontSize: 12, textDecoration: 'none' }}
+        >
+          Tx
+        </a>
+      )}
       {plot.publishResult?.plotlinkUrl && (
         <a
           href={plot.publishResult.plotlinkUrl}
@@ -192,7 +202,9 @@ function WalletCard({ wallet }: { wallet: DashboardWalletSummary }) {
     return (
       <div style={cardStyle}>
         <div style={statLabelStyle}>Wallet</div>
-        <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
+        <div
+          style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}
+        >
           Not connected
         </div>
       </div>
@@ -263,9 +275,7 @@ export function Dashboard() {
   }, [])
 
   if (loadState === 'loading') {
-    return (
-      <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>Loading dashboard…</div>
-    )
+    return <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>Loading dashboard…</div>
   }
 
   if (loadState === 'error' || !data) {
