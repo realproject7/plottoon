@@ -34,7 +34,7 @@ describe('getDefaultRoyaltyConfig', () => {
   it('defaults PLOT token to Base mainnet constant with valid EIP-55 checksum', () => {
     const config = getDefaultRoyaltyConfig()
     expect(config.plotTokenAddress).toBe(PLOT_TOKEN_BASE_MAINNET)
-    expect(config.plotTokenAddress).toBe('0x7C12CafB7A3584f6b4d4fB0cCE2a3968CB89B5c7')
+    expect(config.plotTokenAddress).toBe('0x4F567DACBF9D15A6acBe4A47FC2Ade0719Fb63C4')
     expect(config.plotTokenAddress).not.toBe('0x0000000000000000000000000000000000000000')
   })
 
@@ -115,11 +115,11 @@ describe('validateRoyaltyConfig', () => {
 
 describe('PLOT_TOKEN_BASE_MAINNET parity with plotlink-ows', () => {
   it('matches the known PlotLink Base mainnet PLOT token address', () => {
-    expect(PLOT_TOKEN_BASE_MAINNET).toBe('0x7C12CafB7A3584f6b4d4fB0cCE2a3968CB89B5c7')
+    expect(PLOT_TOKEN_BASE_MAINNET).toBe('0x4F567DACBF9D15A6acBe4A47FC2Ade0719Fb63C4')
   })
 
   it('has valid EIP-55 checksum (lowercase matches expected)', () => {
-    expect(PLOT_TOKEN_BASE_MAINNET.toLowerCase()).toBe('0x7c12cafb7a3584f6b4d4fb0cce2a3968cb89b5c7')
+    expect(PLOT_TOKEN_BASE_MAINNET.toLowerCase()).toBe('0x4f567dacbf9d15a6acbe4a47fc2ade0719fb63c4')
   })
 
   it('is a valid 20-byte hex address', () => {
