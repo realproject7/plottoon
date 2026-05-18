@@ -32,6 +32,13 @@ import {
   setPlotState,
   type PublishResultRecord
 } from '../services/publishStatus'
+import {
+  checkRetryContentEligibility,
+  selectIndexEndpoint,
+  buildIndexBody,
+  retryIndex,
+  markManualNotIndexed
+} from '../services/indexRecovery'
 
 export interface PublishHandlerDeps {
   walletState: SelectedWalletState
@@ -311,6 +318,83 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
         }
         return { success: false, error: message }
       }
+    }
+  )
+
+  ipcMain.handle(
+    'publish:retryIndex',
+    async (
+      _event,
+      params: {
+        projectId: string
+        plotSlug: string
+        fallbackContent?: string
+        meta?: { contentType?: string; isNsfw?: string; genre?: string; language?: string }
+      }
+    ): Promise<{ success: boolean; error?: string }> => {
+      const plotDir = await deps.resolvePlotDir(params.projectId, params.plotSlug)
+
+      let status = await loadOrCreateStatus(plotDir)
+      const eligibility = checkRetryContentEligibility(status, params.fallbackContent)
+      if (!eligibility.eligible) {
+        return { success: false, error: eligibility.reason ?? 'Not eligible for retry' }
+      }
+
+      const result = status.publishResult!
+      const { url, isStoryline } = selectIndexEndpoint(result, deps.config.plotlinkBaseUrl)
+      const body = buildIndexBody(result, isStoryline, params.fallbackContent ?? null, params.meta)
+
+      const indexResult = await retryIndex(body, url, {
+        plotlinkBaseUrl: deps.config.plotlinkBaseUrl,
+        indexRetries: deps.config.indexRetries,
+        indexRetryDelayMs: deps.config.indexRetryDelayMs,
+        fetch: deps.fetchFn
+      })
+
+      if (indexResult.success) {
+        const updatedResult: PublishResultRecord = {
+          ...result,
+          indexed: true,
+          indexError: null
+        }
+        status = markPlotPublished(status, updatedResult)
+      } else {
+        const updatedResult: PublishResultRecord = {
+          ...result,
+          indexError: indexResult.error ?? 'Index retry failed'
+        }
+        status = markPublishedNotIndexed(status, updatedResult)
+      }
+
+      await writePublishStatus(plotDir, status)
+      return indexResult
+    }
+  )
+
+  ipcMain.handle(
+    'publish:markNotIndexed',
+    async (
+      _event,
+      params: { projectId: string; plotSlug: string; reason: string }
+    ): Promise<{ success: boolean; error?: string }> => {
+      const plotDir = await deps.resolvePlotDir(params.projectId, params.plotSlug)
+
+      let status = await loadOrCreateStatus(plotDir)
+
+      if (status.plotState !== 'published' && status.plotState !== 'published-not-indexed') {
+        return {
+          success: false,
+          error: 'Can only mark published or published-not-indexed plots'
+        }
+      }
+
+      if (!status.publishResult) {
+        return { success: false, error: 'No publish result metadata to preserve' }
+      }
+
+      status = markManualNotIndexed(status, params.reason)
+      await writePublishStatus(plotDir, status)
+      return { success: true }
     }
   )
 }

@@ -345,10 +345,30 @@ interface PlottoonAgent {
   getBindingProof(humanWallet: string): Promise<OwnerBindingProof | { error: string }>
 }
 
+interface IndexRetryParams {
+  projectId: string
+  plotSlug: string
+  fallbackContent?: string
+  meta?: { contentType?: string; isNsfw?: string; genre?: string; language?: string }
+}
+
+interface MarkNotIndexedParams {
+  projectId: string
+  plotSlug: string
+  reason: string
+}
+
+interface IndexRetryResult {
+  success: boolean
+  error?: string
+}
+
 interface PlottoonPublish {
   preflight(): Promise<PublishPreflightResult>
   execute(request: PublishRequest, confirmed: boolean): Promise<PublishExecuteResult>
   onProgress(callback: (progress: PublishProgress) => void): () => void
+  retryIndex(params: IndexRetryParams): Promise<IndexRetryResult>
+  markNotIndexed(params: MarkNotIndexedParams): Promise<IndexRetryResult>
 }
 
 interface Window {

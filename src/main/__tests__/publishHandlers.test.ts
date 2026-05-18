@@ -450,3 +450,273 @@ describe('publish:execute', () => {
     expect(status.error).toBe('RPC connection refused')
   })
 })
+
+describe('publish:retryIndex', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plottoon-pubhandler-'))
+  })
+
+  async function writeNotIndexedStatus(txHash = '0xtx123') {
+    const status = {
+      version: 1,
+      plotState: 'published-not-indexed',
+      error: 'Indexing failed',
+      publishedAt: '2026-05-18T00:00:00Z',
+      updatedAt: '2026-05-18T00:00:00Z',
+      cuts: [],
+      publishResult: {
+        txHash,
+        storylineId: '0xstory1',
+        plotIndex: 1,
+        contentCid: 'bafyabc',
+        contentHash: '0xhash',
+        authorAddress: '0xauthor',
+        gasCostWei: '1000',
+        plotlinkUrl: null,
+        walletAddress: '0xwallet',
+        walletSource: 'plottoon-writer',
+        indexed: false,
+        indexError: 'Index failed after retries'
+      }
+    }
+    await fs.writeFile(
+      path.join(tmpDir, '.publish-status.json'),
+      JSON.stringify(status, null, 2),
+      'utf-8'
+    )
+  }
+
+  it('retries indexing and updates status on success', async () => {
+    await writeNotIndexedStatus()
+    const mockFetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    const deps = createDeps({ fetchFn: mockFetchFn })
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:retryIndex')
+    const result = (await handler(
+      {},
+      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+    )) as {
+      success: boolean
+    }
+    expect(result.success).toBe(true)
+
+    const statusRaw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
+    const status = JSON.parse(statusRaw)
+    expect(status.plotState).toBe('published')
+    expect(status.publishResult.indexed).toBe(true)
+    expect(status.publishResult.indexError).toBeNull()
+  })
+
+  it('rejects when plot is not published-not-indexed', async () => {
+    const status = {
+      version: 1,
+      plotState: 'draft',
+      error: null,
+      publishedAt: null,
+      updatedAt: '2026-05-18T00:00:00Z',
+      cuts: [],
+      publishResult: null
+    }
+    await fs.writeFile(
+      path.join(tmpDir, '.publish-status.json'),
+      JSON.stringify(status, null, 2),
+      'utf-8'
+    )
+
+    const deps = createDeps()
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:retryIndex')
+    const result = (await handler(
+      {},
+      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+    )) as {
+      success: boolean
+      error: string
+    }
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not in published-not-indexed')
+  })
+
+  it('blocks retry when txHash is missing', async () => {
+    await writeNotIndexedStatus()
+    const statusRaw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
+    const status = JSON.parse(statusRaw)
+    status.publishResult.txHash = null
+    await fs.writeFile(
+      path.join(tmpDir, '.publish-status.json'),
+      JSON.stringify(status, null, 2),
+      'utf-8'
+    )
+
+    const deps = createDeps()
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:retryIndex')
+    const result = (await handler(
+      {},
+      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+    )) as {
+      success: boolean
+      error: string
+    }
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Missing txHash')
+  })
+
+  it('updates indexError on retry failure', async () => {
+    await writeNotIndexedStatus()
+    const mockFetchFn = vi.fn().mockRejectedValue(new Error('Network error'))
+    const deps = createDeps({
+      fetchFn: mockFetchFn,
+      config: { ...mockConfig(), indexRetries: 0 }
+    })
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:retryIndex')
+    const result = (await handler(
+      {},
+      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+    )) as {
+      success: boolean
+      error: string
+    }
+    expect(result.success).toBe(false)
+
+    const statusRaw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
+    const status = JSON.parse(statusRaw)
+    expect(status.plotState).toBe('published-not-indexed')
+    expect(status.publishResult.txHash).toBe('0xtx123')
+  })
+
+  it('selects correct endpoint based on plot type', async () => {
+    await writeNotIndexedStatus()
+    const statusRaw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
+    const status = JSON.parse(statusRaw)
+    status.publishResult.plotIndex = 2
+    status.publishResult.storylineId = '0xstory1'
+    await fs.writeFile(
+      path.join(tmpDir, '.publish-status.json'),
+      JSON.stringify(status, null, 2),
+      'utf-8'
+    )
+
+    const mockFetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    const deps = createDeps({ fetchFn: mockFetchFn })
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:retryIndex')
+    await handler({}, { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' })
+
+    expect(mockFetchFn).toHaveBeenCalledWith(
+      'https://plotlink.example/api/index/plot',
+      expect.any(Object)
+    )
+  })
+
+  it('blocks retry when fallbackContent is missing', async () => {
+    await writeNotIndexedStatus()
+    const deps = createDeps()
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:retryIndex')
+    const result = (await handler({}, { projectId: 'p1', plotSlug: 'ep1' })) as {
+      success: boolean
+      error: string
+    }
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Missing fallback content')
+  })
+})
+
+describe('publish:markNotIndexed', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plottoon-pubhandler-'))
+  })
+
+  it('marks published plot as not-indexed preserving metadata', async () => {
+    const status = {
+      version: 1,
+      plotState: 'published',
+      error: null,
+      publishedAt: '2026-05-18T00:00:00Z',
+      updatedAt: '2026-05-18T00:00:00Z',
+      cuts: [],
+      publishResult: {
+        txHash: '0xtx123',
+        storylineId: '0xstory1',
+        plotIndex: 1,
+        contentCid: 'bafyabc',
+        contentHash: '0xhash',
+        authorAddress: '0xauthor',
+        gasCostWei: '1000',
+        plotlinkUrl: null,
+        walletAddress: '0xwallet',
+        walletSource: 'plottoon-writer',
+        indexed: true,
+        indexError: null
+      }
+    }
+    await fs.writeFile(
+      path.join(tmpDir, '.publish-status.json'),
+      JSON.stringify(status, null, 2),
+      'utf-8'
+    )
+
+    const deps = createDeps()
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:markNotIndexed')
+    const result = (await handler(
+      {},
+      { projectId: 'p1', plotSlug: 'ep1', reason: 'Bad metadata on PlotLink' }
+    )) as { success: boolean }
+    expect(result.success).toBe(true)
+
+    const raw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
+    const updated = JSON.parse(raw)
+    expect(updated.plotState).toBe('published-not-indexed')
+    expect(updated.error).toBe('Bad metadata on PlotLink')
+    expect(updated.publishResult.txHash).toBe('0xtx123')
+    expect(updated.publishResult.contentCid).toBe('bafyabc')
+    expect(updated.publishResult.indexed).toBe(false)
+    expect(updated.publishResult.indexError).toBe('Bad metadata on PlotLink')
+  })
+
+  it('rejects for draft plots', async () => {
+    const status = {
+      version: 1,
+      plotState: 'draft',
+      error: null,
+      publishedAt: null,
+      updatedAt: '2026-05-18T00:00:00Z',
+      cuts: [],
+      publishResult: null
+    }
+    await fs.writeFile(
+      path.join(tmpDir, '.publish-status.json'),
+      JSON.stringify(status, null, 2),
+      'utf-8'
+    )
+
+    const deps = createDeps()
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:markNotIndexed')
+    const result = (await handler({}, { projectId: 'p1', plotSlug: 'ep1', reason: 'test' })) as {
+      success: boolean
+      error: string
+    }
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Can only mark published')
+  })
+})
