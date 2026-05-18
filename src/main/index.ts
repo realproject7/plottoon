@@ -91,14 +91,15 @@ app.whenReady().then(async () => {
     vaultConfig,
     config: publishConfig,
     ipfs: {
-      async upload(content: string) {
-        const response = await fetch(publishConfig.ipfsUploadUrl, {
+      async upload(content: string, key: string) {
+        const uploadUrl = `${publishConfig.plotlinkBaseUrl}/api/upload`
+        const response = await fetch(uploadUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content, key: process.env.IPFS_AUTH_TOKEN || '' })
+          body: JSON.stringify({ content, key })
         })
         if (!response.ok) {
-          throw new Error(`IPFS upload failed: ${response.status}`)
+          throw new Error(`PlotLink upload failed: ${response.status}`)
         }
         const json = (await response.json()) as { cid: string }
         return { cid: json.cid }

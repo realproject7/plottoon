@@ -7,6 +7,8 @@ import {
   createRealPublishDeps,
   getDefaultPublishConfig,
   validatePublishConfig,
+  slugify,
+  generateUploadKey,
   type PlotlinkPublishDeps,
   type PublishConfig,
   type TransactionSigner,
@@ -22,7 +24,6 @@ function mockConfig(): PublishConfig {
     plotlinkBaseUrl: 'https://plotlink.example',
     storyFactoryAddress: '0xstoryfactory',
     mcv2BondAddress: '0xmcv2bond',
-    ipfsUploadUrl: 'https://ipfs.example/upload',
     creationFeeWei: '100000000000000',
     indexRetries: 1,
     indexRetryDelayMs: 0,
@@ -120,7 +121,7 @@ describe('realPublish — new storyline', () => {
     expect(result.indexed).toBe(true)
     expect(result.storylineId).toBe('0xsl-new-id')
 
-    expect(ipfs.upload).toHaveBeenCalledWith('# Episode 1')
+    expect(ipfs.upload).toHaveBeenCalledWith('# Episode 1', expect.stringMatching(/^plotlink\//))
     expect(encoder.encodeCreateStoryline).toHaveBeenCalledWith(
       'My Story',
       'bafyipfs123',
@@ -478,8 +479,8 @@ describe('getDefaultPublishConfig', () => {
     expect(config.indexRetryDelayMs).toBe(30000)
     expect(config.storyFactoryAddress).toBe('')
     expect(config.mcv2BondAddress).toBe('')
-    expect(config.ipfsUploadUrl).toBe('')
     expect(config.creationFeeWei).toBeUndefined()
+    expect(config.plotlinkBaseUrl).toBe('https://plotlink.xyz')
   })
 })
 
@@ -517,11 +518,11 @@ describe('validatePublishConfig', () => {
     expect(errors).toContain('BASE_RPC_URL is required for live publish')
   })
 
-  it('rejects empty IPFS upload URL', () => {
+  it('rejects empty PlotLink base URL', () => {
     const config = mockConfig()
-    config.ipfsUploadUrl = ''
+    config.plotlinkBaseUrl = ''
     const errors = validatePublishConfig(config)
-    expect(errors).toContain('IPFS_UPLOAD_URL is required for live publish')
+    expect(errors).toContain('PLOTLINK_BASE_URL is required for live publish')
   })
 
   it('collects multiple errors', () => {
@@ -529,7 +530,7 @@ describe('validatePublishConfig', () => {
     config.storyFactoryAddress = ''
     config.mcv2BondAddress = ''
     config.rpcUrl = ''
-    config.ipfsUploadUrl = ''
+    config.plotlinkBaseUrl = ''
     const errors = validatePublishConfig(config)
     expect(errors).toHaveLength(4)
   })
@@ -801,11 +802,11 @@ describe('default retry constants match plotlink-ows', () => {
 describe('upload body/response shape', () => {
   it('IpfsClient upload returns { cid } from provider', async () => {
     const ipfs = mockIpfs()
-    const result = await ipfs.upload('# My Story')
+    const result = await ipfs.upload('# My Story', 'plotlink/storylines/test.json')
     expect(result).toEqual({ cid: 'bafyipfs123' })
   })
 
-  it('upload is called with markdown content in realPublish', async () => {
+  it('upload is called with markdown content and generated key in realPublish', async () => {
     const encoder = mockEncoder({ storylineId: '0xsl', plotIndex: 0 })
     const signer = mockSigner()
     const ipfs = mockIpfs()
@@ -825,6 +826,107 @@ describe('upload body/response shape', () => {
       deps
     )
 
-    expect(ipfs.upload).toHaveBeenCalledWith('# Episode Content')
+    expect(ipfs.upload).toHaveBeenCalledWith(
+      '# Episode Content',
+      expect.stringMatching(/^plotlink\/storylines\/\d+-story\.json$/)
+    )
+  })
+
+  it('upload key for chain-plot uses plotlink/plots prefix', async () => {
+    const encoder = mockEncoder({ storylineId: '42', plotIndex: 1 })
+    const signer = mockSigner()
+    const ipfs = mockIpfs()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const deps = createDeps({ signer, encoder, ipfs, fetch: fetchFn })
+
+    await realPublish(
+      {
+        action: 'chain-plot',
+        title: 'Chapter 2',
+        contentCid: '',
+        contentHash: '',
+        storylineId: '42'
+      },
+      '# Chapter Content',
+      '0xauthor',
+      deps
+    )
+
+    expect(ipfs.upload).toHaveBeenCalledWith(
+      '# Chapter Content',
+      expect.stringMatching(/^plotlink\/plots\/42-\d+\.txt$/)
+    )
+  })
+
+  it('upload URL derives from PLOTLINK_BASE_URL, not a separate IPFS URL', () => {
+    const config = getDefaultPublishConfig()
+    const expectedUploadUrl = `${config.plotlinkBaseUrl}/api/upload`
+    expect(expectedUploadUrl).toBe('https://plotlink.xyz/api/upload')
+  })
+
+  it('upload body contains content and key, no auth token or secrets', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl', plotIndex: 0 })
+    const signer = mockSigner()
+    const ipfs = mockIpfs()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const deps = createDeps({ signer, encoder, ipfs, fetch: fetchFn })
+
+    await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'Test',
+        contentCid: '',
+        contentHash: '',
+        hasDeadline: false
+      },
+      '# Content',
+      '0xauthor',
+      deps
+    )
+
+    const uploadCall = (ipfs.upload as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(uploadCall[0]).toBe('# Content')
+    expect(uploadCall[1]).toMatch(/^plotlink\//)
+    expect(uploadCall[1]).not.toContain('token')
+    expect(uploadCall[1]).not.toContain('secret')
+  })
+})
+
+describe('generateUploadKey', () => {
+  it('generates storyline key with plotlink/storylines prefix and slugified title', () => {
+    const key = generateUploadKey('create-storyline', 'My Amazing Story')
+    expect(key).toMatch(/^plotlink\/storylines\/\d+-my-amazing-story\.json$/)
+  })
+
+  it('generates chain-plot key with plotlink/plots prefix and storylineId', () => {
+    const key = generateUploadKey('chain-plot', 'Chapter 2', '42')
+    expect(key).toMatch(/^plotlink\/plots\/42-\d+\.txt$/)
+  })
+
+  it('uses unknown when storylineId is missing for chain-plot', () => {
+    const key = generateUploadKey('chain-plot', 'Chapter')
+    expect(key).toMatch(/^plotlink\/plots\/unknown-\d+\.txt$/)
+  })
+
+  it('key never contains secrets or auth tokens', () => {
+    const key = generateUploadKey('create-storyline', 'Test Story')
+    expect(key).not.toContain('token')
+    expect(key).not.toContain('secret')
+    expect(key).not.toContain('auth')
+  })
+})
+
+describe('slugify', () => {
+  it('lowercases and replaces non-alphanumeric with hyphens', () => {
+    expect(slugify('My Amazing Story!')).toBe('my-amazing-story')
+  })
+
+  it('trims leading/trailing hyphens', () => {
+    expect(slugify('--hello--')).toBe('hello')
+  })
+
+  it('truncates to 60 characters', () => {
+    const long = 'a'.repeat(100)
+    expect(slugify(long).length).toBeLessThanOrEqual(60)
   })
 })
