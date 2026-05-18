@@ -7,8 +7,10 @@ export interface PlotLinkSigner {
 }
 
 export interface TransactionPayload {
-  action: 'create-storyline' | 'publish-plot'
+  action: 'create-storyline' | 'chain-plot'
   storylineId?: string
+  title: string
+  contentCid: string
   contentHash: string
 }
 
@@ -17,10 +19,20 @@ export interface TransactionResult {
   confirmed: boolean
 }
 
+export interface ContentCommitResult {
+  cid: string
+  contentHash: string
+}
+
+export type ContentCommitFn = (markdown: string) => Promise<ContentCommitResult>
+
 export interface PlotLinkStorylineIndexRequest {
   storylineTitle: string
   contentType: 'cartoon'
   isNsfw: boolean
+  content: string
+  imageCount: number
+  imageUrls: CutUrl[]
   txHash: string
   message: string
   signature: string
@@ -40,6 +52,8 @@ export interface PlotLinkPlotIndexRequest {
 export interface PlotLinkStorylineIndexResponse {
   success: boolean
   storylineId?: string
+  plotId?: string
+  plotUrl?: string
   error?: string
 }
 
@@ -63,25 +77,18 @@ export type PlotLinkFetchFn = (url: string, init: RequestInit) => Promise<Respon
 export interface PlotLinkPublishAdapterConfig {
   baseUrl: string
   signer: PlotLinkSigner
+  commitContent: ContentCommitFn
   fetch?: PlotLinkFetchFn
   mode: 'live' | 'mock'
 }
 
-function buildSignMessage(action: 'create-storyline' | 'publish-plot'): string {
+function buildSignMessage(action: 'create-storyline' | 'chain-plot'): string {
   const timestampMs = Date.now()
   const label = action === 'create-storyline' ? 'Create storyline and publish plot' : 'Publish plot'
   return `PlotLink: ${label}\nTimestamp: ${timestampMs}`
 }
 
-function computeContentHash(markdown: string): string {
-  let hash = 0
-  for (let i = 0; i < markdown.length; i++) {
-    hash = ((hash << 5) - hash + markdown.charCodeAt(i)) | 0
-  }
-  return `content-${Math.abs(hash).toString(16).padStart(8, '0')}`
-}
-
-async function createStoryline(
+async function indexNewStoryline(
   outbound: OutboundPublishRequest,
   config: PlotLinkPublishAdapterConfig,
   message: string,
@@ -92,6 +99,9 @@ async function createStoryline(
     storylineTitle: outbound.storylineTitle ?? '',
     contentType: 'cartoon',
     isNsfw: outbound.matureFlag ?? false,
+    content: outbound.markdown,
+    imageCount: outbound.imageCount,
+    imageUrls: outbound.imageUrls,
     txHash,
     message,
     signature
@@ -162,34 +172,40 @@ export async function plotlinkPublish(
   }
 
   const isNew = !outbound.storylineId
-  const action = isNew ? 'create-storyline' : 'publish-plot'
+  const action = isNew ? 'create-storyline' : 'chain-plot'
   const message = buildSignMessage(action)
   const signature = await config.signer.sign(message)
 
-  const contentHash = computeContentHash(outbound.markdown)
+  const commitResult = await config.commitContent(outbound.markdown)
+
   const txResult = await config.signer.sendTransaction({
     action,
     storylineId: outbound.storylineId,
-    contentHash
+    title: isNew ? (outbound.storylineTitle ?? '') : outbound.plotTitle,
+    contentCid: commitResult.cid,
+    contentHash: commitResult.contentHash
   })
 
   if (!txResult.confirmed) {
     return { success: false, error: 'Transaction not confirmed' }
   }
 
-  let storylineId = outbound.storylineId
-
   if (isNew) {
-    const slResult = await createStoryline(outbound, config, message, signature, txResult.txHash)
+    const slResult = await indexNewStoryline(outbound, config, message, signature, txResult.txHash)
     if (!slResult.success) {
       return { success: false, error: `Storyline creation failed: ${slResult.error}` }
     }
-    storylineId = slResult.storylineId
+    return {
+      success: true,
+      storylineId: slResult.storylineId,
+      plotId: slResult.plotId,
+      plotUrl: slResult.plotUrl
+    }
   }
 
   const plotResult = await indexPlot(
     outbound,
-    storylineId!,
+    outbound.storylineId!,
     config,
     message,
     signature,
@@ -202,7 +218,7 @@ export async function plotlinkPublish(
 
   return {
     success: true,
-    storylineId,
+    storylineId: outbound.storylineId,
     plotId: plotResult.plotId,
     plotUrl: plotResult.plotUrl
   }
