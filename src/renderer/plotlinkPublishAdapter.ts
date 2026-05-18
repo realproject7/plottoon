@@ -220,6 +220,10 @@ export async function plotlinkPublish(
     }
   }
 
+  if (txResult.plotIndex === undefined) {
+    return { success: false, error: 'Transaction did not return plotIndex' }
+  }
+
   const plotResult = await indexPlot(
     outbound,
     outbound.storylineId!,

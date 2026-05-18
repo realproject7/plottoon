@@ -256,6 +256,24 @@ describe('plotlinkPublish — existing storyline', () => {
     expect(payload.deadline).toBeUndefined()
   })
 
+  it('fails when chain-plot transaction does not return plotIndex', async () => {
+    const signer: PlotLinkSigner = {
+      sign: vi.fn().mockResolvedValue('sig'),
+      sendTransaction: vi.fn().mockResolvedValue({
+        txHash: 'tx-no-index',
+        confirmed: true
+      })
+    }
+    const fetchFn = mockFetch([{ body: { success: true } }])
+    const config = liveConfig({ signer, fetch: fetchFn })
+
+    const result = await plotlinkPublish(existingStorylineOutbound(), config)
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('plotIndex')
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
   it('returns error when plot indexing fails', async () => {
     const fetchFn = mockFetch([{ body: {}, status: 502 }])
     const config = liveConfig({ fetch: fetchFn })
