@@ -2,24 +2,30 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   plotlinkPublish,
   createPlotLinkPublishFn,
-  isNewStorylineRequest,
   type PlotLinkPublishAdapterConfig,
   type PlotLinkSigner,
-  type PlotLinkNewStorylineRequest,
-  type PlotLinkExistingStorylineRequest
+  type PlotLinkStorylineIndexRequest,
+  type PlotLinkPlotIndexRequest
 } from '../plotlinkPublishAdapter'
 import type { OutboundPublishRequest } from '../cartoonPublish'
 
 function mockSigner(): PlotLinkSigner {
-  return { sign: vi.fn().mockResolvedValue('test-signature') }
+  return {
+    sign: vi.fn().mockResolvedValue('test-signature'),
+    sendTransaction: vi.fn().mockResolvedValue({ txHash: 'tx-abc123', confirmed: true })
+  }
 }
 
-function mockFetch(body: unknown, status = 200) {
-  return vi.fn().mockResolvedValue({
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(body)
-  })
+function mockFetch(responses: Array<{ body: unknown; status?: number }>) {
+  const fn = vi.fn()
+  for (const r of responses) {
+    fn.mockResolvedValueOnce({
+      ok: (r.status ?? 200) >= 200 && (r.status ?? 200) < 300,
+      status: r.status ?? 200,
+      json: () => Promise.resolve(r.body)
+    })
+  }
+  return fn
 }
 
 function newStorylineOutbound(): OutboundPublishRequest {
@@ -44,173 +50,190 @@ function existingStorylineOutbound(): OutboundPublishRequest {
   }
 }
 
-describe('plotlinkPublish', () => {
-  describe('new storyline', () => {
-    it('maps contentType, isNsfw, and storylineTitle for new storylines', async () => {
-      const fetchFn = mockFetch({
-        success: true,
-        storylineId: 'sl-new',
-        plotId: 'plot-1',
-        plotUrl: 'https://plotlink.example/plots/1'
-      })
-      const config: PlotLinkPublishAdapterConfig = {
-        indexEndpoint: 'https://plotlink.example/api/publish',
-        signer: mockSigner(),
-        fetch: fetchFn,
-        mode: 'live'
-      }
+function liveConfig(
+  overrides: Partial<PlotLinkPublishAdapterConfig> = {}
+): PlotLinkPublishAdapterConfig {
+  return {
+    baseUrl: 'https://plotlink.example',
+    signer: mockSigner(),
+    mode: 'live',
+    ...overrides
+  }
+}
 
-      const result = await plotlinkPublish(newStorylineOutbound(), config)
+describe('plotlinkPublish — new storyline', () => {
+  it('calls /api/index/storyline then /api/index/plot with correct fields', async () => {
+    const fetchFn = mockFetch([
+      { body: { success: true, storylineId: 'sl-new-1' } },
+      { body: { success: true, plotId: 'plot-1', plotUrl: 'https://plotlink.example/plots/1' } }
+    ])
+    const config = liveConfig({ fetch: fetchFn })
 
-      expect(result.success).toBe(true)
-      expect(result.storylineId).toBe('sl-new')
+    const result = await plotlinkPublish(newStorylineOutbound(), config)
 
-      const [, init] = fetchFn.mock.calls[0]
-      const body = JSON.parse(init.body) as PlotLinkNewStorylineRequest
-      expect(body.storylineTitle).toBe('My Cartoon')
-      expect(body.contentType).toBe('cartoon')
-      expect(body.isNsfw).toBe(true)
-      expect(body.content).toContain('# Episode 1')
-      expect(body.message).toMatch(/^PlotLink: Create storyline and publish plot\nTimestamp: \d+$/)
-      expect(body.signature).toBe('test-signature')
-    })
+    expect(result.success).toBe(true)
+    expect(result.storylineId).toBe('sl-new-1')
+    expect(result.plotId).toBe('plot-1')
 
-    it('sets isNsfw false when matureFlag is false', async () => {
-      const fetchFn = mockFetch({ success: true })
-      const config: PlotLinkPublishAdapterConfig = {
-        indexEndpoint: 'https://plotlink.example/api/publish',
-        signer: mockSigner(),
-        fetch: fetchFn,
-        mode: 'live'
-      }
-      const outbound = { ...newStorylineOutbound(), matureFlag: false }
+    expect(fetchFn).toHaveBeenCalledTimes(2)
 
-      await plotlinkPublish(outbound, config)
+    const [slUrl, slInit] = fetchFn.mock.calls[0]
+    expect(slUrl).toBe('https://plotlink.example/api/index/storyline')
+    const slBody = JSON.parse(slInit.body) as PlotLinkStorylineIndexRequest
+    expect(slBody.storylineTitle).toBe('My Cartoon')
+    expect(slBody.contentType).toBe('cartoon')
+    expect(slBody.isNsfw).toBe(true)
+    expect(slBody.txHash).toBe('tx-abc123')
+    expect(slBody.message).toMatch(/^PlotLink: Create storyline and publish plot\nTimestamp: \d+$/)
+    expect(slBody.signature).toBe('test-signature')
 
-      const body = JSON.parse(fetchFn.mock.calls[0][1].body) as PlotLinkNewStorylineRequest
-      expect(body.isNsfw).toBe(false)
-    })
-
-    it('defaults isNsfw to false when matureFlag is undefined', async () => {
-      const fetchFn = mockFetch({ success: true })
-      const config: PlotLinkPublishAdapterConfig = {
-        indexEndpoint: 'https://plotlink.example/api/publish',
-        signer: mockSigner(),
-        fetch: fetchFn,
-        mode: 'live'
-      }
-      const outbound = { ...newStorylineOutbound(), matureFlag: undefined }
-
-      await plotlinkPublish(outbound, config)
-
-      const body = JSON.parse(fetchFn.mock.calls[0][1].body) as PlotLinkNewStorylineRequest
-      expect(body.isNsfw).toBe(false)
-    })
+    const [plotUrl, plotInit] = fetchFn.mock.calls[1]
+    expect(plotUrl).toBe('https://plotlink.example/api/index/plot')
+    const plotBody = JSON.parse(plotInit.body) as PlotLinkPlotIndexRequest
+    expect(plotBody.storylineId).toBe('sl-new-1')
+    expect(plotBody.content).toContain('# Episode 1')
+    expect(plotBody.txHash).toBe('tx-abc123')
   })
 
-  describe('existing storyline', () => {
-    it('sends storylineId and omits contentType for existing storylines', async () => {
-      const fetchFn = mockFetch({
-        success: true,
-        storylineId: 'storyline-abc',
-        plotId: 'plot-2',
-        plotUrl: 'https://plotlink.example/plots/2'
-      })
-      const config: PlotLinkPublishAdapterConfig = {
-        indexEndpoint: 'https://plotlink.example/api/publish',
-        signer: mockSigner(),
-        fetch: fetchFn,
-        mode: 'live'
-      }
+  it('sends create-storyline transaction with content hash', async () => {
+    const signer = mockSigner()
+    const fetchFn = mockFetch([
+      { body: { success: true, storylineId: 'sl-1' } },
+      { body: { success: true, plotId: 'p-1' } }
+    ])
+    const config = liveConfig({ signer, fetch: fetchFn })
 
-      const result = await plotlinkPublish(existingStorylineOutbound(), config)
+    await plotlinkPublish(newStorylineOutbound(), config)
 
-      expect(result.success).toBe(true)
-
-      const body = JSON.parse(fetchFn.mock.calls[0][1].body) as PlotLinkExistingStorylineRequest
-      expect(body.storylineId).toBe('storyline-abc')
-      expect(body.isNsfw).toBe(false)
-      expect(body.content).toContain('# Episode 2')
-      expect(body.message).toMatch(/^PlotLink: Publish plot\nTimestamp: \d+$/)
-      expect(body.signature).toBe('test-signature')
-      expect('contentType' in body).toBe(false)
-    })
+    const sendTx = signer.sendTransaction as ReturnType<typeof vi.fn>
+    expect(sendTx).toHaveBeenCalledTimes(1)
+    expect(sendTx.mock.calls[0][0].action).toBe('create-storyline')
+    expect(sendTx.mock.calls[0][0].contentHash).toMatch(/^content-/)
   })
 
-  describe('mock mode', () => {
-    it('returns mock response without calling fetch or signer', async () => {
-      const signer = mockSigner()
-      const fetchFn = mockFetch({})
-      const config: PlotLinkPublishAdapterConfig = {
-        indexEndpoint: 'https://plotlink.example/api/publish',
-        signer,
-        fetch: fetchFn,
-        mode: 'mock'
-      }
+  it('sets isNsfw false when matureFlag is undefined', async () => {
+    const fetchFn = mockFetch([
+      { body: { success: true, storylineId: 'sl-1' } },
+      { body: { success: true, plotId: 'p-1' } }
+    ])
+    const outbound = { ...newStorylineOutbound(), matureFlag: undefined }
+    const config = liveConfig({ fetch: fetchFn })
 
-      const result = await plotlinkPublish(newStorylineOutbound(), config)
+    await plotlinkPublish(outbound, config)
 
-      expect(result.success).toBe(true)
-      expect(result.storylineId).toBeTruthy()
-      expect(result.plotId).toBeTruthy()
-      expect(result.plotUrl).toBeTruthy()
-      expect(fetchFn).not.toHaveBeenCalled()
-      expect(signer.sign).not.toHaveBeenCalled()
-    })
+    const slBody = JSON.parse(fetchFn.mock.calls[0][1].body) as PlotLinkStorylineIndexRequest
+    expect(slBody.isNsfw).toBe(false)
   })
 
-  describe('error handling', () => {
-    it('returns error on non-ok HTTP response', async () => {
-      const fetchFn = mockFetch({}, 500)
-      const config: PlotLinkPublishAdapterConfig = {
-        indexEndpoint: 'https://plotlink.example/api/publish',
-        signer: mockSigner(),
-        fetch: fetchFn,
-        mode: 'live'
-      }
+  it('returns error if storyline creation fails', async () => {
+    const fetchFn = mockFetch([{ body: {}, status: 500 }])
+    const config = liveConfig({ fetch: fetchFn })
 
-      const result = await plotlinkPublish(newStorylineOutbound(), config)
+    const result = await plotlinkPublish(newStorylineOutbound(), config)
 
-      expect(result.success).toBe(false)
-      expect(result.error).toContain('HTTP 500')
-    })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Storyline creation failed')
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('plotlinkPublish — existing storyline', () => {
+  it('skips /api/index/storyline and calls /api/index/plot directly', async () => {
+    const fetchFn = mockFetch([
+      { body: { success: true, plotId: 'plot-2', plotUrl: 'https://plotlink.example/plots/2' } }
+    ])
+    const config = liveConfig({ fetch: fetchFn })
+
+    const result = await plotlinkPublish(existingStorylineOutbound(), config)
+
+    expect(result.success).toBe(true)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+
+    const [url, init] = fetchFn.mock.calls[0]
+    expect(url).toBe('https://plotlink.example/api/index/plot')
+    const body = JSON.parse(init.body) as PlotLinkPlotIndexRequest
+    expect(body.storylineId).toBe('storyline-abc')
+    expect(body.isNsfw).toBe(false)
+    expect(body.content).toContain('# Episode 2')
+    expect(body.txHash).toBe('tx-abc123')
+    expect(body.message).toMatch(/^PlotLink: Publish plot\nTimestamp: \d+$/)
+    expect('contentType' in body).toBe(false)
   })
 
-  describe('signer integration', () => {
-    it('passes the signature message through PlotLinkSigner.sign', async () => {
-      const signer = mockSigner()
-      const fetchFn = mockFetch({ success: true })
-      const config: PlotLinkPublishAdapterConfig = {
-        indexEndpoint: 'https://plotlink.example/api/publish',
-        signer,
-        fetch: fetchFn,
-        mode: 'live'
-      }
+  it('sends publish-plot transaction action for existing storyline', async () => {
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ body: { success: true, plotId: 'p-1' } }])
+    const config = liveConfig({ signer, fetch: fetchFn })
 
-      await plotlinkPublish(newStorylineOutbound(), config)
+    await plotlinkPublish(existingStorylineOutbound(), config)
 
-      const signFn = signer.sign as ReturnType<typeof vi.fn>
-      expect(signFn).toHaveBeenCalledTimes(1)
-      const msg = signFn.mock.calls[0][0] as string
-      expect(msg).toMatch(/^PlotLink: Create storyline and publish plot\nTimestamp: \d+$/)
+    const sendTx = signer.sendTransaction as ReturnType<typeof vi.fn>
+    expect(sendTx.mock.calls[0][0].action).toBe('publish-plot')
+    expect(sendTx.mock.calls[0][0].storylineId).toBe('storyline-abc')
+  })
+})
+
+describe('plotlinkPublish — transaction handling', () => {
+  it('returns error if transaction is not confirmed', async () => {
+    const signer = mockSigner()
+    ;(signer.sendTransaction as ReturnType<typeof vi.fn>).mockResolvedValue({
+      txHash: 'tx-pending',
+      confirmed: false
     })
+    const config = liveConfig({ signer })
+
+    const result = await plotlinkPublish(newStorylineOutbound(), config)
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Transaction not confirmed')
+  })
+})
+
+describe('plotlinkPublish — mock mode', () => {
+  it('returns mock response without calling fetch or signer', async () => {
+    const signer = mockSigner()
+    const fetchFn = mockFetch([])
+    const config: PlotLinkPublishAdapterConfig = {
+      baseUrl: 'https://plotlink.example',
+      signer,
+      fetch: fetchFn,
+      mode: 'mock'
+    }
+
+    const result = await plotlinkPublish(newStorylineOutbound(), config)
+
+    expect(result.success).toBe(true)
+    expect(result.storylineId).toBeTruthy()
+    expect(result.plotId).toBeTruthy()
+    expect(result.plotUrl).toBeTruthy()
+    expect(fetchFn).not.toHaveBeenCalled()
+    expect(signer.sign).not.toHaveBeenCalled()
+    expect(signer.sendTransaction).not.toHaveBeenCalled()
+  })
+})
+
+describe('plotlinkPublish — error handling', () => {
+  it('returns error when plot indexing fails', async () => {
+    const fetchFn = mockFetch([
+      { body: { success: true, storylineId: 'sl-1' } },
+      { body: {}, status: 502 }
+    ])
+    const config = liveConfig({ fetch: fetchFn })
+
+    const result = await plotlinkPublish(newStorylineOutbound(), config)
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Plot indexing failed')
   })
 })
 
 describe('createPlotLinkPublishFn', () => {
   it('returns a PublishFn-compatible function mapping to PublishRequestResult', async () => {
-    const fetchFn = mockFetch({
-      success: true,
-      storylineId: 'sl-1',
-      plotId: 'plot-1',
-      plotUrl: 'https://plotlink.example/plots/1'
-    })
-    const config: PlotLinkPublishAdapterConfig = {
-      indexEndpoint: 'https://plotlink.example/api/publish',
-      signer: mockSigner(),
-      fetch: fetchFn,
-      mode: 'live'
-    }
+    const fetchFn = mockFetch([
+      { body: { success: true, storylineId: 'sl-1' } },
+      { body: { success: true, plotId: 'plot-1', plotUrl: 'https://plotlink.example/plots/1' } }
+    ])
+    const config = liveConfig({ fetch: fetchFn })
 
     const publishFn = createPlotLinkPublishFn(config)
     const result = await publishFn(newStorylineOutbound())
@@ -221,34 +244,5 @@ describe('createPlotLinkPublishFn', () => {
     expect(result.plotUrl).toBe('https://plotlink.example/plots/1')
     expect(result.isDryRun).toBe(false)
     expect(result.timestamp).toBeTruthy()
-  })
-})
-
-describe('isNewStorylineRequest', () => {
-  it('returns true for new storyline requests', () => {
-    const req: PlotLinkNewStorylineRequest = {
-      storylineTitle: 'Test',
-      contentType: 'cartoon',
-      isNsfw: false,
-      content: '',
-      imageCount: 1,
-      imageUrls: [],
-      message: '',
-      signature: ''
-    }
-    expect(isNewStorylineRequest(req)).toBe(true)
-  })
-
-  it('returns false for existing storyline requests', () => {
-    const req: PlotLinkExistingStorylineRequest = {
-      storylineId: 'sl-1',
-      isNsfw: false,
-      content: '',
-      imageCount: 1,
-      imageUrls: [],
-      message: '',
-      signature: ''
-    }
-    expect(isNewStorylineRequest(req)).toBe(false)
   })
 })

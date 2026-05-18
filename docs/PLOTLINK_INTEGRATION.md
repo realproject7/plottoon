@@ -83,9 +83,30 @@ Renderer (attaches signature to upload request)
 | `storylineId`            | `storylineId`            | Existing storylines |
 | `markdown`               | `content`                | Always              |
 
+### Index Routes
+
+| Route                       | When            | Key Fields                                          |
+| --------------------------- | --------------- | --------------------------------------------------- |
+| `POST /api/index/storyline` | New storylines  | `storylineTitle`, `contentType`, `isNsfw`, `txHash` |
+| `POST /api/index/plot`      | Always (step 2) | `storylineId`, `content`, `imageUrls`, `txHash`     |
+
+For new storylines both routes are called in sequence; for existing storylines only `/api/index/plot` is called.
+
 ### Signer Interface
 
-The adapter accepts a `PlotLinkSigner` interface with a single `sign(message: string): Promise<string>` method. In production this is backed by the IPC wallet boundary; the adapter never touches private keys.
+The adapter accepts a `PlotLinkSigner` interface:
+
+- `sign(message: string): Promise<string>` — signs the request message
+- `sendTransaction(payload): Promise<{ txHash, confirmed }>` — submits the on-chain transaction and returns the hash
+
+In production this is backed by the IPC wallet boundary; the adapter never touches private keys.
+
+### Transaction Flow
+
+1. Sign the request message (numeric timestamp format)
+2. Submit transaction via `signer.sendTransaction` with action and content hash
+3. If confirmed, proceed to index; if not, abort with error
+4. Pass `txHash` to all index requests
 
 ### Signature Message Format (Publish)
 
