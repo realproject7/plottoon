@@ -1,6 +1,7 @@
-import { createPublicClient, encodeFunctionData, http, type Hex } from 'viem'
+import { createPublicClient, createWalletClient, encodeFunctionData, http, type Hex } from 'viem'
 import { base } from 'viem/chains'
 import type { OWSCoreModule } from './owsAdapter'
+import { createOwsViemAccount } from './owsViemAccount'
 import type {
   AgentRegistrationStatus,
   AgentRegistrationResult
@@ -152,36 +153,18 @@ export async function executeAgentRegistration(
   metadata: string,
   deps: AgentRegistrationWriteDeps
 ): Promise<AgentRegistrationResult> {
-  const { createWalletClient } = await import('viem')
-  const { serializeTransaction } = await import('viem')
-  const { toAccount } = await import('viem/accounts')
-
   const data = encodeFunctionData({
     abi: agentRegistryAbi,
     functionName: 'registerAgent',
     args: [agentName, modelLabel, metadata]
   })
 
-  const account = toAccount({
-    address: deps.walletAddress as Hex,
-    async signMessage({ message }) {
-      const raw = typeof message === 'string' ? message : String(message.raw)
-      const result = deps.ows.signMessage(deps.walletName, deps.chain, raw, deps.passphrase ?? null)
-      return result.signature as Hex
-    },
-    async signTransaction(tx) {
-      const serialized = serializeTransaction(tx)
-      const result = deps.ows.signTransaction(
-        deps.walletName,
-        deps.chain,
-        serialized,
-        deps.passphrase ?? null
-      )
-      return result.signature as Hex
-    },
-    async signTypedData() {
-      throw new Error('signTypedData not supported by OWS signer')
-    }
+  const account = createOwsViemAccount({
+    ows: deps.ows,
+    walletName: deps.walletName,
+    walletAddress: deps.walletAddress,
+    chain: deps.chain,
+    passphrase: deps.passphrase
   })
 
   const walletClient = createWalletClient({

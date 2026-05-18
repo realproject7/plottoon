@@ -4,16 +4,15 @@ import {
   createWalletClient,
   createPublicClient,
   http,
-  serializeTransaction,
   type Hex
 } from 'viem'
-import { toAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
 import type {
   PublishTransactionPayload,
   PublishTransactionResult
 } from '../../shared/publishTransaction'
 import type { OWSCoreModule } from './owsAdapter'
+import { createOwsViemAccount } from './owsViemAccount'
 
 export interface PublishConfig {
   rpcUrl: string
@@ -196,21 +195,12 @@ export function createOWSViemSigner(
   passphrase: string | undefined,
   rpcUrl: string
 ): TransactionSigner {
-  const account = toAccount({
-    address: walletAddress as Hex,
-    async signMessage({ message }) {
-      const raw = typeof message === 'string' ? message : String(message.raw)
-      const result = ows.signMessage(walletName, chain, raw, passphrase ?? null)
-      return result.signature as Hex
-    },
-    async signTransaction(tx) {
-      const serialized = serializeTransaction(tx)
-      const result = ows.signTransaction(walletName, chain, serialized, passphrase ?? null)
-      return result.signature as Hex
-    },
-    async signTypedData() {
-      throw new Error('signTypedData not supported by OWS signer')
-    }
+  const account = createOwsViemAccount({
+    ows,
+    walletName,
+    walletAddress,
+    chain,
+    passphrase
   })
 
   const walletClient = createWalletClient({
