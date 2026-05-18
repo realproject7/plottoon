@@ -44,6 +44,13 @@ export interface WalletSummary {
   address: string | null
   source: string | null
   connected: boolean
+  balanceWei: string | null
+  balanceError: string | null
+}
+
+export interface TokenPrice {
+  ethUsd: number | null
+  error: string | null
 }
 
 export interface RoyaltySummary {
@@ -53,11 +60,19 @@ export interface RoyaltySummary {
   error: string | null
 }
 
+export interface LocalGroup {
+  groupKey: string
+  projectId: string
+  projectName: string
+  plots: PlotDashboardEntry[]
+}
+
 export interface DashboardData {
   counts: DashboardCounts
   storylines: StorylineGroup[]
-  ungrouped: PlotDashboardEntry[]
+  localGroups: LocalGroup[]
   wallet: WalletSummary
+  tokenPrice: TokenPrice
   royalty: RoyaltySummary
   generatedAt: string
 }
@@ -66,9 +81,15 @@ export type RoyaltyFetchFn = (
   walletAddress: string
 ) => Promise<{ earnedWei: string; claimedWei: string; unclaimedWei: string }>
 
+export type BalanceFetchFn = (walletAddress: string) => Promise<string>
+
+export type PriceFetchFn = () => Promise<number>
+
 export interface DashboardDeps {
   getWallet: () => WalletMetadata | null
   fetchRoyalty?: RoyaltyFetchFn
+  fetchBalance?: BalanceFetchFn
+  fetchEthPrice?: PriceFetchFn
 }
 
 async function loadPlotEntry(
@@ -123,10 +144,10 @@ function addGasCost(totalWei: bigint, gasCostWei: string | null): bigint {
 
 function groupByStoryline(entries: PlotDashboardEntry[]): {
   storylines: StorylineGroup[]
-  ungrouped: PlotDashboardEntry[]
+  localGroups: LocalGroup[]
 } {
   const grouped = new Map<string, PlotDashboardEntry[]>()
-  const ungrouped: PlotDashboardEntry[] = []
+  const localMap = new Map<string, PlotDashboardEntry[]>()
 
   for (const entry of entries) {
     const storylineId = entry.publishResult?.storylineId
@@ -135,7 +156,10 @@ function groupByStoryline(entries: PlotDashboardEntry[]): {
       list.push(entry)
       grouped.set(storylineId, list)
     } else {
-      ungrouped.push(entry)
+      const key = `${entry.projectId}:${entry.projectName}`
+      const list = localMap.get(key) ?? []
+      list.push(entry)
+      localMap.set(key, list)
     }
   }
 
@@ -171,7 +195,17 @@ function groupByStoryline(entries: PlotDashboardEntry[]): {
     })
   }
 
-  return { storylines, ungrouped }
+  const localGroups: LocalGroup[] = []
+  for (const [key, plots] of localMap) {
+    localGroups.push({
+      groupKey: key,
+      projectId: plots[0].projectId,
+      projectName: plots[0].projectName,
+      plots
+    })
+  }
+
+  return { storylines, localGroups }
 }
 
 function computeCounts(entries: PlotDashboardEntry[], projectCount: number): DashboardCounts {
@@ -240,14 +274,33 @@ export async function buildDashboardData(deps: DashboardDeps): Promise<Dashboard
     }
   }
 
-  const { storylines, ungrouped } = groupByStoryline(allEntries)
+  const { storylines, localGroups } = groupByStoryline(allEntries)
   const counts = computeCounts(allEntries, projects.length)
 
   const wallet = deps.getWallet()
   const walletSummary: WalletSummary = {
     address: wallet?.address ?? null,
     source: wallet?.source ?? null,
-    connected: wallet !== null
+    connected: wallet !== null,
+    balanceWei: null,
+    balanceError: null
+  }
+
+  if (wallet && deps.fetchBalance) {
+    try {
+      walletSummary.balanceWei = await deps.fetchBalance(wallet.address)
+    } catch (err) {
+      walletSummary.balanceError = err instanceof Error ? err.message : 'Failed to fetch balance'
+    }
+  }
+
+  const tokenPrice: TokenPrice = { ethUsd: null, error: null }
+  if (deps.fetchEthPrice) {
+    try {
+      tokenPrice.ethUsd = await deps.fetchEthPrice()
+    } catch (err) {
+      tokenPrice.error = err instanceof Error ? err.message : 'Failed to fetch price'
+    }
   }
 
   let royalty: RoyaltySummary = {
@@ -274,8 +327,9 @@ export async function buildDashboardData(deps: DashboardDeps): Promise<Dashboard
   return {
     counts,
     storylines,
-    ungrouped,
+    localGroups,
     wallet: walletSummary,
+    tokenPrice,
     royalty,
     generatedAt: new Date().toISOString()
   }

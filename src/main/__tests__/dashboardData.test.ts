@@ -165,18 +165,33 @@ describe('buildDashboardData — storyline grouping', () => {
     expect(data.storylines[0].publishedCount).toBe(2)
     expect(data.storylines[0].plots[0].publishResult!.plotIndex).toBe(0)
     expect(data.storylines[0].plots[1].publishResult!.plotIndex).toBe(1)
-    expect(data.ungrouped).toHaveLength(0)
+    expect(data.localGroups).toHaveLength(0)
   })
 
-  it('puts plots without storylineId in ungrouped', async () => {
+  it('groups plots without storylineId by project', async () => {
     const proj = await createProject('my-comic')
     await createPlot(proj.root, 'ep-1', 'Episode 1', 2)
+    await createPlot(proj.root, 'ep-2', 'Episode 2', 1)
 
     const data = await buildDashboardData(baseDeps())
 
     expect(data.storylines).toHaveLength(0)
-    expect(data.ungrouped).toHaveLength(1)
-    expect(data.ungrouped[0].plotSlug).toBe('ep-1')
+    expect(data.localGroups).toHaveLength(1)
+    expect(data.localGroups[0].projectName).toBe('my-comic')
+    expect(data.localGroups[0].plots).toHaveLength(2)
+  })
+
+  it('separates local groups by project', async () => {
+    const proj1 = await createProject('comic-a')
+    const proj2 = await createProject('comic-b')
+    await createPlot(proj1.root, 'ep-1', 'Episode 1', 1)
+    await createPlot(proj2.root, 'ep-1', 'Episode 1', 1)
+
+    const data = await buildDashboardData(baseDeps())
+
+    expect(data.localGroups).toHaveLength(2)
+    const names = data.localGroups.map((g) => g.projectName).sort()
+    expect(names).toEqual(['comic-a', 'comic-b'])
   })
 
   it('computes total gas cost per storyline', async () => {
@@ -205,6 +220,7 @@ describe('buildDashboardData — wallet', () => {
 
     expect(data.wallet.connected).toBe(false)
     expect(data.wallet.address).toBeNull()
+    expect(data.wallet.balanceWei).toBeNull()
   })
 
   it('returns wallet info when connected', async () => {
@@ -221,6 +237,71 @@ describe('buildDashboardData — wallet', () => {
     expect(data.wallet.connected).toBe(true)
     expect(data.wallet.address).toBe('0xmywallet')
     expect(data.wallet.source).toBe('plottoon-writer')
+  })
+
+  it('fetches wallet balance when available', async () => {
+    const deps = baseDeps({
+      getWallet: () => ({
+        address: '0xmywallet',
+        source: 'plottoon-writer',
+        name: 'pw-1',
+        createdAt: '2026-05-18T00:00:00Z'
+      }),
+      fetchBalance: async () => '1000000000000000000'
+    })
+    const data = await buildDashboardData(deps)
+
+    expect(data.wallet.balanceWei).toBe('1000000000000000000')
+    expect(data.wallet.balanceError).toBeNull()
+  })
+
+  it('degrades gracefully when balance fetch fails', async () => {
+    const deps = baseDeps({
+      getWallet: () => ({
+        address: '0xmywallet',
+        source: 'plottoon-writer',
+        name: 'pw-1',
+        createdAt: '2026-05-18T00:00:00Z'
+      }),
+      fetchBalance: async () => {
+        throw new Error('RPC timeout')
+      }
+    })
+    const data = await buildDashboardData(deps)
+
+    expect(data.wallet.balanceWei).toBeNull()
+    expect(data.wallet.balanceError).toBe('RPC timeout')
+  })
+})
+
+describe('buildDashboardData — token price', () => {
+  it('returns null price when no fetcher provided', async () => {
+    const data = await buildDashboardData(baseDeps())
+
+    expect(data.tokenPrice.ethUsd).toBeNull()
+    expect(data.tokenPrice.error).toBeNull()
+  })
+
+  it('fetches ETH/USD price when available', async () => {
+    const deps = baseDeps({
+      fetchEthPrice: async () => 3500.42
+    })
+    const data = await buildDashboardData(deps)
+
+    expect(data.tokenPrice.ethUsd).toBe(3500.42)
+    expect(data.tokenPrice.error).toBeNull()
+  })
+
+  it('degrades gracefully when price fetch fails', async () => {
+    const deps = baseDeps({
+      fetchEthPrice: async () => {
+        throw new Error('API rate limited')
+      }
+    })
+    const data = await buildDashboardData(deps)
+
+    expect(data.tokenPrice.ethUsd).toBeNull()
+    expect(data.tokenPrice.error).toBe('API rate limited')
   })
 })
 
@@ -291,7 +372,7 @@ describe('buildDashboardData — graceful degradation', () => {
     const data = await buildDashboardData(baseDeps())
 
     expect(data.counts.totalPlots).toBe(1)
-    expect(data.ungrouped[0].plotSlug).toBe('valid-plot')
+    expect(data.localGroups[0].plots[0].plotSlug).toBe('valid-plot')
   })
 
   it('includes generatedAt timestamp', async () => {
