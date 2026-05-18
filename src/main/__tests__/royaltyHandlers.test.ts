@@ -207,6 +207,27 @@ describe('royalty:claim', () => {
     expect(result.error).toContain('Reserve token not configured')
   })
 
+  it('rejects when config validation fails', async () => {
+    const config = mockConfig()
+    config.mcv2BondAddress = ''
+    const deps = createDeps({
+      walletState: {
+        wallet: {
+          address: '0xabc',
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-18T00:00:00Z'
+        }
+      },
+      royaltyConfig: config
+    })
+    registerRoyaltyHandlers(deps)
+    const handler = getHandler('royalty:claim')
+    const result = (await handler({}, true)) as { success: boolean; error: string }
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('MCV2_BOND_ADDRESS is required')
+  })
+
   it('rejects in live mode when no unclaimed royalties', async () => {
     const { readRoyaltyInfo } = await import('../services/royaltyClaim')
     ;(readRoyaltyInfo as ReturnType<typeof vi.fn>).mockResolvedValue({

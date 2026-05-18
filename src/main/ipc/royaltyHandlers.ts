@@ -4,6 +4,7 @@ import type { OWSCoreModule, OWSVaultConfig } from '../services/owsAdapter'
 import {
   readRoyaltyInfo,
   executeRoyaltyClaim,
+  validateRoyaltyConfig,
   type RoyaltyClaimConfig
 } from '../services/royaltyClaim'
 import { appendClaimRecord, readClaimHistory } from '../services/royaltyClaimStatus'
@@ -53,6 +54,11 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
         }
       }
 
+      const configErrors = validateRoyaltyConfig(deps.royaltyConfig)
+      if (configErrors.length > 0) {
+        return { info: null, error: configErrors.join('; ') }
+      }
+
       try {
         const info = await readRoyaltyInfo(wallet.address, reserveToken, {
           config: deps.royaltyConfig
@@ -82,6 +88,11 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
       const reserveToken = deps.royaltyConfig.plotTokenAddress
       if (!reserveToken || reserveToken === '0x0000000000000000000000000000000000000000') {
         return { success: false, error: 'Reserve token not configured' }
+      }
+
+      const configErrors = validateRoyaltyConfig(deps.royaltyConfig)
+      if (configErrors.length > 0) {
+        return { success: false, error: configErrors.join('; ') }
       }
 
       if (deps.signerMode !== 'mock') {

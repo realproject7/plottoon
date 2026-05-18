@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   encodeClaimRoyalties,
   getDefaultRoyaltyConfig,
   validateRoyaltyConfig,
-  PLOT_TOKEN_BASE_MAINNET
+  PLOT_TOKEN_BASE_MAINNET,
+  readRoyaltyInfo
 } from '../services/royaltyClaim'
+import { encodeFunctionData } from 'viem'
 
 describe('encodeClaimRoyalties', () => {
   it('returns hex-encoded calldata for claimRoyalties', () => {
@@ -77,5 +79,96 @@ describe('validateRoyaltyConfig', () => {
       plotTokenAddress: PLOT_TOKEN_BASE_MAINNET
     })
     expect(errors).toContain('BASE_RPC_URL is required for royalty operations')
+  })
+})
+
+describe('readRoyaltyInfo targets mcv2BondAddress with PLOT token', () => {
+  it('sends eth_call to mcv2BondAddress with getRoyaltyInfo(wallet, plotToken)', async () => {
+    const bondAddress = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const walletAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const plotToken = '0xcccccccccccccccccccccccccccccccccccccccc'
+
+    const earned = BigInt(500000)
+    const claimed = BigInt(100000)
+    const encodedResult =
+      '0x' + earned.toString(16).padStart(64, '0') + claimed.toString(16).padStart(64, '0')
+
+    const capturedBodies: unknown[] = []
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      capturedBodies.push(body)
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: encodedResult }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    })
+
+    try {
+      const info = await readRoyaltyInfo(walletAddress, plotToken, {
+        config: {
+          rpcUrl: 'https://rpc.test',
+          mcv2BondAddress: bondAddress,
+          plotTokenAddress: plotToken
+        }
+      })
+
+      const ethCall = capturedBodies.find(
+        (b: unknown) => (b as { method: string }).method === 'eth_call'
+      ) as { params: [{ to: string; data: string }, string] }
+
+      expect(ethCall).toBeDefined()
+      expect(ethCall.params[0].to).toBe(bondAddress)
+
+      const expectedCalldata = encodeFunctionData({
+        abi: [
+          {
+            type: 'function',
+            name: 'getRoyaltyInfo',
+            inputs: [
+              { name: 'account', type: 'address' },
+              { name: 'reserveToken', type: 'address' }
+            ],
+            outputs: [
+              { name: 'earned', type: 'uint256' },
+              { name: 'claimed', type: 'uint256' }
+            ],
+            stateMutability: 'view'
+          }
+        ],
+        functionName: 'getRoyaltyInfo',
+        args: [walletAddress as `0x${string}`, plotToken as `0x${string}`]
+      })
+      expect(ethCall.params[0].data).toBe(expectedCalldata)
+
+      expect(info.earnedWei).toBe('500000')
+      expect(info.claimedWei).toBe('100000')
+      expect(info.unclaimedWei).toBe('400000')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})
+
+describe('encodeClaimRoyalties targets PLOT token', () => {
+  it('encodes claimRoyalties calldata with PLOT token address', () => {
+    const plotToken = '0xcccccccccccccccccccccccccccccccccccccccc'
+    const calldata = encodeClaimRoyalties(plotToken)
+
+    const expectedCalldata = encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'claimRoyalties',
+          inputs: [{ name: 'reserveToken', type: 'address' }],
+          outputs: [],
+          stateMutability: 'nonpayable'
+        }
+      ],
+      functionName: 'claimRoyalties',
+      args: [plotToken as `0x${string}`]
+    })
+    expect(calldata).toBe(expectedCalldata)
+    expect(calldata).toContain('cccccccccccccccccccccccccccccccccccccccc')
   })
 })
