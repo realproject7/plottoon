@@ -19,9 +19,10 @@ export interface PublishConfig {
   plotlinkBaseUrl: string
   contractAddress: string
   ipfsUploadUrl: string
-  creationFeeWei: string
+  creationFeeWei?: string
   indexRetries: number
   indexRetryDelayMs: number
+  indexInitialDelayMs: number
 }
 
 export interface PublishContentResult {
@@ -139,6 +140,32 @@ const plotlinkAbi = [
     ]
   }
 ] as const
+
+const creationFeeAbi = [
+  {
+    type: 'function',
+    name: 'getCreationFee',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view'
+  }
+] as const
+
+export async function fetchCreationFee(config: {
+  rpcUrl: string
+  contractAddress: string
+}): Promise<string> {
+  const client = createPublicClient({
+    chain: base,
+    transport: http(config.rpcUrl)
+  })
+  const fee = (await client.readContract({
+    address: config.contractAddress as Hex,
+    abi: creationFeeAbi,
+    functionName: 'getCreationFee'
+  })) as bigint
+  return fee.toString()
+}
 
 export function createViemContractEncoder(): ContractEncoder {
   return {
@@ -260,6 +287,9 @@ async function indexWithRetry(
   body: Record<string, unknown>,
   deps: PlotlinkPublishDeps
 ): Promise<{ success: boolean; error?: string }> {
+  if (deps.config.indexInitialDelayMs > 0) {
+    await new Promise((r) => setTimeout(r, deps.config.indexInitialDelayMs))
+  }
   for (let attempt = 0; attempt <= deps.config.indexRetries; attempt++) {
     try {
       const response = await deps.fetch(url, {
@@ -442,15 +472,32 @@ export function createRealPublishDeps(
   }
 }
 
+export function validatePublishConfig(config: PublishConfig): string[] {
+  const errors: string[] = []
+  if (
+    !config.contractAddress ||
+    config.contractAddress === '0x0000000000000000000000000000000000000000'
+  ) {
+    errors.push('PLOTLINK_CONTRACT_ADDRESS is required for live publish')
+  }
+  if (!config.rpcUrl) {
+    errors.push('BASE_RPC_URL is required for live publish')
+  }
+  if (!config.ipfsUploadUrl) {
+    errors.push('IPFS_UPLOAD_URL is required for live publish')
+  }
+  return errors
+}
+
 export function getDefaultPublishConfig(): PublishConfig {
   return {
     rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
     plotlinkBaseUrl: process.env.PLOTLINK_BASE_URL || 'https://plotlink.xyz',
-    contractAddress:
-      process.env.PLOTLINK_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000',
-    ipfsUploadUrl: process.env.IPFS_UPLOAD_URL || 'https://api.pinata.cloud/pinning/pinJSONToIPFS',
-    creationFeeWei: process.env.PLOTLINK_CREATION_FEE_WEI || '100000000000000',
-    indexRetries: 2,
-    indexRetryDelayMs: 1000
+    contractAddress: process.env.PLOTLINK_CONTRACT_ADDRESS || '',
+    ipfsUploadUrl: process.env.IPFS_UPLOAD_URL || '',
+    creationFeeWei: process.env.PLOTLINK_CREATION_FEE_WEI || undefined,
+    indexRetries: 3,
+    indexRetryDelayMs: 5000,
+    indexInitialDelayMs: 8000
   }
 }

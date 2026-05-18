@@ -6,6 +6,7 @@ import {
   createViemContractEncoder,
   createRealPublishDeps,
   getDefaultPublishConfig,
+  validatePublishConfig,
   type PlotlinkPublishDeps,
   type PublishConfig,
   type TransactionSigner,
@@ -23,7 +24,8 @@ function mockConfig(): PublishConfig {
     ipfsUploadUrl: 'https://ipfs.example/upload',
     creationFeeWei: '100000000000000',
     indexRetries: 1,
-    indexRetryDelayMs: 0
+    indexRetryDelayMs: 0,
+    indexInitialDelayMs: 0
   }
 }
 
@@ -466,11 +468,164 @@ describe('createPublishTransactionFn', () => {
 })
 
 describe('getDefaultPublishConfig', () => {
-  it('returns config with Base RPC defaults', () => {
+  it('returns config with Base RPC defaults and aligned retry timing', () => {
     const config = getDefaultPublishConfig()
 
     expect(config.rpcUrl).toBe('https://mainnet.base.org')
-    expect(config.indexRetries).toBe(2)
-    expect(config.creationFeeWei).toBeTruthy()
+    expect(config.indexRetries).toBe(3)
+    expect(config.indexInitialDelayMs).toBe(8000)
+    expect(config.indexRetryDelayMs).toBe(5000)
+    expect(config.contractAddress).toBe('')
+    expect(config.ipfsUploadUrl).toBe('')
+    expect(config.creationFeeWei).toBeUndefined()
+  })
+})
+
+describe('validatePublishConfig', () => {
+  it('returns no errors for valid config', () => {
+    const errors = validatePublishConfig(mockConfig())
+    expect(errors).toEqual([])
+  })
+
+  it('rejects zero-address contract', () => {
+    const config = mockConfig()
+    config.contractAddress = '0x0000000000000000000000000000000000000000'
+    const errors = validatePublishConfig(config)
+    expect(errors).toContain('PLOTLINK_CONTRACT_ADDRESS is required for live publish')
+  })
+
+  it('rejects empty contract address', () => {
+    const config = mockConfig()
+    config.contractAddress = ''
+    const errors = validatePublishConfig(config)
+    expect(errors).toContain('PLOTLINK_CONTRACT_ADDRESS is required for live publish')
+  })
+
+  it('rejects empty RPC URL', () => {
+    const config = mockConfig()
+    config.rpcUrl = ''
+    const errors = validatePublishConfig(config)
+    expect(errors).toContain('BASE_RPC_URL is required for live publish')
+  })
+
+  it('rejects empty IPFS upload URL', () => {
+    const config = mockConfig()
+    config.ipfsUploadUrl = ''
+    const errors = validatePublishConfig(config)
+    expect(errors).toContain('IPFS_UPLOAD_URL is required for live publish')
+  })
+
+  it('collects multiple errors', () => {
+    const config = mockConfig()
+    config.contractAddress = ''
+    config.rpcUrl = ''
+    config.ipfsUploadUrl = ''
+    const errors = validatePublishConfig(config)
+    expect(errors).toHaveLength(3)
+  })
+})
+
+describe('realPublish — indexing initial delay', () => {
+  it('waits indexInitialDelayMs before first index attempt', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl-id', plotIndex: 0 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const config = { ...mockConfig(), indexInitialDelayMs: 50 }
+    const deps = createDeps({ signer, encoder, fetch: fetchFn, config })
+
+    const start = Date.now()
+    await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'Story',
+        contentCid: '',
+        contentHash: '',
+        hasDeadline: false
+      },
+      '# Ep',
+      '0xauthor',
+      deps
+    )
+    const elapsed = Date.now() - start
+
+    expect(elapsed).toBeGreaterThanOrEqual(40)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips initial delay when indexInitialDelayMs is 0', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl-id', plotIndex: 0 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const config = { ...mockConfig(), indexInitialDelayMs: 0 }
+    const deps = createDeps({ signer, encoder, fetch: fetchFn, config })
+
+    const start = Date.now()
+    await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'Story',
+        contentCid: '',
+        contentHash: '',
+        hasDeadline: false
+      },
+      '# Ep',
+      '0xauthor',
+      deps
+    )
+    const elapsed = Date.now() - start
+
+    expect(elapsed).toBeLessThan(50)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('realPublish — creation fee usage', () => {
+  it('uses provided creationFeeWei as transaction value', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl-id', plotIndex: 0 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const deps = createDeps({ signer, encoder, fetch: fetchFn })
+
+    await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'Story',
+        contentCid: '',
+        contentHash: '',
+        creationFeeWei: '250000000000000',
+        hasDeadline: false
+      },
+      '# Ep',
+      '0xauthor',
+      deps
+    )
+
+    expect(signer.sendTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ value: '250000000000000' })
+    )
+  })
+
+  it('sends no value for chain-plot action', async () => {
+    const encoder = mockEncoder({ plotIndex: 3 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const deps = createDeps({ signer, encoder, fetch: fetchFn })
+
+    await realPublish(
+      {
+        action: 'chain-plot',
+        storylineId: '42',
+        title: 'Ep2',
+        contentCid: '',
+        contentHash: ''
+      },
+      '# Ep2',
+      '0xauthor',
+      deps
+    )
+
+    expect(signer.sendTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ value: undefined })
+    )
   })
 })
