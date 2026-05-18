@@ -1005,3 +1005,75 @@ describe('createPlotlinkUploadClient', () => {
     )
   })
 })
+
+describe('realPublish — cost accounting', () => {
+  it('totalCostWei includes gas + creation fee for create-storyline', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl-cost', plotIndex: 0 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const deps = createDeps({ signer, encoder, fetch: fetchFn })
+
+    const result = await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'Cost Story',
+        contentCid: '',
+        contentHash: '',
+        creationFeeWei: '100000000000000',
+        hasDeadline: false
+      },
+      '# Ep',
+      '0xauthor',
+      deps
+    )
+
+    expect(result.gasCostWei).toBe('21000000000000')
+    expect(result.totalCostWei).toBe('121000000000000')
+  })
+
+  it('totalCostWei equals gasCostWei for chain-plot (no tx value)', async () => {
+    const encoder = mockEncoder({ plotIndex: 2 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const deps = createDeps({ signer, encoder, fetch: fetchFn })
+
+    const result = await realPublish(
+      {
+        action: 'chain-plot',
+        storylineId: '42',
+        title: 'Ep2',
+        contentCid: '',
+        contentHash: ''
+      },
+      '# Ep2',
+      '0xauthor',
+      deps
+    )
+
+    expect(result.gasCostWei).toBe('21000000000000')
+    expect(result.totalCostWei).toBe('21000000000000')
+  })
+
+  it('totalCostWei falls back to gasCostWei when creationFeeWei is undefined', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl-nofee', plotIndex: 0 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const deps = createDeps({ signer, encoder, fetch: fetchFn })
+
+    const result = await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'No Fee Story',
+        contentCid: '',
+        contentHash: '',
+        hasDeadline: false
+      },
+      '# Ep',
+      '0xauthor',
+      deps
+    )
+
+    expect(result.gasCostWei).toBe('21000000000000')
+    expect(result.totalCostWei).toBe('21000000000000')
+  })
+})

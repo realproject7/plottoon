@@ -268,6 +268,7 @@ function mockPublishResult(): PublishResultRecord {
     contentHash: '0x' + 'ab'.repeat(32),
     authorAddress: '0xauthor',
     gasCostWei: '21000000000000',
+    totalCostWei: '21000000000000',
     plotlinkUrl: 'https://plotlink.xyz/story/0xsl-id',
     walletAddress: '0xwallet',
     walletSource: 'plottoon-writer',

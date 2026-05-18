@@ -147,6 +147,7 @@ interface PublishResultMeta {
   contentHash: string | null
   authorAddress: string | null
   gasCostWei: string | null
+  totalCostWei: string | null
   plotlinkUrl: string | null
   walletAddress: string | null
   walletSource: string | null
@@ -194,6 +195,7 @@ interface DashboardPlotEntry {
     contentHash: string
     authorAddress: string
     gasCostWei: string | null
+    totalCostWei: string | null
     plotlinkUrl: string | null
     walletAddress: string
     walletSource: string

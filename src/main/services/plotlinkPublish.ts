@@ -39,6 +39,7 @@ export interface PublishFullResult {
   contentCid: string
   contentHash: string
   gasCostWei?: string
+  totalCostWei?: string
   authorAddress: string
   indexed: boolean
   indexError?: string
@@ -391,6 +392,7 @@ export async function realPublish(
     payload.action === 'create-storyline' ? decoded.storylineId : payload.storylineId
   const plotIndex = decoded.plotIndex
   const gasCostWei = computeGasCost(receipt)
+  const totalCostWei = txValue ? (BigInt(gasCostWei) + BigInt(txValue)).toString() : gasCostWei
 
   const indexUrl =
     payload.action === 'create-storyline'
@@ -423,6 +425,7 @@ export async function realPublish(
     contentCid: content.cid,
     contentHash: content.contentHash,
     gasCostWei,
+    totalCostWei,
     authorAddress,
     indexed: indexResult.success,
     indexError: indexResult.error

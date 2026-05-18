@@ -18,6 +18,7 @@ function makeResult(overrides?: Partial<PublishResultRecord>): PublishResultReco
     contentHash: '0xhash',
     authorAddress: '0xauthor',
     gasCostWei: '1000',
+    totalCostWei: '1000',
     plotlinkUrl: null,
     walletAddress: '0xwallet',
     walletSource: 'plottoon-writer',
