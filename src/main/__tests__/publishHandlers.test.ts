@@ -57,7 +57,8 @@ function mockConfig(): PublishConfig {
   return {
     rpcUrl: 'https://rpc.example',
     plotlinkBaseUrl: 'https://plotlink.example',
-    contractAddress: '0x1234567890abcdef1234567890abcdef12345678',
+    storyFactoryAddress: '0x1234567890abcdef1234567890abcdef12345678',
+    mcv2BondAddress: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
     ipfsUploadUrl: 'https://ipfs.example/upload',
     creationFeeWei: '100000000000000',
     indexRetries: 1,
@@ -137,9 +138,9 @@ describe('publish:preflight', () => {
     expect(result.errors).toContain('No wallet connected')
   })
 
-  it('returns errors in live mode with zero contract address', () => {
+  it('returns errors in live mode with zero StoryFactory address', () => {
     const config = mockConfig()
-    config.contractAddress = '0x0000000000000000000000000000000000000000'
+    config.storyFactoryAddress = '0x0000000000000000000000000000000000000000'
     const deps = createDeps({
       signer: mockSigner(false),
       walletState: {
@@ -158,7 +159,7 @@ describe('publish:preflight', () => {
     const result = handler() as PublishPreflightResult
 
     expect(result.ready).toBe(false)
-    expect(result.errors).toContain('PLOTLINK_CONTRACT_ADDRESS is required for live publish')
+    expect(result.errors).toContain('PLOTLINK_STORY_FACTORY_ADDRESS is required for live publish')
   })
 
   it('returns errors in live mode with missing IPFS upload URL', () => {
@@ -290,9 +291,9 @@ describe('publish:execute', () => {
     expect(result.error).toContain('No wallet connected')
   })
 
-  it('returns error in live mode without contract address', async () => {
+  it('returns error in live mode without StoryFactory address', async () => {
     const config = mockConfig()
-    config.contractAddress = '0x0000000000000000000000000000000000000000'
+    config.storyFactoryAddress = '0x0000000000000000000000000000000000000000'
     const deps = createDeps({
       signer: mockSigner(false),
       walletState: {
@@ -311,7 +312,7 @@ describe('publish:execute', () => {
     const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('PLOTLINK_CONTRACT_ADDRESS is required')
+    expect(result.error).toContain('PLOTLINK_STORY_FACTORY_ADDRESS is required')
   })
 
   it('returns error for create-storyline when fee fetch fails', async () => {

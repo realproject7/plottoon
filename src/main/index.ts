@@ -92,15 +92,10 @@ app.whenReady().then(async () => {
     config: publishConfig,
     ipfs: {
       async upload(content: string) {
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-        const ipfsAuthToken = process.env.IPFS_AUTH_TOKEN
-        if (ipfsAuthToken) {
-          headers['Authorization'] = `Bearer ${ipfsAuthToken}`
-        }
         const response = await fetch(publishConfig.ipfsUploadUrl, {
           method: 'POST',
-          headers,
-          body: JSON.stringify({ content })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content, key: process.env.IPFS_AUTH_TOKEN || '' })
         })
         if (!response.ok) {
           throw new Error(`IPFS upload failed: ${response.status}`)

@@ -20,7 +20,8 @@ function mockConfig(): PublishConfig {
   return {
     rpcUrl: 'https://rpc.example',
     plotlinkBaseUrl: 'https://plotlink.example',
-    contractAddress: '0xcontract',
+    storyFactoryAddress: '0xstoryfactory',
+    mcv2BondAddress: '0xmcv2bond',
     ipfsUploadUrl: 'https://ipfs.example/upload',
     creationFeeWei: '100000000000000',
     indexRetries: 1,
@@ -128,7 +129,7 @@ describe('realPublish — new storyline', () => {
     )
     expect(signer.sendTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: '0xcontract',
+        to: '0xstoryfactory',
         data: '0xencodedCreateStoryline',
         value: '100000000000000'
       })
@@ -198,7 +199,7 @@ describe('realPublish — existing storyline (chain-plot)', () => {
 
     expect(encoder.encodeChainPlot).toHaveBeenCalled()
     expect(signer.sendTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ to: '0xcontract', value: undefined })
+      expect.objectContaining({ to: '0xstoryfactory', value: undefined })
     )
 
     const [url] = (deps.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
@@ -468,14 +469,15 @@ describe('createPublishTransactionFn', () => {
 })
 
 describe('getDefaultPublishConfig', () => {
-  it('returns config with Base RPC defaults and aligned retry timing', () => {
+  it('returns config with Base RPC defaults and plotlink-ows retry timing', () => {
     const config = getDefaultPublishConfig()
 
     expect(config.rpcUrl).toBe('https://mainnet.base.org')
-    expect(config.indexRetries).toBe(3)
+    expect(config.indexRetries).toBe(10)
     expect(config.indexInitialDelayMs).toBe(8000)
-    expect(config.indexRetryDelayMs).toBe(5000)
-    expect(config.contractAddress).toBe('')
+    expect(config.indexRetryDelayMs).toBe(30000)
+    expect(config.storyFactoryAddress).toBe('')
+    expect(config.mcv2BondAddress).toBe('')
     expect(config.ipfsUploadUrl).toBe('')
     expect(config.creationFeeWei).toBeUndefined()
   })
@@ -487,18 +489,25 @@ describe('validatePublishConfig', () => {
     expect(errors).toEqual([])
   })
 
-  it('rejects zero-address contract', () => {
+  it('rejects zero-address StoryFactory', () => {
     const config = mockConfig()
-    config.contractAddress = '0x0000000000000000000000000000000000000000'
+    config.storyFactoryAddress = '0x0000000000000000000000000000000000000000'
     const errors = validatePublishConfig(config)
-    expect(errors).toContain('PLOTLINK_CONTRACT_ADDRESS is required for live publish')
+    expect(errors).toContain('PLOTLINK_STORY_FACTORY_ADDRESS is required for live publish')
   })
 
-  it('rejects empty contract address', () => {
+  it('rejects empty StoryFactory address', () => {
     const config = mockConfig()
-    config.contractAddress = ''
+    config.storyFactoryAddress = ''
     const errors = validatePublishConfig(config)
-    expect(errors).toContain('PLOTLINK_CONTRACT_ADDRESS is required for live publish')
+    expect(errors).toContain('PLOTLINK_STORY_FACTORY_ADDRESS is required for live publish')
+  })
+
+  it('rejects empty MCV2_BOND address', () => {
+    const config = mockConfig()
+    config.mcv2BondAddress = ''
+    const errors = validatePublishConfig(config)
+    expect(errors).toContain('MCV2_BOND_ADDRESS is required for live publish')
   })
 
   it('rejects empty RPC URL', () => {
@@ -517,11 +526,12 @@ describe('validatePublishConfig', () => {
 
   it('collects multiple errors', () => {
     const config = mockConfig()
-    config.contractAddress = ''
+    config.storyFactoryAddress = ''
+    config.mcv2BondAddress = ''
     config.rpcUrl = ''
     config.ipfsUploadUrl = ''
     const errors = validatePublishConfig(config)
-    expect(errors).toHaveLength(3)
+    expect(errors).toHaveLength(4)
   })
 })
 
@@ -706,5 +716,115 @@ describe('realPublish — cached index responses', () => {
 
     expect(result.indexed).toBe(false)
     expect(result.indexError).toContain('failed')
+  })
+})
+
+describe('fetchCreationFee reads MCV2_BOND not StoryFactory', () => {
+  it('calls creationFee() on mcv2BondAddress', async () => {
+    const bondAddress = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const feeWei = BigInt(100000000000000)
+    const encodedResult = '0x' + feeWei.toString(16).padStart(64, '0')
+
+    const capturedBodies: unknown[] = []
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      capturedBodies.push(body)
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: encodedResult }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    })
+
+    try {
+      const { fetchCreationFee } = await import('../services/plotlinkPublish')
+      const fee = await fetchCreationFee({
+        rpcUrl: 'https://rpc.test',
+        mcv2BondAddress: bondAddress
+      })
+
+      expect(fee).toBe('100000000000000')
+
+      const ethCall = capturedBodies.find(
+        (b: unknown) => (b as { method: string }).method === 'eth_call'
+      ) as { params: [{ to: string; data: string }, string] }
+
+      expect(ethCall).toBeDefined()
+      expect(ethCall.params[0].to).toBe(bondAddress)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})
+
+describe('realPublish sends tx to storyFactoryAddress', () => {
+  it('sends create-storyline tx to storyFactoryAddress, not mcv2BondAddress', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl', plotIndex: 0 })
+    const signer = mockSigner()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const config = {
+      ...mockConfig(),
+      storyFactoryAddress: '0xstoryfactoryaddr',
+      mcv2BondAddress: '0xmcv2bondaddr'
+    }
+    const deps = createDeps({ signer, encoder, fetch: fetchFn, config })
+
+    await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'Story',
+        contentCid: '',
+        contentHash: '',
+        creationFeeWei: '100000000000000',
+        hasDeadline: false
+      },
+      '# Ep',
+      '0xauthor',
+      deps
+    )
+
+    expect(signer.sendTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '0xstoryfactoryaddr' })
+    )
+  })
+})
+
+describe('default retry constants match plotlink-ows', () => {
+  it('defaults to 10 retries, 30s interval, 8s initial delay', () => {
+    const config = getDefaultPublishConfig()
+    expect(config.indexRetries).toBe(10)
+    expect(config.indexRetryDelayMs).toBe(30000)
+    expect(config.indexInitialDelayMs).toBe(8000)
+  })
+})
+
+describe('upload body/response shape', () => {
+  it('IpfsClient upload returns { cid } from provider', async () => {
+    const ipfs = mockIpfs()
+    const result = await ipfs.upload('# My Story')
+    expect(result).toEqual({ cid: 'bafyipfs123' })
+  })
+
+  it('upload is called with markdown content in realPublish', async () => {
+    const encoder = mockEncoder({ storylineId: '0xsl', plotIndex: 0 })
+    const signer = mockSigner()
+    const ipfs = mockIpfs()
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const deps = createDeps({ signer, encoder, ipfs, fetch: fetchFn })
+
+    await realPublish(
+      {
+        action: 'create-storyline',
+        title: 'Story',
+        contentCid: '',
+        contentHash: '',
+        hasDeadline: false
+      },
+      '# Episode Content',
+      '0xauthor',
+      deps
+    )
+
+    expect(ipfs.upload).toHaveBeenCalledWith('# Episode Content')
   })
 })
