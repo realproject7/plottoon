@@ -235,6 +235,144 @@ function WalletCard({ wallet }: { wallet: DashboardWalletSummary }) {
   )
 }
 
+function RoyaltyClaimCard({
+  walletConnected,
+  dashboardRoyalty
+}: {
+  walletConnected: boolean
+  dashboardRoyalty: DashboardRoyaltySummary
+}) {
+  const [royaltyInfo, setRoyaltyInfo] = useState<RoyaltyInfoResult | null>(null)
+  const [claiming, setClaiming] = useState(false)
+  const [claimResult, setClaimResult] = useState<RoyaltyClaimResult | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  useEffect(() => {
+    if (!walletConnected) return
+    let cancelled = false
+    window.plottoon.royalty.getInfo().then(
+      (result) => {
+        if (!cancelled) setRoyaltyInfo(result)
+      },
+      () => {}
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [walletConnected])
+
+  const info = royaltyInfo?.info
+  const hasUnclaimed = info && BigInt(info.unclaimedWei) > BigInt(0)
+
+  const handleClaim = async () => {
+    setClaiming(true)
+    setClaimResult(null)
+    setConfirmOpen(false)
+    try {
+      const result = await window.plottoon.royalty.claim(true)
+      setClaimResult(result)
+      if (result.success && walletConnected) {
+        window.plottoon.royalty
+          .getInfo()
+          .then((r) => setRoyaltyInfo(r))
+          .catch(() => {})
+      }
+    } catch (err) {
+      setClaimResult({
+        success: false,
+        error: err instanceof Error ? err.message : 'Claim failed'
+      })
+    }
+    setClaiming(false)
+  }
+
+  if (!walletConnected) return null
+
+  if (dashboardRoyalty.error && !info) {
+    return (
+      <div style={cardStyle}>
+        <div style={statLabelStyle}>Royalties</div>
+        <div style={{ fontSize: 12, color: 'var(--color-error)', marginTop: 'var(--space-1)' }}>
+          {dashboardRoyalty.error}
+        </div>
+      </div>
+    )
+  }
+
+  const earned = info?.earnedWei ?? dashboardRoyalty.earnedWei
+  const unclaimed = info?.unclaimedWei ?? dashboardRoyalty.unclaimedWei
+
+  if (!earned && !dashboardRoyalty.earnedWei) return null
+
+  return (
+    <div style={cardStyle}>
+      <div style={statLabelStyle}>Royalties</div>
+      {earned && (
+        <div style={{ fontSize: 13, marginTop: 'var(--space-1)' }}>
+          <span style={{ fontWeight: 500 }}>Earned:</span> {formatWei(earned)}
+        </div>
+      )}
+      {unclaimed && unclaimed !== '0' && (
+        <div style={{ fontSize: 13, color: 'var(--color-accent)' }}>
+          <span style={{ fontWeight: 500 }}>Unclaimed:</span> {formatWei(unclaimed)}
+        </div>
+      )}
+      {hasUnclaimed && !confirmOpen && !claiming && (
+        <button
+          type="button"
+          className="btn-primary"
+          style={{ marginTop: 'var(--space-2)', fontSize: 12 }}
+          onClick={() => setConfirmOpen(true)}
+        >
+          Claim Royalties
+        </button>
+      )}
+      {confirmOpen && !claiming && (
+        <div style={{ marginTop: 'var(--space-2)', fontSize: 12 }}>
+          <span>Claim {formatWei(info!.unclaimedWei)} to your wallet?</span>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
+            <button type="button" className="btn-primary" onClick={handleClaim}>
+              Confirm Claim
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(false)}
+              style={{
+                all: 'unset',
+                fontSize: 12,
+                color: 'var(--color-text-muted)',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {claiming && (
+        <div
+          style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}
+        >
+          Claiming…
+        </div>
+      )}
+      {claimResult && (
+        <div
+          style={{
+            fontSize: 12,
+            marginTop: 'var(--space-2)',
+            color: claimResult.success ? 'var(--color-success)' : 'var(--color-error)'
+          }}
+        >
+          {claimResult.success
+            ? `Claimed! Tx: ${claimResult.txHash?.slice(0, 10)}…`
+            : claimResult.error}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loadState, setLoadState] = useState<LoadState>('loading')
@@ -371,28 +509,7 @@ export function Dashboard() {
             </div>
           </div>
         )}
-        {data.royalty.earnedWei && (
-          <div style={cardStyle}>
-            <div style={statLabelStyle}>Royalties</div>
-            <div style={{ fontSize: 13, marginTop: 'var(--space-1)' }}>
-              <span style={{ fontWeight: 500 }}>Earned:</span> {formatWei(data.royalty.earnedWei)}
-            </div>
-            {data.royalty.unclaimedWei && data.royalty.unclaimedWei !== '0' && (
-              <div style={{ fontSize: 13, color: 'var(--color-accent)' }}>
-                <span style={{ fontWeight: 500 }}>Unclaimed:</span>{' '}
-                {formatWei(data.royalty.unclaimedWei)}
-              </div>
-            )}
-          </div>
-        )}
-        {data.royalty.error && (
-          <div style={cardStyle}>
-            <div style={statLabelStyle}>Royalties</div>
-            <div style={{ fontSize: 12, color: 'var(--color-error)', marginTop: 'var(--space-1)' }}>
-              {data.royalty.error}
-            </div>
-          </div>
-        )}
+        <RoyaltyClaimCard walletConnected={data.wallet.connected} dashboardRoyalty={data.royalty} />
       </div>
 
       {isEmpty && (

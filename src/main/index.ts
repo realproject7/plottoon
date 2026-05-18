@@ -11,6 +11,8 @@ import {
 } from './ipc/walletConnectionHandlers'
 import { registerPublishHandlers } from './ipc/publishHandlers'
 import { registerDashboardHandlers } from './ipc/dashboardHandlers'
+import { registerRoyaltyHandlers } from './ipc/royaltyHandlers'
+import { getDefaultRoyaltyConfig } from './services/royaltyClaim'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
 import { createOWSConfig, createOWSFromCore, type OWSVaultConfig } from './services/owsAdapter'
@@ -147,6 +149,16 @@ app.whenReady().then(async () => {
         }
       }
     })
+  })
+
+  const royaltyConfig = getDefaultRoyaltyConfig()
+  registerRoyaltyHandlers({
+    walletState,
+    owsModule,
+    vaultConfig,
+    royaltyConfig,
+    signerMode,
+    getWindow: () => BrowserWindow.getAllWindows()[0] ?? null
   })
 
   createWindow()

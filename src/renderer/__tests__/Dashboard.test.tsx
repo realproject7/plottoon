@@ -23,11 +23,21 @@ function emptyDashboard(): DashboardData {
 }
 
 const mockGetData = vi.fn<() => Promise<DashboardData>>()
+const mockGetInfo = vi.fn<() => Promise<RoyaltyInfoResult>>()
+const mockClaim = vi.fn<(confirmed: boolean) => Promise<RoyaltyClaimResult>>()
 
 beforeEach(() => {
   mockGetData.mockResolvedValue(emptyDashboard())
+  mockGetInfo.mockResolvedValue({ info: null, error: null })
+  mockClaim.mockResolvedValue({ success: false, error: 'Not configured' })
   window.plottoon = {
-    dashboard: { getData: mockGetData }
+    dashboard: { getData: mockGetData },
+    royalty: {
+      getInfo: mockGetInfo,
+      claim: mockClaim,
+      getClaimHistory: vi.fn().mockResolvedValue({ claims: [] }),
+      onProgress: vi.fn().mockReturnValue(() => {})
+    }
   } as unknown as typeof window.plottoon
 })
 
@@ -353,5 +363,217 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('5')).toBeDefined()
     })
+  })
+
+  it('shows claim button when unclaimed royalties exist', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: {
+        address: '0xabc',
+        source: 'plottoon-writer',
+        connected: true,
+        balanceWei: null,
+        balanceError: null
+      },
+      royalty: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        error: null
+      }
+    })
+    mockGetInfo.mockResolvedValue({
+      info: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        reserveToken: '0xtoken'
+      },
+      error: null
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Claim Royalties' })).toBeDefined()
+    })
+  })
+
+  it('shows confirmation dialog when claim button clicked', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: {
+        address: '0xabc',
+        source: 'plottoon-writer',
+        connected: true,
+        balanceWei: null,
+        balanceError: null
+      },
+      royalty: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        error: null
+      }
+    })
+    mockGetInfo.mockResolvedValue({
+      info: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        reserveToken: '0xtoken'
+      },
+      error: null
+    })
+    render(<Dashboard />)
+    await waitFor(() => screen.getByRole('button', { name: 'Claim Royalties' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Claim Royalties' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Confirm Claim' })).toBeDefined()
+      expect(screen.getByText('Cancel')).toBeDefined()
+    })
+  })
+
+  it('cancels claim when cancel clicked', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: {
+        address: '0xabc',
+        source: 'plottoon-writer',
+        connected: true,
+        balanceWei: null,
+        balanceError: null
+      },
+      royalty: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        error: null
+      }
+    })
+    mockGetInfo.mockResolvedValue({
+      info: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        reserveToken: '0xtoken'
+      },
+      error: null
+    })
+    render(<Dashboard />)
+    await waitFor(() => screen.getByRole('button', { name: 'Claim Royalties' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Claim Royalties' }))
+    await waitFor(() => screen.getByText('Cancel'))
+    fireEvent.click(screen.getByText('Cancel'))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Claim Royalties' })).toBeDefined()
+      expect(screen.queryByText('Confirm Claim')).toBeNull()
+    })
+  })
+
+  it('executes claim and shows success', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: {
+        address: '0xabc',
+        source: 'plottoon-writer',
+        connected: true,
+        balanceWei: null,
+        balanceError: null
+      },
+      royalty: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        error: null
+      }
+    })
+    mockGetInfo.mockResolvedValue({
+      info: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        reserveToken: '0xtoken'
+      },
+      error: null
+    })
+    mockClaim.mockResolvedValue({ success: true, txHash: '0xclaimtx123456', gasCostWei: '21000' })
+    render(<Dashboard />)
+    await waitFor(() => screen.getByRole('button', { name: 'Claim Royalties' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Claim Royalties' }))
+    await waitFor(() => screen.getByRole('button', { name: 'Confirm Claim' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Claim' }))
+    await waitFor(() => {
+      expect(screen.getByText(/Claimed!/)).toBeDefined()
+    })
+    expect(mockClaim).toHaveBeenCalledWith(true)
+  })
+
+  it('shows error when claim fails', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: {
+        address: '0xabc',
+        source: 'plottoon-writer',
+        connected: true,
+        balanceWei: null,
+        balanceError: null
+      },
+      royalty: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        error: null
+      }
+    })
+    mockGetInfo.mockResolvedValue({
+      info: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        reserveToken: '0xtoken'
+      },
+      error: null
+    })
+    mockClaim.mockResolvedValue({ success: false, error: 'Transaction reverted' })
+    render(<Dashboard />)
+    await waitFor(() => screen.getByRole('button', { name: 'Claim Royalties' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Claim Royalties' }))
+    await waitFor(() => screen.getByRole('button', { name: 'Confirm Claim' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Claim' }))
+    await waitFor(() => {
+      expect(screen.getByText('Transaction reverted')).toBeDefined()
+    })
+  })
+
+  it('does not show claim button when no unclaimed royalties', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: {
+        address: '0xabc',
+        source: 'plottoon-writer',
+        connected: true,
+        balanceWei: null,
+        balanceError: null
+      },
+      royalty: {
+        earnedWei: '500000000000000000',
+        claimedWei: '500000000000000000',
+        unclaimedWei: '0',
+        error: null
+      }
+    })
+    mockGetInfo.mockResolvedValue({
+      info: {
+        earnedWei: '500000000000000000',
+        claimedWei: '500000000000000000',
+        unclaimedWei: '0',
+        reserveToken: '0xtoken'
+      },
+      error: null
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByText('Royalties')).toBeDefined()
+    })
+    expect(screen.queryByRole('button', { name: 'Claim Royalties' })).toBeNull()
   })
 })
