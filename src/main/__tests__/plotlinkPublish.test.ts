@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
+import { encodeEventTopics, encodeAbiParameters } from 'viem'
 import {
   realPublish,
   createPublishTransactionFn,
-  createOWSTransactionSigner,
+  createViemContractEncoder,
+  createRealPublishDeps,
   getDefaultPublishConfig,
   type PlotlinkPublishDeps,
   type PublishConfig,
@@ -226,28 +228,133 @@ describe('realPublish — reverted transaction', () => {
   })
 })
 
-describe('createOWSTransactionSigner', () => {
-  it('signs transaction via OWS before sending to RPC', async () => {
+describe('createViemContractEncoder', () => {
+  it('encodes createStoryline with real ABI encoding', () => {
+    const encoder = createViemContractEncoder()
+    const contentHash = '0x' + 'ab'.repeat(32)
+
+    const calldata = encoder.encodeCreateStoryline('My Story', 'bafytest', contentHash, false)
+
+    expect(calldata).toMatch(/^0x/)
+    expect(calldata.length).toBeGreaterThan(10)
+  })
+
+  it('encodes chainPlot with real ABI encoding', () => {
+    const encoder = createViemContractEncoder()
+    const storylineId = '0x' + 'cd'.repeat(32)
+    const contentHash = '0x' + 'ab'.repeat(32)
+
+    const calldata = encoder.encodeChainPlot(storylineId, 'Episode 2', 'bafytest', contentHash)
+
+    expect(calldata).toMatch(/^0x/)
+    expect(calldata.length).toBeGreaterThan(10)
+  })
+
+  it('decodes StorylineCreated event from receipt logs', () => {
+    const encoder = createViemContractEncoder()
+    const storylineId = '0x' + 'aa'.repeat(32)
+
+    const abi = [
+      {
+        type: 'event' as const,
+        name: 'StorylineCreated' as const,
+        inputs: [
+          { name: 'storylineId' as const, type: 'bytes32' as const, indexed: true },
+          { name: 'plotIndex' as const, type: 'uint256' as const, indexed: false }
+        ]
+      }
+    ]
+
+    const topics = encodeEventTopics({ abi, eventName: 'StorylineCreated', args: { storylineId } })
+    const data = encodeAbiParameters([{ type: 'uint256' }], [BigInt(0)])
+
+    const receipt: TransactionReceipt = {
+      status: 'success',
+      logs: [{ topics, data }],
+      gasUsed: '21000',
+      effectiveGasPrice: '1000000000'
+    }
+
+    const decoded = encoder.decodePublishEvents(receipt)
+    expect(decoded.storylineId).toBe(storylineId)
+    expect(decoded.plotIndex).toBe(0)
+  })
+
+  it('decodes PlotChained event from receipt logs', () => {
+    const encoder = createViemContractEncoder()
+    const storylineId = '0x' + 'bb'.repeat(32)
+
+    const abi = [
+      {
+        type: 'event' as const,
+        name: 'PlotChained' as const,
+        inputs: [
+          { name: 'storylineId' as const, type: 'bytes32' as const, indexed: true },
+          { name: 'plotIndex' as const, type: 'uint256' as const, indexed: false }
+        ]
+      }
+    ]
+
+    const topics = encodeEventTopics({ abi, eventName: 'PlotChained', args: { storylineId } })
+    const data = encodeAbiParameters([{ type: 'uint256' }], [BigInt(5)])
+
+    const receipt: TransactionReceipt = {
+      status: 'success',
+      logs: [{ topics, data }],
+      gasUsed: '21000',
+      effectiveGasPrice: '1000000000'
+    }
+
+    const decoded = encoder.decodePublishEvents(receipt)
+    expect(decoded.storylineId).toBe(storylineId)
+    expect(decoded.plotIndex).toBe(5)
+  })
+
+  it('returns empty when no matching events in logs', () => {
+    const encoder = createViemContractEncoder()
+
+    const receipt: TransactionReceipt = {
+      status: 'success',
+      logs: [{ topics: ['0xdeadbeef'], data: '0x' }],
+      gasUsed: '21000',
+      effectiveGasPrice: '1000000000'
+    }
+
+    const decoded = encoder.decodePublishEvents(receipt)
+    expect(decoded).toEqual({})
+  })
+})
+
+describe('createRealPublishDeps', () => {
+  it('wires OWS viem signer and viem contract encoder into deps', () => {
     const ows = mockOws()
-    const rpcSender = mockSigner()
+    const ipfs = mockIpfs()
+    const keccak = vi.fn().mockReturnValue('0x' + 'ab'.repeat(32))
+    const fetchFn = mockFetch([{ ok: true, body: { success: true } }])
+    const config = mockConfig()
 
-    const signer = createOWSTransactionSigner(ows, 'my-wallet', 'eip155:8453', 'pass', rpcSender)
-
-    await signer.sendTransaction({
-      to: '0xcontract',
-      data: '0xcalldata',
-      value: '1000'
-    })
-
-    expect(ows.signTransaction).toHaveBeenCalledWith(
-      'my-wallet',
+    const deps = createRealPublishDeps(
+      ows,
+      'plottoon-writer-123',
+      '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
       'eip155:8453',
-      '0xcalldata',
-      'pass'
+      undefined,
+      ipfs,
+      keccak,
+      fetchFn,
+      config
     )
-    expect(rpcSender.sendTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ data: '0xtxsig' })
-    )
+
+    expect(deps.ows).toBe(ows)
+    expect(deps.ipfs).toBe(ipfs)
+    expect(deps.config).toBe(config)
+    expect(deps.signer).toBeDefined()
+    expect(deps.signer.sendTransaction).toBeInstanceOf(Function)
+    expect(deps.signer.waitForReceipt).toBeInstanceOf(Function)
+    expect(deps.encoder).toBeDefined()
+    expect(deps.encoder.encodeCreateStoryline).toBeInstanceOf(Function)
+    expect(deps.encoder.encodeChainPlot).toBeInstanceOf(Function)
+    expect(deps.encoder.decodePublishEvents).toBeInstanceOf(Function)
   })
 })
 

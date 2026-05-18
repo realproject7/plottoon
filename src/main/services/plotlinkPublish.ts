@@ -1,3 +1,14 @@
+import {
+  encodeFunctionData,
+  decodeEventLog,
+  createWalletClient,
+  createPublicClient,
+  http,
+  serializeTransaction,
+  type Hex
+} from 'viem'
+import { toAccount } from 'viem/accounts'
+import { base } from 'viem/chains'
 import type {
   PublishTransactionPayload,
   PublishTransactionResult
@@ -76,6 +87,151 @@ export interface PlotlinkPublishDeps {
   keccak: KeccakFn
   fetch: FetchFn
   config: PublishConfig
+}
+
+const plotlinkAbi = [
+  {
+    type: 'function',
+    name: 'createStoryline',
+    inputs: [
+      { name: 'title', type: 'string' },
+      { name: 'cid', type: 'string' },
+      { name: 'contentHash', type: 'bytes32' },
+      { name: 'hasDeadline', type: 'bool' }
+    ],
+    outputs: [],
+    stateMutability: 'payable'
+  },
+  {
+    type: 'function',
+    name: 'chainPlot',
+    inputs: [
+      { name: 'storylineId', type: 'bytes32' },
+      { name: 'title', type: 'string' },
+      { name: 'cid', type: 'string' },
+      { name: 'contentHash', type: 'bytes32' }
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable'
+  },
+  {
+    type: 'event',
+    name: 'StorylineCreated',
+    inputs: [
+      { name: 'storylineId', type: 'bytes32', indexed: true },
+      { name: 'plotIndex', type: 'uint256', indexed: false }
+    ]
+  },
+  {
+    type: 'event',
+    name: 'PlotChained',
+    inputs: [
+      { name: 'storylineId', type: 'bytes32', indexed: true },
+      { name: 'plotIndex', type: 'uint256', indexed: false }
+    ]
+  }
+] as const
+
+export function createViemContractEncoder(): ContractEncoder {
+  return {
+    encodeCreateStoryline(title: string, cid: string, contentHash: string, hasDeadline: boolean) {
+      return encodeFunctionData({
+        abi: plotlinkAbi,
+        functionName: 'createStoryline',
+        args: [title, cid, contentHash as Hex, hasDeadline]
+      })
+    },
+    encodeChainPlot(storylineId: string, title: string, cid: string, contentHash: string) {
+      return encodeFunctionData({
+        abi: plotlinkAbi,
+        functionName: 'chainPlot',
+        args: [storylineId as Hex, title, cid, contentHash as Hex]
+      })
+    },
+    decodePublishEvents(receipt: TransactionReceipt): DecodedPublishEvent {
+      for (const log of receipt.logs) {
+        try {
+          const decoded = decodeEventLog({
+            abi: plotlinkAbi,
+            data: log.data as Hex,
+            topics: log.topics as [Hex, ...Hex[]]
+          })
+          if (decoded.eventName === 'StorylineCreated' || decoded.eventName === 'PlotChained') {
+            const args = decoded.args as { storylineId: Hex; plotIndex: bigint }
+            return {
+              storylineId: args.storylineId,
+              plotIndex: Number(args.plotIndex)
+            }
+          }
+        } catch {
+          continue
+        }
+      }
+      return {}
+    }
+  }
+}
+
+export function createOWSViemSigner(
+  ows: OWSCoreModule,
+  walletName: string,
+  walletAddress: string,
+  chain: string,
+  passphrase: string | undefined,
+  rpcUrl: string
+): TransactionSigner {
+  const account = toAccount({
+    address: walletAddress as Hex,
+    async signMessage({ message }) {
+      const raw = typeof message === 'string' ? message : String(message.raw)
+      const result = ows.signMessage(walletName, chain, raw, passphrase ?? null)
+      return result.signature as Hex
+    },
+    async signTransaction(tx) {
+      const serialized = serializeTransaction(tx)
+      const result = ows.signTransaction(walletName, chain, serialized, passphrase ?? null)
+      return result.signature as Hex
+    },
+    async signTypedData() {
+      throw new Error('signTypedData not supported by OWS signer')
+    }
+  })
+
+  const walletClient = createWalletClient({
+    account,
+    chain: base,
+    transport: http(rpcUrl)
+  })
+
+  const publicClient = createPublicClient({
+    chain: base,
+    transport: http(rpcUrl)
+  })
+
+  return {
+    async sendTransaction(params) {
+      const hash = await walletClient.sendTransaction({
+        to: params.to as Hex,
+        data: params.data as Hex,
+        value: params.value ? BigInt(params.value) : undefined
+      })
+      return { txHash: hash }
+    },
+    async waitForReceipt(txHash) {
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: txHash as Hex
+      })
+      return {
+        status: receipt.status,
+        logs: receipt.logs.map((l) => ({
+          topics: [...l.topics] as string[],
+          data: l.data
+        })),
+        gasUsed: receipt.gasUsed.toString(),
+        effectiveGasPrice: receipt.effectiveGasPrice.toString()
+      }
+    }
+  }
 }
 
 function computeGasCost(receipt: TransactionReceipt): string {
@@ -212,25 +368,6 @@ export async function realPublish(
   }
 }
 
-export function createOWSTransactionSigner(
-  ows: OWSCoreModule,
-  walletName: string,
-  chain: string,
-  passphrase: string | undefined,
-  rpcSender: TransactionSigner
-): TransactionSigner {
-  return {
-    async sendTransaction(params) {
-      const signResult = ows.signTransaction(walletName, chain, params.data, passphrase ?? null)
-      return rpcSender.sendTransaction({
-        ...params,
-        data: signResult.signature
-      })
-    },
-    waitForReceipt: rpcSender.waitForReceipt.bind(rpcSender)
-  }
-}
-
 export function createPublishTransactionFn(deps: PlotlinkPublishDeps, walletName: string) {
   return async (payload: PublishTransactionPayload): Promise<PublishTransactionResult> => {
     let txData: string
@@ -274,6 +411,28 @@ export function createPublishTransactionFn(deps: PlotlinkPublishDeps, walletName
     const plotIndex = decoded.plotIndex
 
     return { txHash, confirmed: true, storylineId, plotIndex }
+  }
+}
+
+export function createRealPublishDeps(
+  ows: OWSCoreModule,
+  walletName: string,
+  walletAddress: string,
+  chain: string,
+  passphrase: string | undefined,
+  ipfs: IpfsClient,
+  keccak: KeccakFn,
+  fetchFn: FetchFn,
+  config: PublishConfig
+): PlotlinkPublishDeps {
+  return {
+    ows,
+    signer: createOWSViemSigner(ows, walletName, walletAddress, chain, passphrase, config.rpcUrl),
+    encoder: createViemContractEncoder(),
+    ipfs,
+    keccak,
+    fetch: fetchFn,
+    config
   }
 }
 
