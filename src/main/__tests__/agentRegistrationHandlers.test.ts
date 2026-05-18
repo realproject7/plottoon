@@ -129,6 +129,25 @@ describe('agent:status', () => {
     expect(result.cached).toBeDefined()
   })
 
+  it('returns error when live status read has zero registry address', async () => {
+    const { findCachedAgent } = await import('../services/agentRegistrationCache')
+    ;(findCachedAgent as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+
+    const deps = createDeps({
+      signerMode: 'live',
+      walletState: { wallet: WALLET },
+      registrationConfig: {
+        rpcUrl: 'https://rpc.example',
+        registryAddress: '0x0000000000000000000000000000000000000000'
+      }
+    })
+    registerAgentRegistrationHandlers(deps)
+    const handler = getHandler('agent:status')
+    const result = (await handler()) as { status: null; error: string }
+    expect(result.status).toBeNull()
+    expect(result.error).toContain('PLOTLINK_AGENT_REGISTRY_ADDRESS is required')
+  })
+
   it('reads live status when in live mode', async () => {
     const { readAgentStatus } = await import('../services/agentRegistration')
     ;(readAgentStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -255,7 +274,7 @@ describe('agent:register', () => {
     const cachedEntry = (upsertAgentCache as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(cachedEntry.modelLabel).toBe('Claude CLI 1.0.0')
     const parsed = JSON.parse(cachedEntry.agentURI)
-    expect(parsed.model).toBe('Claude CLI 1.0.0')
+    expect(parsed.llmModel).toBe('Claude CLI 1.0.0')
   })
 
   it('passes agentURI to executeAgentRegistration in live mode', async () => {
@@ -284,6 +303,25 @@ describe('agent:register', () => {
     expect(parsed.name).toBe('LiveBot')
     expect(parsed.genre).toBe('horror')
     expect(parsed.registeredBy).toBe('plottoon')
+  })
+
+  it('rejects live registration when registry address is zero', async () => {
+    const deps = createDeps({
+      signerMode: 'live',
+      walletState: { wallet: WALLET },
+      registrationConfig: {
+        rpcUrl: 'https://rpc.example',
+        registryAddress: '0x0000000000000000000000000000000000000000'
+      }
+    })
+    registerAgentRegistrationHandlers(deps)
+    const handler = getHandler('agent:register')
+    const result = (await handler({}, { agentName: 'Bot' })) as {
+      success: boolean
+      error: string
+    }
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('PLOTLINK_AGENT_REGISTRY_ADDRESS is required')
   })
 
   it('returns error when live registration fails', async () => {

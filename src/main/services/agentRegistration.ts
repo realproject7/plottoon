@@ -76,11 +76,26 @@ export interface AgentRegistrationConfig {
   registryAddress: string
 }
 
+export const ERC8004_REGISTRY_BASE_MAINNET = '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432'
+
+export function validateAgentRegistrationConfig(config: AgentRegistrationConfig): string[] {
+  const errors: string[] = []
+  if (
+    !config.registryAddress ||
+    config.registryAddress === '0x0000000000000000000000000000000000000000'
+  ) {
+    errors.push('PLOTLINK_AGENT_REGISTRY_ADDRESS is required for agent registration')
+  }
+  if (!config.rpcUrl) {
+    errors.push('BASE_RPC_URL is required for agent registration')
+  }
+  return errors
+}
+
 export function getDefaultAgentRegistrationConfig(): AgentRegistrationConfig {
   return {
     rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-    registryAddress:
-      process.env.PLOTLINK_AGENT_REGISTRY_ADDRESS || '0x0000000000000000000000000000000000000000'
+    registryAddress: process.env.PLOTLINK_AGENT_REGISTRY_ADDRESS || ERC8004_REGISTRY_BASE_MAINNET
   }
 }
 
@@ -193,12 +208,15 @@ export function buildAgentURI(params: {
   agentName: string
   modelLabel: string
   genre?: string
+  description?: string
 }): string {
   return JSON.stringify({
     name: params.agentName,
-    model: params.modelLabel,
+    description: params.description || `AI writer agent: ${params.agentName}`,
     genre: params.genre || '',
-    registeredBy: 'plottoon'
+    llmModel: params.modelLabel,
+    registeredBy: 'plottoon',
+    registeredAt: new Date().toISOString()
   })
 }
 

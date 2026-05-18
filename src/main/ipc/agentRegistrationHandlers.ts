@@ -6,6 +6,7 @@ import {
   executeAgentRegistration,
   buildAgentURI,
   signOwnerBinding,
+  validateAgentRegistrationConfig,
   type AgentRegistrationConfig
 } from '../services/agentRegistration'
 import { findCachedAgent, upsertAgentCache } from '../services/agentRegistrationCache'
@@ -70,6 +71,21 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
         }
       }
 
+      const configErrors = validateAgentRegistrationConfig(deps.registrationConfig)
+      if (configErrors.length > 0) {
+        return {
+          status: cached
+            ? {
+                registered: true,
+                agentId: cached.agentId,
+                agentURI: cached.agentURI
+              }
+            : null,
+          cached,
+          error: configErrors.join('; ')
+        }
+      }
+
       try {
         const status = await readAgentStatus(wallet.address, { config: deps.registrationConfig })
         return { status, cached, error: null }
@@ -93,7 +109,7 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
     'agent:register',
     async (
       _event,
-      params: { agentName: string; genre?: string }
+      params: { agentName: string; genre?: string; description?: string }
     ): Promise<AgentRegistrationResult> => {
       const wallet = deps.walletState.wallet
       if (!wallet) {
@@ -104,7 +120,8 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
       const agentURI = buildAgentURI({
         agentName: params.agentName,
         modelLabel,
-        genre: params.genre
+        genre: params.genre,
+        description: params.description
       })
 
       if (deps.signerMode === 'mock') {
@@ -122,6 +139,11 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
         })
 
         return { success: true, agentId: mockAgentId }
+      }
+
+      const configErrors = validateAgentRegistrationConfig(deps.registrationConfig)
+      if (configErrors.length > 0) {
+        return { success: false, error: configErrors.join('; ') }
       }
 
       try {
