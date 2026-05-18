@@ -44,17 +44,38 @@ app.whenReady().then(async () => {
   registerProjectHandlers()
   registerTerminalHandlers()
 
-  const signer = createWalletSigner({ mode: 'mock' })
-  registerSigningHandlers(signer)
-
   const owsModule = await createOWSFromCore()
   const vaultConfig: OWSVaultConfig = {
     vaultPath: process.env.OWS_VAULT_PATH,
     passphrase: process.env.OWS_PASSPHRASE,
     chain: process.env.OWS_DEFAULT_CHAIN || 'eip155:8453'
   }
-  const walletConfig = createOWSConfig(owsModule, vaultConfig)
+
+  const signerMode = (process.env.PLOTLINK_SIGNER_MODE === 'live' ? 'live' : 'mock') as
+    | 'live'
+    | 'mock'
   const walletState = createSelectedWalletState()
+
+  const signer = createWalletSigner({
+    mode: signerMode,
+    sign:
+      signerMode === 'live'
+        ? async (message: string) => {
+            const wallet = walletState.wallet
+            if (!wallet) throw new Error('No wallet connected for signing')
+            const result = owsModule.signMessage(
+              wallet.name,
+              vaultConfig.chain,
+              message,
+              vaultConfig.passphrase ?? null
+            )
+            return result.signature
+          }
+        : undefined
+  })
+  registerSigningHandlers(signer)
+
+  const walletConfig = createOWSConfig(owsModule, vaultConfig)
   registerWalletConnectionHandlers(walletConfig, walletState, signer)
 
   const publishConfig = getDefaultPublishConfig()
