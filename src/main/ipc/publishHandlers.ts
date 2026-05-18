@@ -12,7 +12,9 @@ import type {
 import {
   realPublish,
   createViemContractEncoder,
-  createOWSViemSigner
+  createOWSViemSigner,
+  validatePublishConfig,
+  fetchCreationFee
 } from '../services/plotlinkPublish'
 import type { OWSCoreModule, OWSVaultConfig } from '../services/owsAdapter'
 import type {
@@ -142,18 +144,7 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
       if (!deps.walletState.wallet) {
         errors.push('No wallet connected')
       }
-      if (
-        !deps.config.contractAddress ||
-        deps.config.contractAddress === '0x0000000000000000000000000000000000000000'
-      ) {
-        errors.push('PlotLink contract address not configured')
-      }
-      if (!deps.config.rpcUrl) {
-        errors.push('Base RPC URL not configured')
-      }
-      if (!deps.config.creationFeeWei) {
-        errors.push('Creation fee not configured')
-      }
+      errors.push(...validatePublishConfig(deps.config))
     }
 
     return {
@@ -191,19 +182,21 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
         return { success: false, error: 'No wallet connected' }
       }
 
-      if (
-        !deps.config.contractAddress ||
-        deps.config.contractAddress === '0x0000000000000000000000000000000000000000'
-      ) {
-        return { success: false, error: 'PlotLink contract address not configured' }
+      const configErrors = validatePublishConfig(deps.config)
+      if (configErrors.length > 0) {
+        return { success: false, error: configErrors.join('; ') }
       }
 
-      if (!deps.config.rpcUrl) {
-        return { success: false, error: 'Base RPC URL not configured' }
-      }
-
-      if (request.action === 'create-storyline' && !deps.config.creationFeeWei) {
-        return { success: false, error: 'Creation fee not configured for new storyline' }
+      let creationFeeWei: string | undefined = deps.config.creationFeeWei
+      if (request.action === 'create-storyline') {
+        if (!creationFeeWei) {
+          try {
+            creationFeeWei = await fetchCreationFee(deps.config)
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Unknown error'
+            return { success: false, error: `Failed to fetch creation fee: ${msg}` }
+          }
+        }
       }
 
       const plotDir = await deps.resolvePlotDir(request.projectId, request.plotSlug)
@@ -255,8 +248,7 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
             contentHash: '',
             storylineId: request.storylineId,
             hasDeadline: request.hasDeadline,
-            creationFeeWei:
-              request.action === 'create-storyline' ? deps.config.creationFeeWei : undefined
+            creationFeeWei: request.action === 'create-storyline' ? creationFeeWei : undefined
           },
           request.markdown,
           wallet.address,
