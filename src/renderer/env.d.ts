@@ -178,6 +178,91 @@ interface PublishRequest {
   contentType?: string
 }
 
+interface DashboardPlotEntry {
+  projectId: string
+  projectName: string
+  plotSlug: string
+  plotTitle: string
+  cutCount: number
+  plotState: string
+  publishedAt: string | null
+  publishResult: {
+    txHash: string
+    storylineId: string | null
+    plotIndex: number | null
+    contentCid: string
+    contentHash: string
+    authorAddress: string
+    gasCostWei: string | null
+    plotlinkUrl: string | null
+    walletAddress: string
+    walletSource: string
+    indexed: boolean
+    indexError: string | null
+  } | null
+}
+
+interface DashboardStorylineGroup {
+  storylineId: string
+  projectId: string
+  projectName: string
+  plots: DashboardPlotEntry[]
+  publishedCount: number
+  notIndexedCount: number
+  latestPublishedAt: string | null
+  totalGasCostWei: string
+}
+
+interface DashboardLocalGroup {
+  groupKey: string
+  projectId: string
+  projectName: string
+  plots: DashboardPlotEntry[]
+}
+
+interface DashboardCounts {
+  totalProjects: number
+  totalPlots: number
+  publishedPlots: number
+  pendingPlots: number
+  notIndexedPlots: number
+  failedPlots: number
+}
+
+interface DashboardWalletSummary {
+  address: string | null
+  source: string | null
+  connected: boolean
+  balanceWei: string | null
+  balanceError: string | null
+}
+
+interface DashboardTokenPrice {
+  ethUsd: number | null
+  error: string | null
+}
+
+interface DashboardRoyaltySummary {
+  earnedWei: string | null
+  claimedWei: string | null
+  unclaimedWei: string | null
+  error: string | null
+}
+
+interface DashboardData {
+  counts: DashboardCounts
+  storylines: DashboardStorylineGroup[]
+  localGroups: DashboardLocalGroup[]
+  wallet: DashboardWalletSummary
+  tokenPrice: DashboardTokenPrice
+  royalty: DashboardRoyaltySummary
+  generatedAt: string
+}
+
+interface PlottoonDashboard {
+  getData(): Promise<DashboardData>
+}
+
 interface PlottoonPublish {
   preflight(): Promise<PublishPreflightResult>
   execute(request: PublishRequest, confirmed: boolean): Promise<PublishExecuteResult>
@@ -190,6 +275,7 @@ interface Window {
     terminal: PlottoonTerminal
     fs: PlottoonFs
     publish: PlottoonPublish
+    dashboard: PlottoonDashboard
     project: PlottoonProject
     capability: PlottoonCapability
     actionLog: PlottoonActionLog

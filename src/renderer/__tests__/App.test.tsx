@@ -135,6 +135,24 @@ beforeEach(() => {
       getConnected: vi.fn().mockResolvedValue({ connected: false }),
       disconnect: vi.fn().mockResolvedValue({ success: true }),
       getSignerMode: vi.fn().mockResolvedValue({ mode: 'mock' })
+    },
+    dashboard: {
+      getData: vi.fn().mockResolvedValue({
+        counts: {
+          totalProjects: 0,
+          totalPlots: 0,
+          publishedPlots: 0,
+          pendingPlots: 0,
+          notIndexedPlots: 0,
+          failedPlots: 0
+        },
+        storylines: [],
+        localGroups: [],
+        wallet: { address: null, source: null, connected: false, balanceWei: null, balanceError: null },
+        tokenPrice: { ethUsd: null, error: null },
+        royalty: { earnedWei: null, claimedWei: null, unclaimedWei: null, error: null },
+        generatedAt: '2026-05-18T00:00:00Z'
+      })
     }
   }
 })

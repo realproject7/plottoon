@@ -10,6 +10,7 @@ import {
   createSelectedWalletState
 } from './ipc/walletConnectionHandlers'
 import { registerPublishHandlers } from './ipc/publishHandlers'
+import { registerDashboardHandlers } from './ipc/dashboardHandlers'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
 import { createOWSConfig, createOWSFromCore, type OWSVaultConfig } from './services/owsAdapter'
@@ -101,6 +102,12 @@ app.whenReady().then(async () => {
     getWindow: () => BrowserWindow.getAllWindows()[0] ?? null,
     resolvePlotDir: async (projectId: string, plotSlug: string) =>
       resolveProjectFilePath(projectId, 'plots', plotSlug)
+  })
+
+  registerDashboardHandlers({
+    getDashboardDeps: () => ({
+      getWallet: () => walletState.wallet
+    })
   })
 
   createWindow()

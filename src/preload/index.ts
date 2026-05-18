@@ -80,6 +80,9 @@ contextBridge.exposeInMainWorld('plottoon', {
       return () => ipcRenderer.removeListener('publish:progress', handler)
     }
   },
+  dashboard: {
+    getData: () => ipcRenderer.invoke('dashboard:getData')
+  },
   project: {
     discover: () => ipcRenderer.invoke('project:discover'),
     readMeta: (projectId: string) => ipcRenderer.invoke('project:readMeta', projectId),
