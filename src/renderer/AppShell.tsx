@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { View } from './App'
+import { WalletSelector } from './WalletSelector'
 import './shell.css'
 
 interface AppShellProps {
@@ -70,11 +71,13 @@ export function AppShell({ children, view, onNavigate }: AppShellProps): JSX.Ele
           </button>
         </nav>
         <div style={{ flex: 1 }} />
+        <WalletSelector />
         <div
           style={{
             fontSize: 11,
             color: 'var(--color-text-muted)',
-            letterSpacing: '0.01em'
+            letterSpacing: '0.01em',
+            marginTop: 'var(--space-4)'
           }}
         >
           v0.1.0

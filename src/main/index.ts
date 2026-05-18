@@ -11,8 +11,7 @@ import {
 } from './ipc/walletConnectionHandlers'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
-import { createOWSConfig } from './services/owsAdapter'
-import type { OWSCoreModule } from './services/owsAdapter'
+import { createOWSConfig, createOWSFromCore } from './services/owsAdapter'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -36,7 +35,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerFsHandlers()
   registerProjectHandlers()
   registerTerminalHandlers()
@@ -44,10 +43,7 @@ app.whenReady().then(() => {
   const signer = createWalletSigner({ mode: 'mock' })
   registerSigningHandlers(signer)
 
-  const owsModule: OWSCoreModule = {
-    listWallets: async () => [],
-    createWallet: async (name: string) => ({ address: `ows:${name}:${Date.now()}` })
-  }
+  const owsModule = await createOWSFromCore()
   const walletConfig = createOWSConfig(owsModule)
   const walletState = createSelectedWalletState()
   registerWalletConnectionHandlers(walletConfig, walletState, signer)
