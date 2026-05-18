@@ -253,7 +253,9 @@ export function createPlotLinkPublishFn(config: PlotLinkPublishAdapterConfig) {
       publishId: result.txHash,
       storylineId: result.storylineId,
       plotUrl: result.storylineId
-        ? `${config.baseUrl}/storyline/${result.storylineId}/plot/${result.plotIndex ?? 0}`
+        ? result.plotIndex
+          ? `${config.baseUrl}/story/${result.storylineId}/${result.plotIndex}`
+          : `${config.baseUrl}/story/${result.storylineId}`
         : undefined,
       error: result.error,
       timestamp: new Date().toISOString(),
