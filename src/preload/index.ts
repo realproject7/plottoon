@@ -78,7 +78,15 @@ contextBridge.exposeInMainWorld('plottoon', {
       ) => callback(progress)
       ipcRenderer.on('publish:progress', handler)
       return () => ipcRenderer.removeListener('publish:progress', handler)
-    }
+    },
+    retryIndex: (params: {
+      projectId: string
+      plotSlug: string
+      fallbackContent?: string
+      meta?: { contentType?: string; isNsfw?: string; genre?: string; language?: string }
+    }) => ipcRenderer.invoke('publish:retryIndex', params),
+    markNotIndexed: (params: { projectId: string; plotSlug: string; reason: string }) =>
+      ipcRenderer.invoke('publish:markNotIndexed', params)
   },
   dashboard: {
     getData: () => ipcRenderer.invoke('dashboard:getData')
