@@ -290,19 +290,18 @@ describe('createViemContractEncoder', () => {
         inputs: [
           { name: 'storylineId' as const, type: 'uint256' as const, indexed: true },
           { name: 'writer' as const, type: 'address' as const, indexed: true },
-          { name: 'token' as const, type: 'address' as const, indexed: false },
+          { name: 'tokenAddress' as const, type: 'address' as const, indexed: false },
           { name: 'title' as const, type: 'string' as const, indexed: false },
-          { name: 'contentCID' as const, type: 'string' as const, indexed: false },
-          { name: 'contentHash' as const, type: 'bytes32' as const, indexed: false },
           { name: 'hasDeadline' as const, type: 'bool' as const, indexed: false },
-          { name: 'plotIndex' as const, type: 'uint256' as const, indexed: false }
+          { name: 'openingCID' as const, type: 'string' as const, indexed: false },
+          { name: 'openingHash' as const, type: 'bytes32' as const, indexed: false }
         ]
       }
     ]
 
     const writerAddr = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'
     const tokenAddr = '0x0000000000000000000000000000000000000001'
-    const contentHash = '0x' + 'ab'.repeat(32)
+    const openingHash = '0x' + 'ab'.repeat(32)
 
     const topics = encodeEventTopics({
       abi,
@@ -313,12 +312,11 @@ describe('createViemContractEncoder', () => {
       [
         { type: 'address' },
         { type: 'string' },
-        { type: 'string' },
-        { type: 'bytes32' },
         { type: 'bool' },
-        { type: 'uint256' }
+        { type: 'string' },
+        { type: 'bytes32' }
       ],
-      [tokenAddr, 'My Story', 'bafytest', contentHash as `0x${string}`, false, BigInt(0)]
+      [tokenAddr, 'My Story', false, 'bafytest', openingHash as `0x${string}`]
     )
 
     const receipt: TransactionReceipt = {
@@ -345,7 +343,7 @@ describe('createViemContractEncoder', () => {
         inputs: [
           { name: 'storylineId' as const, type: 'uint256' as const, indexed: true },
           { name: 'plotIndex' as const, type: 'uint256' as const, indexed: true },
-          { name: 'writer' as const, type: 'address' as const, indexed: false },
+          { name: 'writer' as const, type: 'address' as const, indexed: true },
           { name: 'title' as const, type: 'string' as const, indexed: false },
           { name: 'contentCID' as const, type: 'string' as const, indexed: false },
           { name: 'contentHash' as const, type: 'bytes32' as const, indexed: false }
@@ -359,11 +357,11 @@ describe('createViemContractEncoder', () => {
     const topics = encodeEventTopics({
       abi,
       eventName: 'PlotChained',
-      args: { storylineId: storylineIdNum, plotIndex: plotIndexNum }
+      args: { storylineId: storylineIdNum, plotIndex: plotIndexNum, writer: writerAddr }
     })
     const data = encodeAbiParameters(
-      [{ type: 'address' }, { type: 'string' }, { type: 'string' }, { type: 'bytes32' }],
-      [writerAddr, 'Episode 5', 'bafytest', contentHash as `0x${string}`]
+      [{ type: 'string' }, { type: 'string' }, { type: 'bytes32' }],
+      ['Episode 5', 'bafytest', contentHash as `0x${string}`]
     )
 
     const receipt: TransactionReceipt = {

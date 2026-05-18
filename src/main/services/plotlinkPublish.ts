@@ -120,12 +120,11 @@ const plotlinkAbi = [
     inputs: [
       { name: 'storylineId', type: 'uint256', indexed: true },
       { name: 'writer', type: 'address', indexed: true },
-      { name: 'token', type: 'address', indexed: false },
+      { name: 'tokenAddress', type: 'address', indexed: false },
       { name: 'title', type: 'string', indexed: false },
-      { name: 'contentCID', type: 'string', indexed: false },
-      { name: 'contentHash', type: 'bytes32', indexed: false },
       { name: 'hasDeadline', type: 'bool', indexed: false },
-      { name: 'plotIndex', type: 'uint256', indexed: false }
+      { name: 'openingCID', type: 'string', indexed: false },
+      { name: 'openingHash', type: 'bytes32', indexed: false }
     ]
   },
   {
@@ -134,7 +133,7 @@ const plotlinkAbi = [
     inputs: [
       { name: 'storylineId', type: 'uint256', indexed: true },
       { name: 'plotIndex', type: 'uint256', indexed: true },
-      { name: 'writer', type: 'address', indexed: false },
+      { name: 'writer', type: 'address', indexed: true },
       { name: 'title', type: 'string', indexed: false },
       { name: 'contentCID', type: 'string', indexed: false },
       { name: 'contentHash', type: 'bytes32', indexed: false }
@@ -166,7 +165,14 @@ export function createViemContractEncoder(): ContractEncoder {
             data: log.data as Hex,
             topics: log.topics as [Hex, ...Hex[]]
           })
-          if (decoded.eventName === 'StorylineCreated' || decoded.eventName === 'PlotChained') {
+          if (decoded.eventName === 'StorylineCreated') {
+            const args = decoded.args as { storylineId: bigint }
+            return {
+              storylineId: args.storylineId.toString(),
+              plotIndex: 0
+            }
+          }
+          if (decoded.eventName === 'PlotChained') {
             const args = decoded.args as { storylineId: bigint; plotIndex: bigint }
             return {
               storylineId: args.storylineId.toString(),
