@@ -17,7 +17,7 @@ function mockSigner(): PlotLinkSigner {
     sendTransaction: vi.fn().mockResolvedValue({
       txHash: 'tx-abc123',
       confirmed: true,
-      storylineId: 'sl-from-tx',
+      storylineId: '77',
       plotIndex: 0
     })
   }
@@ -57,7 +57,7 @@ function newStorylineOutbound(): OutboundPublishRequest {
 
 function existingStorylineOutbound(): OutboundPublishRequest {
   return {
-    storylineId: 'storyline-abc',
+    storylineId: '55',
     plotTitle: 'Episode 2',
     markdown: '# Episode 2\n\n![cut-002](https://cdn.example/cut-002.webp)',
     imageCount: 1,
@@ -88,7 +88,7 @@ describe('plotlinkPublish — new storyline', () => {
     const result = await plotlinkPublish(newStorylineOutbound(), config)
 
     expect(result.success).toBe(true)
-    expect(result.storylineId).toBe('sl-from-tx')
+    expect(result.storylineId).toBe('77')
     expect(result.plotIndex).toBe(0)
     expect(result.txHash).toBe('tx-abc123')
   })
@@ -218,7 +218,7 @@ describe('plotlinkPublish — existing storyline', () => {
     const result = await plotlinkPublish(existingStorylineOutbound(), config)
 
     expect(result.success).toBe(true)
-    expect(result.storylineId).toBe('storyline-abc')
+    expect(result.storylineId).toBe('55')
     expect(result.plotIndex).toBe(3)
     expect(result.txHash).toBe('tx-chain')
   })
@@ -233,7 +233,7 @@ describe('plotlinkPublish — existing storyline', () => {
     const [url, init] = fetchFn.mock.calls[0]
     expect(url).toBe('https://plotlink.example/api/index/plot')
     const body = JSON.parse(init.body) as PlotLinkPlotIndexRequest
-    expect(body.storylineId).toBe('storyline-abc')
+    expect(body.storylineId).toBe('55')
     expect(body.isNsfw).toBe('false')
     expect(body.content).toContain('# Episode 2')
     expect(body.txHash).toBe('tx-abc123')
@@ -251,7 +251,7 @@ describe('plotlinkPublish — existing storyline', () => {
     const sendTx = signer.sendTransaction as ReturnType<typeof vi.fn>
     const payload = sendTx.mock.calls[0][0]
     expect(payload.action).toBe('chain-plot')
-    expect(payload.storylineId).toBe('storyline-abc')
+    expect(payload.storylineId).toBe('55')
     expect(payload.creationFeeWei).toBeUndefined()
     expect(payload.hasDeadline).toBeUndefined()
   })
@@ -349,8 +349,8 @@ describe('createPlotLinkPublishFn', () => {
 
     expect(result.success).toBe(true)
     expect(result.publishId).toBe('tx-abc123')
-    expect(result.storylineId).toBe('sl-from-tx')
-    expect(result.plotUrl).toBe('https://plotlink.example/story/sl-from-tx')
+    expect(result.storylineId).toBe('77')
+    expect(result.plotUrl).toBe('https://plotlink.example/story/77')
     expect(result.isDryRun).toBe(false)
     expect(result.timestamp).toBeTruthy()
   })
@@ -371,6 +371,6 @@ describe('createPlotLinkPublishFn', () => {
     const result = await publishFn(existingStorylineOutbound())
 
     expect(result.success).toBe(true)
-    expect(result.plotUrl).toBe('https://plotlink.example/story/storyline-abc/5')
+    expect(result.plotUrl).toBe('https://plotlink.example/story/55/5')
   })
 })

@@ -99,14 +99,14 @@ const plotlinkAbi = [
       { name: 'contentHash', type: 'bytes32' },
       { name: 'hasDeadline', type: 'bool' }
     ],
-    outputs: [],
+    outputs: [{ name: 'storylineId', type: 'uint256' }],
     stateMutability: 'payable'
   },
   {
     type: 'function',
     name: 'chainPlot',
     inputs: [
-      { name: 'storylineId', type: 'bytes32' },
+      { name: 'storylineId', type: 'uint256' },
       { name: 'title', type: 'string' },
       { name: 'cid', type: 'string' },
       { name: 'contentHash', type: 'bytes32' }
@@ -118,16 +118,25 @@ const plotlinkAbi = [
     type: 'event',
     name: 'StorylineCreated',
     inputs: [
-      { name: 'storylineId', type: 'bytes32', indexed: true },
-      { name: 'plotIndex', type: 'uint256', indexed: false }
+      { name: 'storylineId', type: 'uint256', indexed: true },
+      { name: 'writer', type: 'address', indexed: true },
+      { name: 'tokenAddress', type: 'address', indexed: false },
+      { name: 'title', type: 'string', indexed: false },
+      { name: 'hasDeadline', type: 'bool', indexed: false },
+      { name: 'openingCID', type: 'string', indexed: false },
+      { name: 'openingHash', type: 'bytes32', indexed: false }
     ]
   },
   {
     type: 'event',
     name: 'PlotChained',
     inputs: [
-      { name: 'storylineId', type: 'bytes32', indexed: true },
-      { name: 'plotIndex', type: 'uint256', indexed: false }
+      { name: 'storylineId', type: 'uint256', indexed: true },
+      { name: 'plotIndex', type: 'uint256', indexed: true },
+      { name: 'writer', type: 'address', indexed: true },
+      { name: 'title', type: 'string', indexed: false },
+      { name: 'contentCID', type: 'string', indexed: false },
+      { name: 'contentHash', type: 'bytes32', indexed: false }
     ]
   }
 ] as const
@@ -145,7 +154,7 @@ export function createViemContractEncoder(): ContractEncoder {
       return encodeFunctionData({
         abi: plotlinkAbi,
         functionName: 'chainPlot',
-        args: [storylineId as Hex, title, cid, contentHash as Hex]
+        args: [BigInt(storylineId), title, cid, contentHash as Hex]
       })
     },
     decodePublishEvents(receipt: TransactionReceipt): DecodedPublishEvent {
@@ -156,10 +165,17 @@ export function createViemContractEncoder(): ContractEncoder {
             data: log.data as Hex,
             topics: log.topics as [Hex, ...Hex[]]
           })
-          if (decoded.eventName === 'StorylineCreated' || decoded.eventName === 'PlotChained') {
-            const args = decoded.args as { storylineId: Hex; plotIndex: bigint }
+          if (decoded.eventName === 'StorylineCreated') {
+            const args = decoded.args as { storylineId: bigint }
             return {
-              storylineId: args.storylineId,
+              storylineId: args.storylineId.toString(),
+              plotIndex: 0
+            }
+          }
+          if (decoded.eventName === 'PlotChained') {
+            const args = decoded.args as { storylineId: bigint; plotIndex: bigint }
+            return {
+              storylineId: args.storylineId.toString(),
               plotIndex: Number(args.plotIndex)
             }
           }
