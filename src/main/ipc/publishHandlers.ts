@@ -33,7 +33,7 @@ import {
   type PublishResultRecord
 } from '../services/publishStatus'
 import {
-  checkRetryEligibility,
+  checkRetryContentEligibility,
   selectIndexEndpoint,
   buildIndexBody,
   retryIndex,
@@ -335,7 +335,7 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
       const plotDir = await deps.resolvePlotDir(params.projectId, params.plotSlug)
 
       let status = await loadOrCreateStatus(plotDir)
-      const eligibility = checkRetryEligibility(status)
+      const eligibility = checkRetryContentEligibility(status, params.fallbackContent)
       if (!eligibility.eligible) {
         return { success: false, error: eligibility.reason ?? 'Not eligible for retry' }
       }

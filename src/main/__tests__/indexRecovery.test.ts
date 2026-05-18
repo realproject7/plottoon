@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   checkRetryEligibility,
+  checkRetryContentEligibility,
   selectIndexEndpoint,
   buildIndexBody,
   retryIndex,
@@ -66,6 +67,42 @@ describe('checkRetryEligibility', () => {
     const result = checkRetryEligibility(status)
     expect(result.eligible).toBe(false)
     expect(result.reason).toContain('Missing txHash')
+  })
+})
+
+describe('checkRetryContentEligibility', () => {
+  it('returns eligible when txHash and fallback content present', () => {
+    const status = makeStatus()
+    const result = checkRetryContentEligibility(status, '# Episode 1')
+    expect(result.eligible).toBe(true)
+  })
+
+  it('rejects when fallback content is null', () => {
+    const status = makeStatus()
+    const result = checkRetryContentEligibility(status, null)
+    expect(result.eligible).toBe(false)
+    expect(result.reason).toContain('Missing fallback content')
+  })
+
+  it('rejects when fallback content is empty string', () => {
+    const status = makeStatus()
+    const result = checkRetryContentEligibility(status, '')
+    expect(result.eligible).toBe(false)
+    expect(result.reason).toContain('Missing fallback content')
+  })
+
+  it('rejects when fallback content is whitespace only', () => {
+    const status = makeStatus()
+    const result = checkRetryContentEligibility(status, '   ')
+    expect(result.eligible).toBe(false)
+    expect(result.reason).toContain('Missing fallback content')
+  })
+
+  it('still rejects when base eligibility fails even with content', () => {
+    const status = makeStatus({ plotState: 'published' })
+    const result = checkRetryContentEligibility(status, '# Content')
+    expect(result.eligible).toBe(false)
+    expect(result.reason).toContain('not in published-not-indexed')
   })
 })
 
@@ -170,11 +207,15 @@ describe('retryIndex', () => {
 
 describe('markManualNotIndexed', () => {
   it('preserves publish result while setting not-indexed state', () => {
-    const status = makeStatus({ plotState: 'published' })
+    const status = makeStatus({
+      plotState: 'published',
+      publishResult: makeResult({ indexed: true, indexError: null })
+    })
     const result = markManualNotIndexed(status, 'Manually flagged for reindex')
     expect(result.plotState).toBe('published-not-indexed')
     expect(result.error).toBe('Manually flagged for reindex')
-    expect(result.publishResult).toBe(status.publishResult)
+    expect(result.publishResult!.indexed).toBe(false)
+    expect(result.publishResult!.indexError).toBe('Manually flagged for reindex')
   })
 
   it('does not modify tx/content metadata', () => {
@@ -185,5 +226,16 @@ describe('markManualNotIndexed', () => {
     expect(result.publishResult!.contentCid).toBe(original.contentCid)
     expect(result.publishResult!.contentHash).toBe(original.contentHash)
     expect(result.publishResult!.authorAddress).toBe(original.authorAddress)
+  })
+
+  it('sets indexed to false and indexError for previously indexed publishes', () => {
+    const status = makeStatus({
+      plotState: 'published',
+      publishResult: makeResult({ indexed: true, indexError: null })
+    })
+    const result = markManualNotIndexed(status, 'Bad metadata on PlotLink')
+    expect(result.publishResult!.indexed).toBe(false)
+    expect(result.publishResult!.indexError).toBe('Bad metadata on PlotLink')
+    expect(result.publishResult!.gasCostWei).toBe('1000')
   })
 })

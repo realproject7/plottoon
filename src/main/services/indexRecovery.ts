@@ -22,6 +22,23 @@ export function checkRetryEligibility(status: PublishStatusFile): IndexRetryElig
   return { eligible: true, reason: null }
 }
 
+export function checkRetryContentEligibility(
+  status: PublishStatusFile,
+  fallbackContent: string | null | undefined
+): IndexRetryEligibility {
+  const base = checkRetryEligibility(status)
+  if (!base.eligible) return base
+
+  if (!fallbackContent || fallbackContent.trim().length === 0) {
+    return {
+      eligible: false,
+      reason: 'Missing fallback content — cannot retry indexing without txHash and content'
+    }
+  }
+
+  return { eligible: true, reason: null }
+}
+
 export interface IndexRetryDeps {
   plotlinkBaseUrl: string
   indexRetries: number
@@ -97,10 +114,14 @@ export async function retryIndex(
 }
 
 export function markManualNotIndexed(status: PublishStatusFile, reason: string): PublishStatusFile {
+  const publishResult = status.publishResult
+    ? { ...status.publishResult, indexed: false, indexError: reason }
+    : null
   return {
     ...status,
     plotState: 'published-not-indexed',
     error: reason,
+    publishResult,
     updatedAt: new Date().toISOString()
   }
 }

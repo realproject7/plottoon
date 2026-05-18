@@ -497,7 +497,10 @@ describe('publish:retryIndex', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
-    const result = (await handler({}, { projectId: 'p1', plotSlug: 'ep1' })) as {
+    const result = (await handler(
+      {},
+      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+    )) as {
       success: boolean
     }
     expect(result.success).toBe(true)
@@ -529,7 +532,10 @@ describe('publish:retryIndex', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
-    const result = (await handler({}, { projectId: 'p1', plotSlug: 'ep1' })) as {
+    const result = (await handler(
+      {},
+      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+    )) as {
       success: boolean
       error: string
     }
@@ -552,7 +558,10 @@ describe('publish:retryIndex', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
-    const result = (await handler({}, { projectId: 'p1', plotSlug: 'ep1' })) as {
+    const result = (await handler(
+      {},
+      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+    )) as {
       success: boolean
       error: string
     }
@@ -570,7 +579,10 @@ describe('publish:retryIndex', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
-    const result = (await handler({}, { projectId: 'p1', plotSlug: 'ep1' })) as {
+    const result = (await handler(
+      {},
+      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+    )) as {
       success: boolean
       error: string
     }
@@ -602,12 +614,26 @@ describe('publish:retryIndex', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
-    await handler({}, { projectId: 'p1', plotSlug: 'ep1' })
+    await handler({}, { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' })
 
     expect(mockFetchFn).toHaveBeenCalledWith(
       'https://plotlink.example/api/index/plot',
       expect.any(Object)
     )
+  })
+
+  it('blocks retry when fallbackContent is missing', async () => {
+    await writeNotIndexedStatus()
+    const deps = createDeps()
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:retryIndex')
+    const result = (await handler({}, { projectId: 'p1', plotSlug: 'ep1' })) as {
+      success: boolean
+      error: string
+    }
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Missing fallback content')
   })
 })
 
@@ -662,6 +688,8 @@ describe('publish:markNotIndexed', () => {
     expect(updated.error).toBe('Bad metadata on PlotLink')
     expect(updated.publishResult.txHash).toBe('0xtx123')
     expect(updated.publishResult.contentCid).toBe('bafyabc')
+    expect(updated.publishResult.indexed).toBe(false)
+    expect(updated.publishResult.indexError).toBe('Bad metadata on PlotLink')
   })
 
   it('rejects for draft plots', async () => {
