@@ -1,0 +1,192 @@
+import { ipcMain } from 'electron'
+import type { SelectedWalletState } from './walletConnectionHandlers'
+import type { OWSCoreModule, OWSVaultConfig } from '../services/owsAdapter'
+import {
+  readAgentStatus,
+  executeAgentRegistration,
+  signOwnerBinding,
+  type AgentRegistrationConfig
+} from '../services/agentRegistration'
+import { findCachedAgent, upsertAgentCache } from '../services/agentRegistrationCache'
+import { detectClis } from '../services/cliDetection'
+import type {
+  AgentRegistrationStatus,
+  AgentRegistrationResult,
+  OwnerBindingProof,
+  AgentCacheEntry
+} from '../../shared/agentRegistration'
+
+export interface AgentRegistrationHandlerDeps {
+  walletState: SelectedWalletState
+  owsModule: OWSCoreModule
+  vaultConfig: OWSVaultConfig
+  registrationConfig: AgentRegistrationConfig
+  signerMode: 'live' | 'mock'
+}
+
+async function detectModelLabel(): Promise<string> {
+  try {
+    const report = await detectClis()
+    const claude = report.clis.find((c) => c.command === 'claude' && c.installed)
+    if (claude) return `Claude CLI${claude.version ? ' ' + claude.version : ''}`
+    const codex = report.clis.find((c) => c.command === 'codex' && c.installed)
+    if (codex) return `Codex CLI${codex.version ? ' ' + codex.version : ''}`
+  } catch {
+    // fall through
+  }
+  return 'PlotToon AI Writer'
+}
+
+export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandlerDeps): void {
+  ipcMain.handle(
+    'agent:status',
+    async (): Promise<{
+      status: AgentRegistrationStatus | null
+      cached: AgentCacheEntry | null
+      error: string | null
+    }> => {
+      const wallet = deps.walletState.wallet
+      if (!wallet) return { status: null, cached: null, error: null }
+
+      const cached = await findCachedAgent(wallet.address)
+
+      if (deps.signerMode === 'mock') {
+        if (cached) {
+          return {
+            status: {
+              registered: true,
+              agentId: cached.agentId,
+              agentName: cached.agentName,
+              modelLabel: cached.modelLabel
+            },
+            cached,
+            error: null
+          }
+        }
+        return {
+          status: { registered: false, agentId: null, agentName: null, modelLabel: null },
+          cached: null,
+          error: null
+        }
+      }
+
+      try {
+        const status = await readAgentStatus(wallet.address, { config: deps.registrationConfig })
+        return { status, cached, error: null }
+      } catch (err) {
+        return {
+          status: cached
+            ? {
+                registered: true,
+                agentId: cached.agentId,
+                agentName: cached.agentName,
+                modelLabel: cached.modelLabel
+              }
+            : null,
+          cached,
+          error: err instanceof Error ? err.message : 'Failed to read agent status'
+        }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'agent:register',
+    async (
+      _event,
+      params: { agentName: string; genre?: string }
+    ): Promise<AgentRegistrationResult> => {
+      const wallet = deps.walletState.wallet
+      if (!wallet) {
+        return { success: false, error: 'No wallet connected' }
+      }
+
+      const modelLabel = await detectModelLabel()
+      const metadata = JSON.stringify({ registeredBy: 'plottoon', genre: params.genre || '' })
+
+      if (deps.signerMode === 'mock') {
+        const mockAgentId = `mock-agent-${Date.now()}`
+
+        await upsertAgentCache({
+          agentId: mockAgentId,
+          agentName: params.agentName,
+          genre: params.genre || '',
+          modelLabel,
+          registeredAt: new Date().toISOString(),
+          registeredBy: 'plottoon',
+          walletAddress: wallet.address
+        })
+
+        return { success: true, agentId: mockAgentId }
+      }
+
+      try {
+        const result = await executeAgentRegistration(params.agentName, modelLabel, metadata, {
+          config: deps.registrationConfig,
+          ows: deps.owsModule,
+          walletName: wallet.name,
+          walletAddress: wallet.address,
+          chain: deps.vaultConfig.chain,
+          passphrase: deps.vaultConfig.passphrase
+        })
+
+        if (result.success && result.agentId) {
+          await upsertAgentCache({
+            agentId: result.agentId,
+            agentName: params.agentName,
+            genre: params.genre || '',
+            modelLabel,
+            registeredAt: new Date().toISOString(),
+            registeredBy: 'plottoon',
+            walletAddress: wallet.address
+          })
+        }
+
+        return result
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : 'Registration failed'
+        }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'agent:bindingProof',
+    async (_event, humanWallet: string): Promise<OwnerBindingProof | { error: string }> => {
+      const wallet = deps.walletState.wallet
+      if (!wallet) {
+        return { error: 'No wallet connected' }
+      }
+
+      if (!humanWallet || !/^0x[0-9a-fA-F]{40}$/.test(humanWallet)) {
+        return { error: 'Invalid human wallet address' }
+      }
+
+      try {
+        const { message, signature } = signOwnerBinding(
+          humanWallet,
+          wallet.address,
+          deps.owsModule,
+          wallet.name,
+          deps.vaultConfig.chain,
+          deps.vaultConfig.passphrase
+        )
+
+        const cached = await findCachedAgent(wallet.address)
+
+        return {
+          message,
+          signature,
+          owsWalletAddress: wallet.address,
+          cachedAgent: cached
+        }
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : 'Failed to sign binding proof'
+        }
+      }
+    }
+  )
+}

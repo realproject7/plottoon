@@ -83,6 +83,12 @@ contextBridge.exposeInMainWorld('plottoon', {
   dashboard: {
     getData: () => ipcRenderer.invoke('dashboard:getData')
   },
+  agent: {
+    getStatus: () => ipcRenderer.invoke('agent:status'),
+    register: (params: { agentName: string; genre?: string }) =>
+      ipcRenderer.invoke('agent:register', params),
+    getBindingProof: (humanWallet: string) => ipcRenderer.invoke('agent:bindingProof', humanWallet)
+  },
   royalty: {
     getInfo: () => ipcRenderer.invoke('royalty:info'),
     claim: (confirmed: boolean) => ipcRenderer.invoke('royalty:claim', confirmed),
