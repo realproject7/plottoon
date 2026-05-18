@@ -126,6 +126,31 @@ describe('selectIndexEndpoint', () => {
     expect(isStoryline).toBe(false)
     expect(url).toBe('https://plotlink.xyz/api/index/plot')
   })
+
+  it('uses explicit publishAction create-storyline over heuristic', () => {
+    const result = makeResult({
+      storylineId: '0xstory1',
+      plotIndex: 2,
+      publishAction: 'create-storyline'
+    })
+    const { url, isStoryline } = selectIndexEndpoint(result, 'https://plotlink.xyz')
+    expect(isStoryline).toBe(true)
+    expect(url).toBe('https://plotlink.xyz/api/index/storyline')
+  })
+
+  it('uses explicit publishAction chain-plot over heuristic', () => {
+    const result = makeResult({ plotIndex: 0, publishAction: 'chain-plot' })
+    const { url, isStoryline } = selectIndexEndpoint(result, 'https://plotlink.xyz')
+    expect(isStoryline).toBe(false)
+    expect(url).toBe('https://plotlink.xyz/api/index/plot')
+  })
+
+  it('falls back to heuristic for legacy status without publishAction', () => {
+    const result = makeResult({ storylineId: '0xstory1', plotIndex: 3 })
+    delete (result as Record<string, unknown>).publishAction
+    const { isStoryline } = selectIndexEndpoint(result, 'https://plotlink.xyz')
+    expect(isStoryline).toBe(false)
+  })
 })
 
 describe('buildIndexBody', () => {

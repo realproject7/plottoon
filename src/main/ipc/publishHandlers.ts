@@ -82,7 +82,8 @@ function buildPlotlinkUrl(
 function toResultRecord(
   result: PublishFullResult,
   wallet: { address: string; source: string },
-  plotlinkUrl: string | null
+  plotlinkUrl: string | null,
+  publishAction: 'create-storyline' | 'chain-plot'
 ): PublishResultRecord {
   return {
     txHash: result.txHash,
@@ -96,7 +97,8 @@ function toResultRecord(
     walletAddress: wallet.address,
     walletSource: wallet.source,
     indexed: result.indexed,
-    indexError: result.indexError ?? null
+    indexError: result.indexError ?? null,
+    publishAction
   }
 }
 
@@ -280,7 +282,8 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
         const resultRecord = toResultRecord(
           fullResult,
           { address: wallet.address, source: wallet.source },
-          plotlinkUrl
+          plotlinkUrl,
+          request.action
         )
 
         if (fullResult.indexed) {

@@ -50,8 +50,9 @@ export function selectIndexEndpoint(
   result: PublishResultRecord,
   baseUrl: string
 ): { url: string; isStoryline: boolean } {
-  const isStoryline =
-    result.storylineId === null || result.plotIndex === null || result.plotIndex === 0
+  const isStoryline = result.publishAction
+    ? result.publishAction === 'create-storyline'
+    : result.storylineId === null || result.plotIndex === null || result.plotIndex === 0
   return {
     url: isStoryline ? `${baseUrl}/api/index/storyline` : `${baseUrl}/api/index/plot`,
     isStoryline

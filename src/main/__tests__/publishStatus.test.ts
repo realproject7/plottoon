@@ -342,4 +342,55 @@ describe('publishResult persistence', () => {
     const read = await readPublishStatus(tmpDir)
     expect(read.publishResult).toBeNull()
   })
+
+  it('publishAction round-trips for create-storyline', async () => {
+    const status = fixture()
+    const result = { ...mockPublishResult(), publishAction: 'create-storyline' as const }
+    const updated = markPlotPublished(status, result)
+
+    await writePublishStatus(tmpDir, updated)
+    const read = await readPublishStatus(tmpDir)
+
+    expect(read.publishResult!.publishAction).toBe('create-storyline')
+  })
+
+  it('publishAction round-trips for chain-plot', async () => {
+    const status = fixture()
+    const result = { ...mockPublishResult(), publishAction: 'chain-plot' as const }
+    const updated = markPlotPublished(status, result)
+
+    await writePublishStatus(tmpDir, updated)
+    const read = await readPublishStatus(tmpDir)
+
+    expect(read.publishResult!.publishAction).toBe('chain-plot')
+  })
+
+  it('legacy status without publishAction round-trips with undefined', async () => {
+    const status = fixture()
+    const result = mockPublishResult()
+    const updated = markPlotPublished(status, result)
+
+    await writePublishStatus(tmpDir, updated)
+    const read = await readPublishStatus(tmpDir)
+
+    expect(read.publishResult!.publishAction).toBeUndefined()
+  })
+
+  it('invalid publishAction is ignored during validation', () => {
+    const raw = {
+      ...mockPublishResult(),
+      publishAction: 'invalid-action'
+    }
+    const statusData = {
+      version: 1,
+      plotState: 'published',
+      error: null,
+      publishedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      cuts: [],
+      publishResult: raw
+    }
+    const validated = validatePublishStatus(statusData, 'test')
+    expect(validated.publishResult!.publishAction).toBeUndefined()
+  })
 })

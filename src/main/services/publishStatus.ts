@@ -23,6 +23,8 @@ export interface CutPublishEntry {
   updatedAt: string
 }
 
+export type PublishAction = 'create-storyline' | 'chain-plot'
+
 export interface PublishResultRecord {
   txHash: string | null
   storylineId: string | null
@@ -36,6 +38,7 @@ export interface PublishResultRecord {
   walletSource: string | null
   indexed: boolean
   indexError: string | null
+  publishAction?: PublishAction
 }
 
 export interface PublishStatusFile {
@@ -178,6 +181,13 @@ export function validatePublishStatus(data: unknown, filePath: string): PublishS
       fail('"publishResult" must be an object or null', filePath)
     }
     const pr = obj.publishResult as Record<string, unknown>
+    const validActions: PublishAction[] = ['create-storyline', 'chain-plot']
+    const publishAction =
+      typeof pr.publishAction === 'string' &&
+      validActions.includes(pr.publishAction as PublishAction)
+        ? (pr.publishAction as PublishAction)
+        : undefined
+
     publishResult = {
       txHash: (pr.txHash as string) ?? null,
       storylineId: (pr.storylineId as string) ?? null,
@@ -190,7 +200,8 @@ export function validatePublishStatus(data: unknown, filePath: string): PublishS
       walletAddress: (pr.walletAddress as string) ?? null,
       walletSource: (pr.walletSource as string) ?? null,
       indexed: typeof pr.indexed === 'boolean' ? pr.indexed : false,
-      indexError: (pr.indexError as string) ?? null
+      indexError: (pr.indexError as string) ?? null,
+      ...(publishAction ? { publishAction } : {})
     }
   }
 
