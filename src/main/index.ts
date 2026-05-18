@@ -18,7 +18,7 @@ import { getDefaultAgentRegistrationConfig } from './services/agentRegistration'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
 import { createOWSConfig, createOWSFromCore, type OWSVaultConfig } from './services/owsAdapter'
-import { getDefaultPublishConfig } from './services/plotlinkPublish'
+import { getDefaultPublishConfig, createPlotlinkUploadClient } from './services/plotlinkPublish'
 import { resolveProjectFilePath } from './services/fsService'
 import { keccak256, toBytes } from 'viem'
 
@@ -90,21 +90,7 @@ app.whenReady().then(async () => {
     owsModule,
     vaultConfig,
     config: publishConfig,
-    ipfs: {
-      async upload(content: string, key: string) {
-        const uploadUrl = `${publishConfig.plotlinkBaseUrl}/api/upload`
-        const response = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content, key })
-        })
-        if (!response.ok) {
-          throw new Error(`PlotLink upload failed: ${response.status}`)
-        }
-        const json = (await response.json()) as { cid: string }
-        return { cid: json.cid }
-      }
-    },
+    ipfs: createPlotlinkUploadClient(publishConfig.plotlinkBaseUrl),
     keccak: (content: string) => keccak256(toBytes(content)),
     fetchFn: fetch as unknown as (url: string, init: RequestInit) => Promise<Response>,
     getWindow: () => BrowserWindow.getAllWindows()[0] ?? null,

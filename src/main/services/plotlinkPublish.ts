@@ -290,7 +290,7 @@ export function generateUploadKey(
   if (action === 'create-storyline') {
     return `plotlink/storylines/${ts}-${slugify(title)}.json`
   }
-  return `plotlink/plots/${storylineId ?? 'unknown'}-${ts}.txt`
+  return `plotlink/plots/${storylineId ?? 'unknown'}-${ts}-${slugify(title)}.json`
 }
 
 async function uploadContent(
@@ -517,6 +517,30 @@ export function validatePublishConfig(config: PublishConfig): string[] {
     errors.push('PLOTLINK_BASE_URL is required for live publish')
   }
   return errors
+}
+
+export function createPlotlinkUploadClient(
+  plotlinkBaseUrl: string,
+  fetchFn: (url: string, init: RequestInit) => Promise<Response> = fetch as unknown as (
+    url: string,
+    init: RequestInit
+  ) => Promise<Response>
+): IpfsClient {
+  return {
+    async upload(content: string, key: string) {
+      const uploadUrl = `${plotlinkBaseUrl}/api/upload`
+      const response = await fetchFn(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, key })
+      })
+      if (!response.ok) {
+        throw new Error(`PlotLink upload failed: ${response.status}`)
+      }
+      const json = (await response.json()) as { cid: string }
+      return { cid: json.cid }
+    }
+  }
 }
 
 export function getDefaultPublishConfig(): PublishConfig {

@@ -9,6 +9,7 @@ import {
   validatePublishConfig,
   slugify,
   generateUploadKey,
+  createPlotlinkUploadClient,
   type PlotlinkPublishDeps,
   type PublishConfig,
   type TransactionSigner,
@@ -854,7 +855,7 @@ describe('upload body/response shape', () => {
 
     expect(ipfs.upload).toHaveBeenCalledWith(
       '# Chapter Content',
-      expect.stringMatching(/^plotlink\/plots\/42-\d+\.txt$/)
+      expect.stringMatching(/^plotlink\/plots\/42-\d+-chapter-2\.json$/)
     )
   })
 
@@ -898,14 +899,14 @@ describe('generateUploadKey', () => {
     expect(key).toMatch(/^plotlink\/storylines\/\d+-my-amazing-story\.json$/)
   })
 
-  it('generates chain-plot key with plotlink/plots prefix and storylineId', () => {
+  it('generates chain-plot key with plotlink/plots prefix, storylineId, and slug', () => {
     const key = generateUploadKey('chain-plot', 'Chapter 2', '42')
-    expect(key).toMatch(/^plotlink\/plots\/42-\d+\.txt$/)
+    expect(key).toMatch(/^plotlink\/plots\/42-\d+-chapter-2\.json$/)
   })
 
   it('uses unknown when storylineId is missing for chain-plot', () => {
     const key = generateUploadKey('chain-plot', 'Chapter')
-    expect(key).toMatch(/^plotlink\/plots\/unknown-\d+\.txt$/)
+    expect(key).toMatch(/^plotlink\/plots\/unknown-\d+-chapter\.json$/)
   })
 
   it('key never contains secrets or auth tokens', () => {
@@ -928,5 +929,79 @@ describe('slugify', () => {
   it('truncates to 60 characters', () => {
     const long = 'a'.repeat(100)
     expect(slugify(long).length).toBeLessThanOrEqual(60)
+  })
+})
+
+describe('createPlotlinkUploadClient', () => {
+  it('posts to ${plotlinkBaseUrl}/api/upload', async () => {
+    const capturedUrls: string[] = []
+    const mockFetchFn = vi.fn().mockImplementation(async (url: string) => {
+      capturedUrls.push(url)
+      return { ok: true, json: () => Promise.resolve({ cid: 'bafytest' }) }
+    })
+
+    const client = createPlotlinkUploadClient('https://plotlink.example', mockFetchFn)
+    await client.upload('# content', 'plotlink/storylines/123-test.json')
+
+    expect(capturedUrls[0]).toBe('https://plotlink.example/api/upload')
+  })
+
+  it('sends exactly { content, key } in request body', async () => {
+    const capturedBodies: string[] = []
+    const mockFetchFn = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      capturedBodies.push(init.body as string)
+      return { ok: true, json: () => Promise.resolve({ cid: 'bafytest' }) }
+    })
+
+    const client = createPlotlinkUploadClient('https://plotlink.example', mockFetchFn)
+    await client.upload('# my story', 'plotlink/storylines/456-slug.json')
+
+    const parsed = JSON.parse(capturedBodies[0])
+    expect(Object.keys(parsed)).toEqual(['content', 'key'])
+    expect(parsed.content).toBe('# my story')
+    expect(parsed.key).toBe('plotlink/storylines/456-slug.json')
+  })
+
+  it('never includes IPFS_AUTH_TOKEN or secrets in request body', async () => {
+    const capturedBodies: string[] = []
+    const mockFetchFn = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      capturedBodies.push(init.body as string)
+      return { ok: true, json: () => Promise.resolve({ cid: 'bafytest' }) }
+    })
+
+    const client = createPlotlinkUploadClient('https://plotlink.example', mockFetchFn)
+    await client.upload('content', 'plotlink/plots/1-123.json')
+
+    const body = capturedBodies[0]
+    expect(body).not.toContain('token')
+    expect(body).not.toContain('secret')
+    expect(body).not.toContain('auth')
+    expect(body).not.toContain('IPFS_AUTH_TOKEN')
+  })
+
+  it('returns { cid } from PlotLink response', async () => {
+    const mockFetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ cid: 'bafyresult123' })
+    })
+
+    const client = createPlotlinkUploadClient('https://plotlink.example', mockFetchFn)
+    const result = await client.upload('content', 'plotlink/storylines/key.json')
+
+    expect(result.cid).toBe('bafyresult123')
+  })
+
+  it('throws clear error on non-OK response', async () => {
+    const mockFetchFn = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 413,
+      json: () => Promise.resolve({})
+    })
+
+    const client = createPlotlinkUploadClient('https://plotlink.example', mockFetchFn)
+
+    await expect(client.upload('content', 'plotlink/storylines/key.json')).rejects.toThrow(
+      'PlotLink upload failed: 413'
+    )
   })
 })
