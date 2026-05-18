@@ -85,28 +85,61 @@ Renderer (attaches signature to upload request)
 
 ### Index Routes
 
-| Route                       | When                     | Key Fields                                                     |
-| --------------------------- | ------------------------ | -------------------------------------------------------------- |
-| `POST /api/index/storyline` | New storylines only      | `storylineTitle`, `contentType`, `isNsfw`, `content`, `txHash` |
-| `POST /api/index/plot`      | Existing storylines only | `storylineId`, `isNsfw`, `content`, `imageUrls`, `txHash`      |
+| Route                       | When                     | Key Fields                                                     | Response            |
+| --------------------------- | ------------------------ | -------------------------------------------------------------- | ------------------- |
+| `POST /api/index/storyline` | New storylines only      | `storylineTitle`, `contentType`, `isNsfw`, `content`, `txHash` | `{ success: true }` |
+| `POST /api/index/plot`      | Existing storylines only | `storylineId`, `isNsfw`, `content`, `imageUrls`, `txHash`      | `{ success: true }` |
 
 New storylines call only `/api/index/storyline` — the genesis plot is indexed as part of that response. Existing storylines call only `/api/index/plot` with a `chain-plot` transaction hash. `isNsfw` is sent as a string literal (`"true"` / `"false"`).
+
+**Important:** Index routes return only `{ success: true }`. They do NOT return `storylineId`, `plotId`, or `plotUrl`. Publish identifiers must be derived from the transaction receipt/events, not from index responses.
 
 ### Signer Interface
 
 The adapter accepts a `PlotLinkSigner` interface:
 
 - `sign(message: string): Promise<string>` — signs the request message
-- `sendTransaction(payload): Promise<{ txHash, confirmed }>` — submits the on-chain transaction and returns the hash
+- `sendTransaction(payload): Promise<TransactionResult>` — submits the on-chain transaction
+
+`TransactionResult` shape:
+
+```typescript
+interface TransactionResult {
+  txHash: string
+  confirmed: boolean
+  storylineId?: string // decoded from receipt events (create-storyline only)
+  plotIndex?: number // decoded from receipt events
+}
+```
 
 In production this is backed by the IPC wallet boundary; the adapter never touches private keys.
+
+### Transaction Payload
+
+```typescript
+interface TransactionPayload {
+  action: 'create-storyline' | 'chain-plot'
+  storylineId?: string // required for chain-plot
+  title: string
+  contentCid: string
+  contentHash: string // 0x-prefixed keccak256 bytes32
+  creationFee?: string // required for create-storyline
+  deadline?: number // seconds, required for create-storyline
+}
+```
+
+### Content Hash
+
+PlotLink verifies content hashes as `keccak256(toBytes(markdown))`, producing a `0x`-prefixed 64-character hex string (bytes32). SHA-256 hashes are NOT accepted.
 
 ### Transaction Flow
 
 1. Sign the request message (numeric timestamp format)
-2. Submit transaction via `signer.sendTransaction` with action and content hash
-3. If confirmed, proceed to index; if not, abort with error
-4. Pass `txHash` to all index requests
+2. Compute keccak256 content hash and validate format
+3. Submit transaction via `signer.sendTransaction` with action, content hash, fee, and deadline
+4. If confirmed, derive storylineId/plotIndex from transaction result
+5. Proceed to index; pass `txHash` to index request
+6. Return identifiers from transaction result (not index response)
 
 ### Signature Message Format (Publish)
 
