@@ -27,11 +27,13 @@ function makeWalletNoEvm(name: string): OWSWalletInfo {
 
 function mockOWSModule(): OWSCoreModule {
   return {
-    listWallets: vi.fn().mockReturnValue([
-      makeWallet('plotlink-writer-main', '0xaaa'),
-      makeWallet('plottoon-writer-1', '0xbbb'),
-      makeWalletNoEvm('solana-only-wallet')
-    ]),
+    listWallets: vi
+      .fn()
+      .mockReturnValue([
+        makeWallet('plotlink-writer-main', '0xaaa'),
+        makeWallet('plottoon-writer-1', '0xbbb'),
+        makeWalletNoEvm('solana-only-wallet')
+      ]),
     createWallet: vi.fn().mockReturnValue(makeWallet('plottoon-writer-new', '0xnew')),
     signMessage: vi.fn().mockReturnValue({ signature: '0xsig', recoveryId: 0 }),
     signTransaction: vi.fn().mockReturnValue({ signature: '0xtxsig', recoveryId: 1 })
