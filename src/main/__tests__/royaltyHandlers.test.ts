@@ -207,6 +207,33 @@ describe('royalty:claim', () => {
     expect(result.error).toContain('Reserve token not configured')
   })
 
+  it('rejects in live mode when no unclaimed royalties', async () => {
+    const { readRoyaltyInfo } = await import('../services/royaltyClaim')
+    ;(readRoyaltyInfo as ReturnType<typeof vi.fn>).mockResolvedValue({
+      earnedWei: '500000',
+      claimedWei: '500000',
+      unclaimedWei: '0',
+      reserveToken: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+    })
+
+    const deps = createDeps({
+      signerMode: 'live',
+      walletState: {
+        wallet: {
+          address: '0xabc',
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-18T00:00:00Z'
+        }
+      }
+    })
+    registerRoyaltyHandlers(deps)
+    const handler = getHandler('royalty:claim')
+    const result = (await handler({}, true)) as { success: boolean; error: string }
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('No unclaimed royalties')
+  })
+
   it('returns mock success in mock mode', async () => {
     const { appendClaimRecord } = await import('../services/royaltyClaimStatus')
     const deps = createDeps({
@@ -263,8 +290,14 @@ describe('royalty:claim', () => {
   })
 
   it('persists failed claim when live executeRoyaltyClaim throws', async () => {
-    const { executeRoyaltyClaim } = await import('../services/royaltyClaim')
+    const { executeRoyaltyClaim, readRoyaltyInfo } = await import('../services/royaltyClaim')
     const { appendClaimRecord } = await import('../services/royaltyClaimStatus')
+    ;(readRoyaltyInfo as ReturnType<typeof vi.fn>).mockResolvedValue({
+      earnedWei: '500000',
+      claimedWei: '100000',
+      unclaimedWei: '400000',
+      reserveToken: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+    })
     ;(executeRoyaltyClaim as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('RPC connection refused')
     )

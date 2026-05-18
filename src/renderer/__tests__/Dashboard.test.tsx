@@ -576,4 +576,60 @@ describe('Dashboard', () => {
     })
     expect(screen.queryByRole('button', { name: 'Claim Royalties' })).toBeNull()
   })
+
+  it('displays claim history from persisted records', async () => {
+    ;(window.plottoon.royalty.getClaimHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      claims: [
+        {
+          txHash: '0xhistorytx1234567890',
+          walletAddress: '0xabc',
+          reserveToken: '0xtoken',
+          gasCostWei: '21000',
+          status: 'confirmed',
+          error: null,
+          claimedAt: '2026-05-17T10:00:00Z'
+        },
+        {
+          txHash: '0xfailedtx987654321',
+          walletAddress: '0xabc',
+          reserveToken: '0xtoken',
+          gasCostWei: null,
+          status: 'failed',
+          error: 'Reverted',
+          claimedAt: '2026-05-18T10:00:00Z'
+        }
+      ]
+    })
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: {
+        address: '0xabc',
+        source: 'plottoon-writer',
+        connected: true,
+        balanceWei: null,
+        balanceError: null
+      },
+      royalty: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        error: null
+      }
+    })
+    mockGetInfo.mockResolvedValue({
+      info: {
+        earnedWei: '500000000000000000',
+        claimedWei: '100000000000000000',
+        unclaimedWei: '400000000000000000',
+        reserveToken: '0xtoken'
+      },
+      error: null
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByText('Claim History')).toBeDefined()
+      expect(screen.getByText('0xhistoryt…')).toBeDefined()
+      expect(screen.getByText('Reverted')).toBeDefined()
+    })
+  })
 })

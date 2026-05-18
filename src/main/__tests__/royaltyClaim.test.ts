@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { encodeClaimRoyalties, getDefaultRoyaltyConfig } from '../services/royaltyClaim'
+import {
+  encodeClaimRoyalties,
+  getDefaultRoyaltyConfig,
+  PLOT_TOKEN_BASE_MAINNET
+} from '../services/royaltyClaim'
 
 describe('encodeClaimRoyalties', () => {
   it('returns hex-encoded calldata for claimRoyalties', () => {
@@ -22,5 +26,11 @@ describe('getDefaultRoyaltyConfig', () => {
     expect(config.rpcUrl).toBeTruthy()
     expect(config.contractAddress).toBeTruthy()
     expect(config.defaultReserveToken).toBeTruthy()
+  })
+
+  it('defaults reserve token to PLOT on Base mainnet', () => {
+    const config = getDefaultRoyaltyConfig()
+    expect(config.defaultReserveToken).toBe(PLOT_TOKEN_BASE_MAINNET)
+    expect(config.defaultReserveToken).not.toBe('0x0000000000000000000000000000000000000000')
   })
 })

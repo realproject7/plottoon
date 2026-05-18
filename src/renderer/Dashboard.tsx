@@ -246,6 +246,7 @@ function RoyaltyClaimCard({
   const [claiming, setClaiming] = useState(false)
   const [claimResult, setClaimResult] = useState<RoyaltyClaimResult | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [claimHistory, setClaimHistory] = useState<RoyaltyClaimRecord[]>([])
 
   useEffect(() => {
     if (!walletConnected) return
@@ -253,6 +254,12 @@ function RoyaltyClaimCard({
     window.plottoon.royalty.getInfo().then(
       (result) => {
         if (!cancelled) setRoyaltyInfo(result)
+      },
+      () => {}
+    )
+    window.plottoon.royalty.getClaimHistory().then(
+      (result) => {
+        if (!cancelled) setClaimHistory(result.claims)
       },
       () => {}
     )
@@ -275,6 +282,10 @@ function RoyaltyClaimCard({
         window.plottoon.royalty
           .getInfo()
           .then((r) => setRoyaltyInfo(r))
+          .catch(() => {})
+        window.plottoon.royalty
+          .getClaimHistory()
+          .then((r) => setClaimHistory(r.claims))
           .catch(() => {})
       }
     } catch (err) {
@@ -367,6 +378,67 @@ function RoyaltyClaimCard({
           {claimResult.success
             ? `Claimed! Tx: ${claimResult.txHash?.slice(0, 10)}…`
             : claimResult.error}
+        </div>
+      )}
+      {claimHistory.length > 0 && (
+        <div
+          style={{
+            marginTop: 'var(--space-3)',
+            borderTop: '1px solid var(--color-border)',
+            paddingTop: 'var(--space-2)'
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: 'var(--color-text-muted)',
+              fontWeight: 500,
+              marginBottom: 'var(--space-1)'
+            }}
+          >
+            Claim History
+          </div>
+          {claimHistory
+            .slice(-3)
+            .reverse()
+            .map((claim) => (
+              <div
+                key={claim.txHash + claim.claimedAt}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  fontSize: 11,
+                  color: 'var(--color-text-secondary)',
+                  padding: '2px 0'
+                }}
+              >
+                <span
+                  style={{
+                    color:
+                      claim.status === 'confirmed' ? 'var(--color-success)' : 'var(--color-error)'
+                  }}
+                >
+                  {claim.status === 'confirmed' ? '✓' : '✗'}
+                </span>
+                {claim.txHash && (
+                  <a
+                    href={`https://basescan.org/tx/${claim.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: 'var(--color-text-muted)',
+                      textDecoration: 'none',
+                      fontFamily: 'monospace'
+                    }}
+                  >
+                    {claim.txHash.slice(0, 10)}…
+                  </a>
+                )}
+                <span>{formatDate(claim.claimedAt)}</span>
+                {claim.error && <span style={{ color: 'var(--color-error)' }}>{claim.error}</span>}
+              </div>
+            ))}
         </div>
       )}
     </div>

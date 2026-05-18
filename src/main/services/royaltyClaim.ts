@@ -11,6 +11,8 @@ import { base } from 'viem/chains'
 import type { OWSCoreModule } from './owsAdapter'
 import type { RoyaltyInfo, RoyaltyClaimResult } from '../../shared/royaltyFlow'
 
+export const PLOT_TOKEN_BASE_MAINNET = '0x7c12cAfb7a3584F6b4d4FB0cce2a3968cB89B5C7'
+
 const royaltyAbi = [
   {
     type: 'function',
@@ -45,8 +47,7 @@ export function getDefaultRoyaltyConfig(): RoyaltyClaimConfig {
     rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
     contractAddress:
       process.env.PLOTLINK_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000',
-    defaultReserveToken:
-      process.env.PLOTLINK_RESERVE_TOKEN || '0x0000000000000000000000000000000000000000'
+    defaultReserveToken: process.env.PLOTLINK_RESERVE_TOKEN || PLOT_TOKEN_BASE_MAINNET
   }
 }
 

@@ -84,6 +84,22 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
         return { success: false, error: 'Reserve token not configured' }
       }
 
+      if (deps.signerMode !== 'mock') {
+        try {
+          const info = await readRoyaltyInfo(wallet.address, reserveToken, {
+            config: deps.royaltyConfig
+          })
+          if (BigInt(info.unclaimedWei) <= BigInt(0)) {
+            return { success: false, error: 'No unclaimed royalties to claim' }
+          }
+        } catch (err) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to verify claimable amount'
+          }
+        }
+      }
+
       if (deps.signerMode === 'mock') {
         sendProgress(deps, { state: 'preparing', detail: 'Mock: preparing claim' })
         sendProgress(deps, { state: 'signing', detail: 'Mock: signing' })
