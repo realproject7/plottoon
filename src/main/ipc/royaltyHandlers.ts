@@ -4,6 +4,7 @@ import type { OWSCoreModule, OWSVaultConfig } from '../services/owsAdapter'
 import {
   readRoyaltyInfo,
   executeRoyaltyClaim,
+  validateRoyaltyConfig,
   type RoyaltyClaimConfig
 } from '../services/royaltyClaim'
 import { appendClaimRecord, readClaimHistory } from '../services/royaltyClaimStatus'
@@ -36,7 +37,7 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
       const wallet = deps.walletState.wallet
       if (!wallet) return { info: null, error: null }
 
-      const reserveToken = deps.royaltyConfig.defaultReserveToken
+      const reserveToken = deps.royaltyConfig.plotTokenAddress
       if (!reserveToken || reserveToken === '0x0000000000000000000000000000000000000000') {
         return { info: null, error: null }
       }
@@ -51,6 +52,11 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
           },
           error: null
         }
+      }
+
+      const configErrors = validateRoyaltyConfig(deps.royaltyConfig)
+      if (configErrors.length > 0) {
+        return { info: null, error: configErrors.join('; ') }
       }
 
       try {
@@ -79,9 +85,14 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
         return { success: false, error: 'No wallet connected' }
       }
 
-      const reserveToken = deps.royaltyConfig.defaultReserveToken
+      const reserveToken = deps.royaltyConfig.plotTokenAddress
       if (!reserveToken || reserveToken === '0x0000000000000000000000000000000000000000') {
         return { success: false, error: 'Reserve token not configured' }
+      }
+
+      const configErrors = validateRoyaltyConfig(deps.royaltyConfig)
+      if (configErrors.length > 0) {
+        return { success: false, error: configErrors.join('; ') }
       }
 
       if (deps.signerMode !== 'mock') {

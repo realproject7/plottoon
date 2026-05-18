@@ -31,16 +31,29 @@ const royaltyAbi = [
 
 export interface RoyaltyClaimConfig {
   rpcUrl: string
-  contractAddress: string
-  defaultReserveToken: string
+  mcv2BondAddress: string
+  plotTokenAddress: string
+}
+
+export function validateRoyaltyConfig(config: RoyaltyClaimConfig): string[] {
+  const errors: string[] = []
+  if (
+    !config.mcv2BondAddress ||
+    config.mcv2BondAddress === '0x0000000000000000000000000000000000000000'
+  ) {
+    errors.push('MCV2_BOND_ADDRESS is required for royalty operations')
+  }
+  if (!config.rpcUrl) {
+    errors.push('BASE_RPC_URL is required for royalty operations')
+  }
+  return errors
 }
 
 export function getDefaultRoyaltyConfig(): RoyaltyClaimConfig {
   return {
     rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-    contractAddress:
-      process.env.PLOTLINK_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000',
-    defaultReserveToken: process.env.PLOTLINK_RESERVE_TOKEN || PLOT_TOKEN_BASE_MAINNET
+    mcv2BondAddress: process.env.MCV2_BOND_ADDRESS || '',
+    plotTokenAddress: process.env.PLOT_TOKEN_ADDRESS || PLOT_TOKEN_BASE_MAINNET
   }
 }
 
@@ -69,7 +82,7 @@ export async function readRoyaltyInfo(
   })
 
   const result = await client.readContract({
-    address: deps.config.contractAddress as Hex,
+    address: deps.config.mcv2BondAddress as Hex,
     abi: royaltyAbi,
     functionName: 'getRoyaltyInfo',
     args: [walletAddress as Hex, reserveToken as Hex]
@@ -119,7 +132,7 @@ export async function executeRoyaltyClaim(
   progress('broadcasting', 'Broadcasting claim transaction')
 
   const txHash = await walletClient.sendTransaction({
-    to: deps.config.contractAddress as Hex,
+    to: deps.config.mcv2BondAddress as Hex,
     data
   })
 
