@@ -5,6 +5,7 @@ import {
   connectWallet,
   walletMetadataIsSafe,
   toPublishSignerAddress,
+  createAppOwnedSigner,
   type WalletConnectionConfig,
   type WalletConnectionOption,
   type WalletMetadata
@@ -147,5 +148,54 @@ describe('toPublishSignerAddress', () => {
       createdAt: '2026-05-18T00:00:00.000Z'
     }
     expect(toPublishSignerAddress(wallet)).toBe('0xdeadbeef')
+  })
+})
+
+describe('createAppOwnedSigner', () => {
+  it('creates a signer with sign, sendTransaction, and getAddress', async () => {
+    const wallet: WalletMetadata = {
+      address: '0xsigner-addr',
+      source: 'plottoon-writer',
+      name: 'plottoon-writer-123',
+      createdAt: '2026-05-18T00:00:00.000Z'
+    }
+    const signFn = vi.fn().mockResolvedValue('sig-abc')
+    const txFn = vi.fn().mockResolvedValue({ txHash: 'tx-xyz', confirmed: true })
+
+    const signer = createAppOwnedSigner(wallet, signFn, txFn)
+
+    expect(signer.getAddress()).toBe('0xsigner-addr')
+
+    const sig = await signer.sign('test message')
+    expect(sig).toBe('sig-abc')
+    expect(signFn).toHaveBeenCalledWith('test message')
+
+    const txResult = await signer.sendTransaction({
+      action: 'create-storyline',
+      title: 'My Story',
+      contentCid: 'bafy123',
+      contentHash: 'sha256-abc'
+    })
+    expect(txResult.txHash).toBe('tx-xyz')
+    expect(txResult.confirmed).toBe(true)
+  })
+
+  it('signer interface is compatible with PlotLinkSigner', async () => {
+    const wallet: WalletMetadata = {
+      address: '0xaddr',
+      source: 'plotlink-writer',
+      name: 'plotlink-writer-main',
+      createdAt: '2026-05-18T00:00:00.000Z'
+    }
+    const signer = createAppOwnedSigner(
+      wallet,
+      async (msg) => `signed:${msg}`,
+      async () => ({ txHash: 'tx-1', confirmed: true })
+    )
+
+    expect(typeof signer.sign).toBe('function')
+    expect(typeof signer.sendTransaction).toBe('function')
+    const result = await signer.sign('hello')
+    expect(result).toBe('signed:hello')
   })
 })

@@ -104,3 +104,36 @@ export function walletMetadataIsSafe(wallet: WalletMetadata): boolean {
 export function toPublishSignerAddress(wallet: WalletMetadata): string {
   return wallet.address
 }
+
+export interface AppOwnedSigner {
+  sign(message: string): Promise<string>
+  sendTransaction(payload: {
+    action: 'create-storyline' | 'chain-plot'
+    storylineId?: string
+    title: string
+    contentCid: string
+    contentHash: string
+  }): Promise<{ txHash: string; confirmed: boolean }>
+  getAddress(): string
+}
+
+export type SignFn = (message: string) => Promise<string>
+export type TransactionFn = (payload: {
+  action: 'create-storyline' | 'chain-plot'
+  storylineId?: string
+  title: string
+  contentCid: string
+  contentHash: string
+}) => Promise<{ txHash: string; confirmed: boolean }>
+
+export function createAppOwnedSigner(
+  wallet: WalletMetadata,
+  signFn: SignFn,
+  transactionFn: TransactionFn
+): AppOwnedSigner {
+  return {
+    sign: signFn,
+    sendTransaction: transactionFn,
+    getAddress: () => wallet.address
+  }
+}

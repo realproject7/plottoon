@@ -60,6 +60,13 @@ contextBridge.exposeInMainWorld('plottoon', {
       ipcRenderer.invoke('actionLog:log', action, detail, projectId, plotId),
     get: (projectId?: string) => ipcRenderer.invoke('actionLog:get', projectId)
   },
+  wallet: {
+    getOptions: () => ipcRenderer.invoke('wallet:getOptions'),
+    connect: (option: unknown) => ipcRenderer.invoke('wallet:connect', option),
+    getConnected: () => ipcRenderer.invoke('wallet:getConnected'),
+    disconnect: () => ipcRenderer.invoke('wallet:disconnect'),
+    getSignerMode: () => ipcRenderer.invoke('wallet:getSignerMode')
+  },
   project: {
     discover: () => ipcRenderer.invoke('project:discover'),
     readMeta: (projectId: string) => ipcRenderer.invoke('project:readMeta', projectId),
