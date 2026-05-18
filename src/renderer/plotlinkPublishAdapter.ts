@@ -29,7 +29,7 @@ export type ContentCommitFn = (markdown: string) => Promise<ContentCommitResult>
 export interface PlotLinkStorylineIndexRequest {
   storylineTitle: string
   contentType: 'cartoon'
-  isNsfw: boolean
+  isNsfw: string
   content: string
   imageCount: number
   imageUrls: CutUrl[]
@@ -40,7 +40,7 @@ export interface PlotLinkStorylineIndexRequest {
 
 export interface PlotLinkPlotIndexRequest {
   storylineId: string
-  isNsfw: boolean
+  isNsfw: string
   content: string
   imageCount: number
   imageUrls: CutUrl[]
@@ -98,7 +98,7 @@ async function indexNewStoryline(
   const request: PlotLinkStorylineIndexRequest = {
     storylineTitle: outbound.storylineTitle ?? '',
     contentType: 'cartoon',
-    isNsfw: outbound.matureFlag ?? false,
+    isNsfw: String(outbound.matureFlag ?? false),
     content: outbound.markdown,
     imageCount: outbound.imageCount,
     imageUrls: outbound.imageUrls,
@@ -131,7 +131,7 @@ async function indexPlot(
 ): Promise<PlotLinkPlotIndexResponse> {
   const request: PlotLinkPlotIndexRequest = {
     storylineId,
-    isNsfw: outbound.matureFlag ?? false,
+    isNsfw: String(outbound.matureFlag ?? false),
     content: outbound.markdown,
     imageCount: outbound.imageCount,
     imageUrls: outbound.imageUrls,

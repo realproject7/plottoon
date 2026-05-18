@@ -95,7 +95,7 @@ describe('plotlinkPublish — new storyline', () => {
     const body = JSON.parse(init.body) as PlotLinkStorylineIndexRequest
     expect(body.storylineTitle).toBe('My Cartoon')
     expect(body.contentType).toBe('cartoon')
-    expect(body.isNsfw).toBe(true)
+    expect(body.isNsfw).toBe('true')
     expect(body.content).toContain('# Episode 1')
     expect(body.imageCount).toBe(1)
     expect(body.txHash).toBe('tx-abc123')
@@ -141,7 +141,7 @@ describe('plotlinkPublish — new storyline', () => {
     await plotlinkPublish(outbound, config)
 
     const body = JSON.parse(fetchFn.mock.calls[0][1].body) as PlotLinkStorylineIndexRequest
-    expect(body.isNsfw).toBe(false)
+    expect(body.isNsfw).toBe('false')
   })
 
   it('does NOT call /api/index/plot for new storylines', async () => {
@@ -182,7 +182,7 @@ describe('plotlinkPublish — existing storyline', () => {
     expect(url).toBe('https://plotlink.example/api/index/plot')
     const body = JSON.parse(init.body) as PlotLinkPlotIndexRequest
     expect(body.storylineId).toBe('storyline-abc')
-    expect(body.isNsfw).toBe(false)
+    expect(body.isNsfw).toBe('false')
     expect(body.content).toContain('# Episode 2')
     expect(body.txHash).toBe('tx-abc123')
     expect(body.message).toMatch(/^PlotLink: Publish plot\nTimestamp: \d+$/)

@@ -85,12 +85,12 @@ Renderer (attaches signature to upload request)
 
 ### Index Routes
 
-| Route                       | When            | Key Fields                                          |
-| --------------------------- | --------------- | --------------------------------------------------- |
-| `POST /api/index/storyline` | New storylines  | `storylineTitle`, `contentType`, `isNsfw`, `txHash` |
-| `POST /api/index/plot`      | Always (step 2) | `storylineId`, `content`, `imageUrls`, `txHash`     |
+| Route                       | When                     | Key Fields                                                     |
+| --------------------------- | ------------------------ | -------------------------------------------------------------- |
+| `POST /api/index/storyline` | New storylines only      | `storylineTitle`, `contentType`, `isNsfw`, `content`, `txHash` |
+| `POST /api/index/plot`      | Existing storylines only | `storylineId`, `isNsfw`, `content`, `imageUrls`, `txHash`      |
 
-For new storylines both routes are called in sequence; for existing storylines only `/api/index/plot` is called.
+New storylines call only `/api/index/storyline` — the genesis plot is indexed as part of that response. Existing storylines call only `/api/index/plot` with a `chain-plot` transaction hash. `isNsfw` is sent as a string literal (`"true"` / `"false"`).
 
 ### Signer Interface
 
