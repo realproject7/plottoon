@@ -270,7 +270,7 @@ describe('createViemContractEncoder', () => {
 
     const receipt: TransactionReceipt = {
       status: 'success',
-      logs: [{ topics, data }],
+      logs: [{ topics: [...topics] as string[], data }],
       gasUsed: '21000',
       effectiveGasPrice: '1000000000'
     }
@@ -300,7 +300,7 @@ describe('createViemContractEncoder', () => {
 
     const receipt: TransactionReceipt = {
       status: 'success',
-      logs: [{ topics, data }],
+      logs: [{ topics: [...topics] as string[], data }],
       gasUsed: '21000',
       effectiveGasPrice: '1000000000'
     }

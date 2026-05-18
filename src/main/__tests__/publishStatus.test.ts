@@ -11,12 +11,13 @@ import {
   markCutFailed,
   markPlotPublished,
   markPlotFailed,
+  markPublishedNotIndexed,
   setPlotState,
   protectCut,
   isProtected,
   PublishStatusError
 } from '../services/publishStatus'
-import type { PublishStatusFile } from '../services/publishStatus'
+import type { PublishStatusFile, PublishResultRecord } from '../services/publishStatus'
 
 let tmpDir: string
 
@@ -255,5 +256,90 @@ describe('protection', () => {
     await writePublishStatus(tmpDir, status)
     const read = await readPublishStatus(tmpDir)
     expect(isProtected(read, 'cut-002')).toBe(true)
+  })
+})
+
+function mockPublishResult(): PublishResultRecord {
+  return {
+    txHash: '0xtxhash',
+    storylineId: '0xsl-id',
+    plotIndex: 0,
+    contentCid: 'bafytest',
+    contentHash: '0x' + 'ab'.repeat(32),
+    authorAddress: '0xauthor',
+    gasCostWei: '21000000000000',
+    plotlinkUrl: 'https://plotlink.xyz/story/0xsl-id',
+    walletAddress: '0xwallet',
+    walletSource: 'plottoon-writer',
+    indexed: true,
+    indexError: null
+  }
+}
+
+describe('published-not-indexed state', () => {
+  it('markPublishedNotIndexed sets state and preserves result', () => {
+    const status = fixture()
+    const result = { ...mockPublishResult(), indexed: false, indexError: 'Index failed' }
+    const updated = markPublishedNotIndexed(status, result)
+
+    expect(updated.plotState).toBe('published-not-indexed')
+    expect(updated.publishResult).toEqual(result)
+    expect(updated.error).toBe('Index failed')
+    expect(updated.publishedAt).toBeTruthy()
+  })
+
+  it('validates published-not-indexed as valid plotState', () => {
+    const status = fixture()
+    const result = { ...mockPublishResult(), indexed: false, indexError: 'fail' }
+    const updated = markPublishedNotIndexed(status, result)
+
+    expect(() => validatePublishStatus(updated, 'test')).not.toThrow()
+  })
+
+  it('published-not-indexed survives round-trip', async () => {
+    const status = fixture()
+    const result = { ...mockPublishResult(), indexed: false, indexError: 'timeout' }
+    const updated = markPublishedNotIndexed(status, result)
+
+    await writePublishStatus(tmpDir, updated)
+    const read = await readPublishStatus(tmpDir)
+
+    expect(read.plotState).toBe('published-not-indexed')
+    expect(read.publishResult).toEqual(result)
+    expect(read.error).toBe('timeout')
+  })
+})
+
+describe('publishResult persistence', () => {
+  it('createPublishStatus has null publishResult', () => {
+    const status = fixture()
+    expect(status.publishResult).toBeNull()
+  })
+
+  it('markPlotPublished with result stores it', () => {
+    const status = fixture()
+    const result = mockPublishResult()
+    const updated = markPlotPublished(status, result)
+
+    expect(updated.plotState).toBe('published')
+    expect(updated.publishResult).toEqual(result)
+  })
+
+  it('publishResult round-trips through file', async () => {
+    const status = fixture()
+    const result = mockPublishResult()
+    const updated = markPlotPublished(status, result)
+
+    await writePublishStatus(tmpDir, updated)
+    const read = await readPublishStatus(tmpDir)
+
+    expect(read.publishResult).toEqual(result)
+  })
+
+  it('null publishResult round-trips', async () => {
+    const status = fixture()
+    await writePublishStatus(tmpDir, status)
+    const read = await readPublishStatus(tmpDir)
+    expect(read.publishResult).toBeNull()
   })
 })

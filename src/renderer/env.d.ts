@@ -131,11 +131,63 @@ interface PlottoonActionLog {
   get(projectId?: string): Promise<ActionEntry[]>
 }
 
+interface PublishPreflightResult {
+  ready: boolean
+  walletAddress?: string
+  walletSource?: string
+  signerMode: 'mock' | 'live'
+  errors: string[]
+}
+
+interface PublishResultMeta {
+  txHash: string | null
+  storylineId: string | null
+  plotIndex: number | null
+  contentCid: string | null
+  contentHash: string | null
+  authorAddress: string | null
+  gasCostWei: string | null
+  plotlinkUrl: string | null
+  walletAddress: string | null
+  walletSource: string | null
+  indexed: boolean
+  indexError: string | null
+  publishedAt: string | null
+}
+
+interface PublishExecuteResult {
+  success: boolean
+  error?: string
+  result?: PublishResultMeta
+}
+
+interface PublishProgress {
+  state: string
+  detail?: string
+}
+
+interface PublishRequest {
+  action: 'create-storyline' | 'chain-plot'
+  title: string
+  markdown: string
+  storylineId?: string
+  hasDeadline?: boolean
+  isNsfw?: string
+  contentType?: string
+}
+
+interface PlottoonPublish {
+  preflight(): Promise<PublishPreflightResult>
+  execute(request: PublishRequest, confirmed: boolean): Promise<PublishExecuteResult>
+  onProgress(callback: (progress: PublishProgress) => void): () => void
+}
+
 interface Window {
   plottoon: {
     version: string
     terminal: PlottoonTerminal
     fs: PlottoonFs
+    publish: PlottoonPublish
     project: PlottoonProject
     capability: PlottoonCapability
     actionLog: PlottoonActionLog
