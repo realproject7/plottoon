@@ -69,6 +69,42 @@ Main Process (owns wallet, signs message)
 Renderer (attaches signature to upload request)
 ```
 
+## Publish Adapter
+
+`src/renderer/plotlinkPublishAdapter.ts` provides the concrete adapter mapping PlotToon publish data to PlotLink's index endpoint.
+
+### Field Mapping
+
+| PlotToon (internal)        | PlotLink (outbound)     | When                  |
+| -------------------------- | ----------------------- | --------------------- |
+| `matureFlag`               | `isNsfw`                | Always                |
+| `contentType: "cartoon"`   | `contentType: "cartoon"`| New storylines only   |
+| `storylineTitle`           | `storylineTitle`        | New storylines only   |
+| `storylineId`              | `storylineId`           | Existing storylines   |
+| `markdown`                 | `content`               | Always                |
+
+### Signer Interface
+
+The adapter accepts a `PlotLinkSigner` interface with a single `sign(message: string): Promise<string>` method. In production this is backed by the IPC wallet boundary; the adapter never touches private keys.
+
+### Signature Message Format (Publish)
+
+```text
+PlotLink: Create storyline and publish plot
+Timestamp: {numeric millisecond timestamp via Date.now()}
+```
+
+For existing storylines:
+
+```text
+PlotLink: Publish plot
+Timestamp: {numeric millisecond timestamp via Date.now()}
+```
+
+### Blocking Gate
+
+Real publishing remains gated by #52. The adapter can run in `mock` mode for tests and dry-run.
+
 ## Patterns to Reuse from PlotLink/plotlink-ows
 
 | Pattern                                    | Reuse | Adapt                                          |
