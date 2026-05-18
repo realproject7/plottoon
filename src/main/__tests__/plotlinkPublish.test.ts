@@ -239,9 +239,9 @@ describe('createViemContractEncoder', () => {
     expect(calldata.length).toBeGreaterThan(10)
   })
 
-  it('encodes chainPlot with real ABI encoding', () => {
+  it('encodes chainPlot with numeric storylineId', () => {
     const encoder = createViemContractEncoder()
-    const storylineId = '0x' + 'cd'.repeat(32)
+    const storylineId = '42'
     const contentHash = '0x' + 'ab'.repeat(32)
 
     const calldata = encoder.encodeChainPlot(storylineId, 'Episode 2', 'bafytest', contentHash)
@@ -250,22 +250,56 @@ describe('createViemContractEncoder', () => {
     expect(calldata.length).toBeGreaterThan(10)
   })
 
-  it('decodes StorylineCreated event from receipt logs', () => {
+  it('encodes chainPlot with viem parity for uint256 storylineId', () => {
+    const { encodeFunctionData } = require('viem')
     const encoder = createViemContractEncoder()
-    const storylineId = '0x' + 'aa'.repeat(32)
+    const storylineId = '12345'
+    const contentHash = '0x' + 'ab'.repeat(32)
+
+    const calldata = encoder.encodeChainPlot(storylineId, 'Episode 2', 'bafytest', contentHash)
+
+    const directEncoded = encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'chainPlot',
+          inputs: [
+            { name: 'storylineId', type: 'uint256' },
+            { name: 'title', type: 'string' },
+            { name: 'cid', type: 'string' },
+            { name: 'contentHash', type: 'bytes32' }
+          ],
+          outputs: [],
+          stateMutability: 'nonpayable'
+        }
+      ],
+      functionName: 'chainPlot',
+      args: [BigInt(12345), 'Episode 2', 'bafytest', contentHash]
+    })
+
+    expect(calldata).toBe(directEncoded)
+  })
+
+  it('decodes StorylineCreated event with uint256 storylineId', () => {
+    const encoder = createViemContractEncoder()
+    const storylineIdNum = BigInt(42)
 
     const abi = [
       {
         type: 'event' as const,
         name: 'StorylineCreated' as const,
         inputs: [
-          { name: 'storylineId' as const, type: 'bytes32' as const, indexed: true },
+          { name: 'storylineId' as const, type: 'uint256' as const, indexed: true },
           { name: 'plotIndex' as const, type: 'uint256' as const, indexed: false }
         ]
       }
     ]
 
-    const topics = encodeEventTopics({ abi, eventName: 'StorylineCreated', args: { storylineId } })
+    const topics = encodeEventTopics({
+      abi,
+      eventName: 'StorylineCreated',
+      args: { storylineId: storylineIdNum }
+    })
     const data = encodeAbiParameters([{ type: 'uint256' }], [BigInt(0)])
 
     const receipt: TransactionReceipt = {
@@ -276,26 +310,30 @@ describe('createViemContractEncoder', () => {
     }
 
     const decoded = encoder.decodePublishEvents(receipt)
-    expect(decoded.storylineId).toBe(storylineId)
+    expect(decoded.storylineId).toBe('42')
     expect(decoded.plotIndex).toBe(0)
   })
 
-  it('decodes PlotChained event from receipt logs', () => {
+  it('decodes PlotChained event with uint256 storylineId', () => {
     const encoder = createViemContractEncoder()
-    const storylineId = '0x' + 'bb'.repeat(32)
+    const storylineIdNum = BigInt(99)
 
     const abi = [
       {
         type: 'event' as const,
         name: 'PlotChained' as const,
         inputs: [
-          { name: 'storylineId' as const, type: 'bytes32' as const, indexed: true },
+          { name: 'storylineId' as const, type: 'uint256' as const, indexed: true },
           { name: 'plotIndex' as const, type: 'uint256' as const, indexed: false }
         ]
       }
     ]
 
-    const topics = encodeEventTopics({ abi, eventName: 'PlotChained', args: { storylineId } })
+    const topics = encodeEventTopics({
+      abi,
+      eventName: 'PlotChained',
+      args: { storylineId: storylineIdNum }
+    })
     const data = encodeAbiParameters([{ type: 'uint256' }], [BigInt(5)])
 
     const receipt: TransactionReceipt = {
@@ -306,7 +344,7 @@ describe('createViemContractEncoder', () => {
     }
 
     const decoded = encoder.decodePublishEvents(receipt)
-    expect(decoded.storylineId).toBe(storylineId)
+    expect(decoded.storylineId).toBe('99')
     expect(decoded.plotIndex).toBe(5)
   })
 

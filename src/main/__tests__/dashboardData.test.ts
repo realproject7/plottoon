@@ -20,13 +20,13 @@ let tmpDir: string
 function mockResult(overrides?: Partial<PublishResultRecord>): PublishResultRecord {
   return {
     txHash: '0xtx',
-    storylineId: '0x' + 'aa'.repeat(32),
+    storylineId: '42',
     plotIndex: 0,
     contentCid: 'bafytest',
     contentHash: '0x' + 'bb'.repeat(32),
     authorAddress: '0xauthor',
     gasCostWei: '21000000000000',
-    plotlinkUrl: 'https://plotlink.xyz/story/0x' + 'aa'.repeat(32),
+    plotlinkUrl: 'https://plotlink.xyz/story/42',
     walletAddress: '0xwallet',
     walletSource: 'plottoon-writer',
     indexed: true,
@@ -145,7 +145,7 @@ describe('buildDashboardData — counts', () => {
 describe('buildDashboardData — storyline grouping', () => {
   it('groups published plots by storylineId', async () => {
     const proj = await createProject('my-comic')
-    const slId = '0x' + 'aa'.repeat(32)
+    const slId = '42'
 
     const plotDir1 = await createPlot(proj.root, 'ep-1', 'Episode 1', 2)
     let s1 = createPublishStatus([])
@@ -196,7 +196,7 @@ describe('buildDashboardData — storyline grouping', () => {
 
   it('computes total gas cost per storyline', async () => {
     const proj = await createProject('my-comic')
-    const slId = '0x' + 'cc'.repeat(32)
+    const slId = '99'
 
     const plotDir1 = await createPlot(proj.root, 'ep-1', 'Ep1', 1)
     let s1 = createPublishStatus([])

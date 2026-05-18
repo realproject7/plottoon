@@ -341,7 +341,7 @@ describe('publish:execute', () => {
     ;(realPublishMock as ReturnType<typeof vi.fn>).mockResolvedValue({
       txHash: '0xrealtx',
       confirmed: true,
-      storylineId: '0xsl-id',
+      storylineId: '101',
       plotIndex: 0,
       contentCid: 'bafyreal',
       contentHash: '0x' + 'cc'.repeat(32),
@@ -368,13 +368,13 @@ describe('publish:execute', () => {
 
     expect(result.success).toBe(true)
     expect(result.result!.txHash).toBe('0xrealtx')
-    expect(result.result!.plotlinkUrl).toBe('https://plotlink.example/story/0xsl-id')
+    expect(result.result!.plotlinkUrl).toBe('https://plotlink.example/story/101')
 
     const statusRaw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
     const status = JSON.parse(statusRaw)
     expect(status.plotState).toBe('published')
     expect(status.publishResult.txHash).toBe('0xrealtx')
-    expect(status.publishResult.storylineId).toBe('0xsl-id')
+    expect(status.publishResult.storylineId).toBe('101')
     expect(status.publishResult.walletAddress).toBe('0xabc')
   })
 
@@ -383,7 +383,7 @@ describe('publish:execute', () => {
     ;(realPublishMock as ReturnType<typeof vi.fn>).mockResolvedValue({
       txHash: '0xrealtx',
       confirmed: true,
-      storylineId: '0xsl-id',
+      storylineId: '101',
       plotIndex: 0,
       contentCid: 'bafyreal',
       contentHash: '0x' + 'cc'.repeat(32),
@@ -467,7 +467,7 @@ describe('publish:retryIndex', () => {
       cuts: [],
       publishResult: {
         txHash,
-        storylineId: '0xstory1',
+        storylineId: '42',
         plotIndex: 1,
         contentCid: 'bafyabc',
         contentHash: '0xhash',
@@ -599,7 +599,7 @@ describe('publish:retryIndex', () => {
     const statusRaw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
     const status = JSON.parse(statusRaw)
     status.publishResult.plotIndex = 2
-    status.publishResult.storylineId = '0xstory1'
+    status.publishResult.storylineId = '42'
     await fs.writeFile(
       path.join(tmpDir, '.publish-status.json'),
       JSON.stringify(status, null, 2),
@@ -653,7 +653,7 @@ describe('publish:markNotIndexed', () => {
       cuts: [],
       publishResult: {
         txHash: '0xtx123',
-        storylineId: '0xstory1',
+        storylineId: '42',
         plotIndex: 1,
         contentCid: 'bafyabc',
         contentHash: '0xhash',
