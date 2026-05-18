@@ -69,6 +69,63 @@ Main Process (owns wallet, signs message)
 Renderer (attaches signature to upload request)
 ```
 
+## Publish Adapter
+
+`src/renderer/plotlinkPublishAdapter.ts` provides the concrete adapter mapping PlotToon publish data to PlotLink's index endpoint.
+
+### Field Mapping
+
+| PlotToon (internal)      | PlotLink (outbound)      | When                |
+| ------------------------ | ------------------------ | ------------------- |
+| `matureFlag`             | `isNsfw`                 | Always              |
+| `contentType: "cartoon"` | `contentType: "cartoon"` | New storylines only |
+| `storylineTitle`         | `storylineTitle`         | New storylines only |
+| `storylineId`            | `storylineId`            | Existing storylines |
+| `markdown`               | `content`                | Always              |
+
+### Index Routes
+
+| Route                       | When                     | Key Fields                                                     |
+| --------------------------- | ------------------------ | -------------------------------------------------------------- |
+| `POST /api/index/storyline` | New storylines only      | `storylineTitle`, `contentType`, `isNsfw`, `content`, `txHash` |
+| `POST /api/index/plot`      | Existing storylines only | `storylineId`, `isNsfw`, `content`, `imageUrls`, `txHash`      |
+
+New storylines call only `/api/index/storyline` — the genesis plot is indexed as part of that response. Existing storylines call only `/api/index/plot` with a `chain-plot` transaction hash. `isNsfw` is sent as a string literal (`"true"` / `"false"`).
+
+### Signer Interface
+
+The adapter accepts a `PlotLinkSigner` interface:
+
+- `sign(message: string): Promise<string>` — signs the request message
+- `sendTransaction(payload): Promise<{ txHash, confirmed }>` — submits the on-chain transaction and returns the hash
+
+In production this is backed by the IPC wallet boundary; the adapter never touches private keys.
+
+### Transaction Flow
+
+1. Sign the request message (numeric timestamp format)
+2. Submit transaction via `signer.sendTransaction` with action and content hash
+3. If confirmed, proceed to index; if not, abort with error
+4. Pass `txHash` to all index requests
+
+### Signature Message Format (Publish)
+
+```text
+PlotLink: Create storyline and publish plot
+Timestamp: {numeric millisecond timestamp via Date.now()}
+```
+
+For existing storylines:
+
+```text
+PlotLink: Publish plot
+Timestamp: {numeric millisecond timestamp via Date.now()}
+```
+
+### Blocking Gate
+
+Real publishing remains gated by #52. The adapter can run in `mock` mode for tests and dry-run.
+
 ## Patterns to Reuse from PlotLink/plotlink-ows
 
 | Pattern                                    | Reuse | Adapt                                          |
