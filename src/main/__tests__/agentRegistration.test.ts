@@ -5,6 +5,8 @@ import {
   encodeRegister,
   decodeRegisteredEvent,
   getDefaultAgentRegistrationConfig,
+  validateAgentRegistrationConfig,
+  ERC8004_REGISTRY_BASE_MAINNET,
   readAgentStatus
 } from '../services/agentRegistration'
 import { encodeFunctionData, encodeEventTopics, encodeAbiParameters, type Hex } from 'viem'
@@ -35,23 +37,51 @@ describe('buildOwnerBindingMessage', () => {
 })
 
 describe('buildAgentURI', () => {
-  it('produces valid JSON with name, model, genre, registeredBy', () => {
+  it('produces valid JSON with PlotLink-compatible metadata keys', () => {
     const uri = buildAgentURI({
       agentName: 'TestBot',
       modelLabel: 'Claude CLI 1.0.0',
-      genre: 'fantasy'
+      genre: 'fantasy',
+      description: 'A fantasy writing assistant'
     })
     const parsed = JSON.parse(uri)
     expect(parsed.name).toBe('TestBot')
-    expect(parsed.model).toBe('Claude CLI 1.0.0')
+    expect(parsed.description).toBe('A fantasy writing assistant')
     expect(parsed.genre).toBe('fantasy')
+    expect(parsed.llmModel).toBe('Claude CLI 1.0.0')
     expect(parsed.registeredBy).toBe('plottoon')
+    expect(parsed.registeredAt).toBeTruthy()
+  })
+
+  it('contains all required PlotLink AgentMetadata keys', () => {
+    const uri = buildAgentURI({ agentName: 'Bot', modelLabel: 'Model' })
+    const parsed = JSON.parse(uri)
+    const keys = Object.keys(parsed)
+    expect(keys).toContain('name')
+    expect(keys).toContain('description')
+    expect(keys).toContain('genre')
+    expect(keys).toContain('llmModel')
+    expect(keys).toContain('registeredBy')
+    expect(keys).toContain('registeredAt')
+  })
+
+  it('generates default description from agent name when omitted', () => {
+    const uri = buildAgentURI({ agentName: 'MyBot', modelLabel: 'Model' })
+    const parsed = JSON.parse(uri)
+    expect(parsed.description).toBe('AI writer agent: MyBot')
   })
 
   it('defaults genre to empty string when omitted', () => {
     const uri = buildAgentURI({ agentName: 'Bot', modelLabel: 'Model' })
     const parsed = JSON.parse(uri)
     expect(parsed.genre).toBe('')
+  })
+
+  it('sets registeredAt to a valid ISO timestamp', () => {
+    const uri = buildAgentURI({ agentName: 'Bot', modelLabel: 'Model' })
+    const parsed = JSON.parse(uri)
+    expect(() => new Date(parsed.registeredAt)).not.toThrow()
+    expect(new Date(parsed.registeredAt).toISOString()).toBe(parsed.registeredAt)
   })
 })
 
@@ -151,6 +181,64 @@ describe('getDefaultAgentRegistrationConfig', () => {
     const config = getDefaultAgentRegistrationConfig()
     expect(config.rpcUrl).toBeTruthy()
     expect(config.registryAddress).toBeTruthy()
+  })
+
+  it('defaults registry address to ERC-8004 constant, not zero', () => {
+    const config = getDefaultAgentRegistrationConfig()
+    expect(config.registryAddress).toBe(ERC8004_REGISTRY_BASE_MAINNET)
+    expect(config.registryAddress).not.toBe('0x0000000000000000000000000000000000000000')
+  })
+})
+
+describe('ERC8004_REGISTRY_BASE_MAINNET parity with PlotLink', () => {
+  it('matches the PlotLink ERC-8004 registry address', () => {
+    expect(ERC8004_REGISTRY_BASE_MAINNET).toBe('0x8004A169FB4a3325136EB29fA0ceB6D2e539a432')
+  })
+
+  it('is a valid 20-byte hex address', () => {
+    expect(ERC8004_REGISTRY_BASE_MAINNET).toMatch(/^0x[0-9a-fA-F]{40}$/)
+  })
+})
+
+describe('validateAgentRegistrationConfig', () => {
+  it('returns no errors for valid config', () => {
+    const errors = validateAgentRegistrationConfig({
+      rpcUrl: 'https://rpc.example',
+      registryAddress: '0x1234567890abcdef1234567890abcdef12345678'
+    })
+    expect(errors).toEqual([])
+  })
+
+  it('rejects empty registry address', () => {
+    const errors = validateAgentRegistrationConfig({
+      rpcUrl: 'https://rpc.example',
+      registryAddress: ''
+    })
+    expect(errors).toContain('PLOTLINK_AGENT_REGISTRY_ADDRESS is required for agent registration')
+  })
+
+  it('rejects zero registry address', () => {
+    const errors = validateAgentRegistrationConfig({
+      rpcUrl: 'https://rpc.example',
+      registryAddress: '0x0000000000000000000000000000000000000000'
+    })
+    expect(errors).toContain('PLOTLINK_AGENT_REGISTRY_ADDRESS is required for agent registration')
+  })
+
+  it('rejects empty RPC URL', () => {
+    const errors = validateAgentRegistrationConfig({
+      rpcUrl: '',
+      registryAddress: '0x1234567890abcdef1234567890abcdef12345678'
+    })
+    expect(errors).toContain('BASE_RPC_URL is required for agent registration')
+  })
+
+  it('collects multiple validation errors', () => {
+    const errors = validateAgentRegistrationConfig({
+      rpcUrl: '',
+      registryAddress: ''
+    })
+    expect(errors).toHaveLength(2)
   })
 })
 
