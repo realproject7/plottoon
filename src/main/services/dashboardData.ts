@@ -28,7 +28,7 @@ export interface StorylineGroup {
   publishedCount: number
   notIndexedCount: number
   latestPublishedAt: string | null
-  totalGasCostWei: string
+  totalPublishCostWei: string
 }
 
 export interface DashboardCounts {
@@ -133,10 +133,14 @@ async function loadPlotEntry(
   }
 }
 
-function addGasCost(totalWei: bigint, gasCostWei: string | null): bigint {
-  if (!gasCostWei) return totalWei
+function addPublishCost(
+  totalWei: bigint,
+  publishResult: { totalCostWei?: string | null; gasCostWei?: string | null } | null | undefined
+): bigint {
+  const costWei = publishResult?.totalCostWei ?? publishResult?.gasCostWei
+  if (!costWei) return totalWei
   try {
-    return totalWei + BigInt(gasCostWei)
+    return totalWei + BigInt(costWei)
   } catch {
     return totalWei
   }
@@ -178,7 +182,7 @@ function groupByStoryline(entries: PlotDashboardEntry[]): {
           latestPublishedAt = p.publishedAt
         }
       }
-      totalGas = addGasCost(totalGas, p.publishResult?.gasCostWei ?? null)
+      totalGas = addPublishCost(totalGas, p.publishResult)
     }
 
     plots.sort((a, b) => (a.publishResult?.plotIndex ?? 0) - (b.publishResult?.plotIndex ?? 0))
@@ -191,7 +195,7 @@ function groupByStoryline(entries: PlotDashboardEntry[]): {
       publishedCount,
       notIndexedCount,
       latestPublishedAt,
-      totalGasCostWei: totalGas.toString()
+      totalPublishCostWei: totalGas.toString()
     })
   }
 

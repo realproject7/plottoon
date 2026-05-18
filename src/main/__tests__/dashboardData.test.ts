@@ -210,7 +210,7 @@ describe('buildDashboardData — storyline grouping', () => {
 
     const data = await buildDashboardData(baseDeps())
 
-    expect(data.storylines[0].totalGasCostWei).toBe('35000')
+    expect(data.storylines[0].totalPublishCostWei).toBe('35000')
   })
 })
 

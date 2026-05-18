@@ -148,7 +148,7 @@ describe('Dashboard', () => {
           publishedCount: 2,
           notIndexedCount: 0,
           latestPublishedAt: '2026-05-18T10:00:00Z',
-          totalGasCostWei: '31000000000000'
+          totalPublishCostWei: '31000000000000'
         }
       ]
     })

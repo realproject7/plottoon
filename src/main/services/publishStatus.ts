@@ -33,6 +33,7 @@ export interface PublishResultRecord {
   contentHash: string | null
   authorAddress: string | null
   gasCostWei: string | null
+  totalCostWei: string | null
   plotlinkUrl: string | null
   walletAddress: string | null
   walletSource: string | null
@@ -196,6 +197,7 @@ export function validatePublishStatus(data: unknown, filePath: string): PublishS
       contentHash: (pr.contentHash as string) ?? null,
       authorAddress: (pr.authorAddress as string) ?? null,
       gasCostWei: (pr.gasCostWei as string) ?? null,
+      totalCostWei: (pr.totalCostWei as string) ?? null,
       plotlinkUrl: (pr.plotlinkUrl as string) ?? null,
       walletAddress: (pr.walletAddress as string) ?? null,
       walletSource: (pr.walletSource as string) ?? null,
