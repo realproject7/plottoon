@@ -340,7 +340,7 @@ describe('plotlinkPublish — mock mode', () => {
 })
 
 describe('createPlotLinkPublishFn', () => {
-  it('returns a PublishFn-compatible function deriving plotUrl from IDs', async () => {
+  it('returns genesis plot URL for new storyline (plotIndex 0)', async () => {
     const fetchFn = mockFetch([{ body: { success: true } }])
     const config = liveConfig({ fetch: fetchFn })
 
@@ -350,8 +350,27 @@ describe('createPlotLinkPublishFn', () => {
     expect(result.success).toBe(true)
     expect(result.publishId).toBe('tx-abc123')
     expect(result.storylineId).toBe('sl-from-tx')
-    expect(result.plotUrl).toBe('https://plotlink.example/storyline/sl-from-tx/plot/0')
+    expect(result.plotUrl).toBe('https://plotlink.example/story/sl-from-tx')
     expect(result.isDryRun).toBe(false)
     expect(result.timestamp).toBeTruthy()
+  })
+
+  it('returns chained plot URL with plotIndex for existing storyline', async () => {
+    const signer: PlotLinkSigner = {
+      sign: vi.fn().mockResolvedValue('sig'),
+      sendTransaction: vi.fn().mockResolvedValue({
+        txHash: 'tx-chain',
+        confirmed: true,
+        plotIndex: 5
+      })
+    }
+    const fetchFn = mockFetch([{ body: { success: true } }])
+    const config = liveConfig({ signer, fetch: fetchFn })
+
+    const publishFn = createPlotLinkPublishFn(config)
+    const result = await publishFn(existingStorylineOutbound())
+
+    expect(result.success).toBe(true)
+    expect(result.plotUrl).toBe('https://plotlink.example/story/storyline-abc/5')
   })
 })
