@@ -19,7 +19,6 @@ export interface PublishConfig {
   plotlinkBaseUrl: string
   storyFactoryAddress: string
   mcv2BondAddress: string
-  ipfsUploadUrl: string
   creationFeeWei?: string
   indexRetries: number
   indexRetryDelayMs: number
@@ -73,7 +72,7 @@ export interface TransactionSigner {
 }
 
 export interface IpfsClient {
-  upload(content: string): Promise<{ cid: string }>
+  upload(content: string, key: string): Promise<{ cid: string }>
 }
 
 export type KeccakFn = (content: string) => string
@@ -274,11 +273,32 @@ function computeGasCost(receipt: TransactionReceipt): string {
   return (gasUsed * gasPrice).toString()
 }
 
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60)
+}
+
+export function generateUploadKey(
+  action: 'create-storyline' | 'chain-plot',
+  title: string,
+  storylineId?: string
+): string {
+  const ts = Date.now()
+  if (action === 'create-storyline') {
+    return `plotlink/storylines/${ts}-${slugify(title)}.json`
+  }
+  return `plotlink/plots/${storylineId ?? 'unknown'}-${ts}-${slugify(title)}.json`
+}
+
 async function uploadContent(
   markdown: string,
+  key: string,
   deps: PlotlinkPublishDeps
 ): Promise<PublishContentResult> {
-  const { cid } = await deps.ipfs.upload(markdown)
+  const { cid } = await deps.ipfs.upload(markdown, key)
   const contentHash = deps.keccak(markdown)
   return { cid, contentHash }
 }
@@ -323,7 +343,8 @@ export async function realPublish(
   deps: PlotlinkPublishDeps,
   indexMeta?: { isNsfw?: string; contentType?: string }
 ): Promise<PublishFullResult> {
-  const content = await uploadContent(markdown, deps)
+  const uploadKey = generateUploadKey(payload.action, payload.title, payload.storylineId)
+  const content = await uploadContent(markdown, uploadKey, deps)
 
   let txData: string
   let txValue: string | undefined
@@ -492,10 +513,34 @@ export function validatePublishConfig(config: PublishConfig): string[] {
   if (!config.rpcUrl) {
     errors.push('BASE_RPC_URL is required for live publish')
   }
-  if (!config.ipfsUploadUrl) {
-    errors.push('IPFS_UPLOAD_URL is required for live publish')
+  if (!config.plotlinkBaseUrl) {
+    errors.push('PLOTLINK_BASE_URL is required for live publish')
   }
   return errors
+}
+
+export function createPlotlinkUploadClient(
+  plotlinkBaseUrl: string,
+  fetchFn: (url: string, init: RequestInit) => Promise<Response> = fetch as unknown as (
+    url: string,
+    init: RequestInit
+  ) => Promise<Response>
+): IpfsClient {
+  return {
+    async upload(content: string, key: string) {
+      const uploadUrl = `${plotlinkBaseUrl}/api/upload`
+      const response = await fetchFn(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, key })
+      })
+      if (!response.ok) {
+        throw new Error(`PlotLink upload failed: ${response.status}`)
+      }
+      const json = (await response.json()) as { cid: string }
+      return { cid: json.cid }
+    }
+  }
 }
 
 export function getDefaultPublishConfig(): PublishConfig {
@@ -504,7 +549,6 @@ export function getDefaultPublishConfig(): PublishConfig {
     plotlinkBaseUrl: process.env.PLOTLINK_BASE_URL || 'https://plotlink.xyz',
     storyFactoryAddress: process.env.PLOTLINK_STORY_FACTORY_ADDRESS || '',
     mcv2BondAddress: process.env.MCV2_BOND_ADDRESS || '',
-    ipfsUploadUrl: process.env.IPFS_UPLOAD_URL || '',
     creationFeeWei: process.env.PLOTLINK_CREATION_FEE_WEI || undefined,
     indexRetries: 10,
     indexRetryDelayMs: 30000,

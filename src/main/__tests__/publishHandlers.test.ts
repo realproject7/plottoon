@@ -59,7 +59,6 @@ function mockConfig(): PublishConfig {
     plotlinkBaseUrl: 'https://plotlink.example',
     storyFactoryAddress: '0x1234567890abcdef1234567890abcdef12345678',
     mcv2BondAddress: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-    ipfsUploadUrl: 'https://ipfs.example/upload',
     creationFeeWei: '100000000000000',
     indexRetries: 1,
     indexRetryDelayMs: 0,
@@ -162,9 +161,9 @@ describe('publish:preflight', () => {
     expect(result.errors).toContain('PLOTLINK_STORY_FACTORY_ADDRESS is required for live publish')
   })
 
-  it('returns errors in live mode with missing IPFS upload URL', () => {
+  it('returns errors in live mode with missing PlotLink base URL', () => {
     const config = mockConfig()
-    config.ipfsUploadUrl = ''
+    config.plotlinkBaseUrl = ''
     const deps = createDeps({
       signer: mockSigner(false),
       walletState: {
@@ -183,7 +182,7 @@ describe('publish:preflight', () => {
     const result = handler() as PublishPreflightResult
 
     expect(result.ready).toBe(false)
-    expect(result.errors).toContain('IPFS_UPLOAD_URL is required for live publish')
+    expect(result.errors).toContain('PLOTLINK_BASE_URL is required for live publish')
   })
 
   it('returns ready in live mode with wallet and config', () => {
