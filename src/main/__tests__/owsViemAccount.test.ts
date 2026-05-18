@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { parseTransaction, type Hex } from 'viem'
-import { createOwsViemAccount, type OwsAccountParams } from '../services/owsViemAccount'
+import {
+  createOwsViemAccount,
+  parseOwsSignature,
+  type OwsAccountParams
+} from '../services/owsViemAccount'
 import type { OWSCoreModule } from '../services/owsAdapter'
 
 const FIXTURE_ADDRESS = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'
@@ -131,10 +135,11 @@ describe('createOwsViemAccount', () => {
     expect(parsed.v).toBe(27n)
   })
 
-  it('signTransaction defaults recoveryId to 0 when undefined', async () => {
+  it('signTransaction reads v from 65-byte signature when recoveryId is missing', async () => {
+    const sigWithV = FIXTURE_R + FIXTURE_S + '1c'
     const ows = mockOws({
       signTransaction: vi.fn().mockReturnValue({
-        signature: '0x' + FIXTURE_SIG
+        signature: '0x' + sigWithV
       })
     })
     const account = createOwsViemAccount(defaultParams({ ows }))
@@ -153,7 +158,7 @@ describe('createOwsViemAccount', () => {
     const result = await account.signTransaction(tx)
     const parsed = parseTransaction(result as Hex)
 
-    expect(parsed.v).toBe(27n)
+    expect(parsed.v).toBe(28n)
   })
 
   it('signTypedData throws', async () => {
@@ -167,5 +172,52 @@ describe('createOwsViemAccount', () => {
         message: {}
       })
     ).rejects.toThrow('signTypedData not supported')
+  })
+})
+
+describe('parseOwsSignature', () => {
+  const R = 'ab'.repeat(32)
+  const S = 'cd'.repeat(32)
+
+  it('uses recoveryId 0 to compute v = 27', () => {
+    const sig = parseOwsSignature(R + S, 0)
+    expect(sig.r).toBe('0x' + R)
+    expect(sig.s).toBe('0x' + S)
+    expect(sig.v).toBe(27n)
+  })
+
+  it('uses recoveryId 1 to compute v = 28', () => {
+    const sig = parseOwsSignature('0x' + R + S, 1)
+    expect(sig.r).toBe('0x' + R)
+    expect(sig.s).toBe('0x' + S)
+    expect(sig.v).toBe(28n)
+  })
+
+  it('reads v from final byte of 65-byte signature when recoveryId is missing', () => {
+    const sigWithV = R + S + '1b'
+    const sig = parseOwsSignature(sigWithV, null)
+    expect(sig.r).toBe('0x' + R)
+    expect(sig.s).toBe('0x' + S)
+    expect(sig.v).toBe(27n)
+  })
+
+  it('reads v from final byte of 65-byte signature when recoveryId is undefined', () => {
+    const sigWithV = R + S + '1c'
+    const sig = parseOwsSignature(sigWithV)
+    expect(sig.v).toBe(28n)
+  })
+
+  it('throws on signature shorter than 64 bytes', () => {
+    expect(() => parseOwsSignature('ab'.repeat(30), 0)).toThrow('too short')
+  })
+
+  it('throws when recoveryId is missing and signature is only 64 bytes', () => {
+    expect(() => parseOwsSignature(R + S)).toThrow('missing recoveryId')
+  })
+
+  it('handles 0x-prefixed signatures', () => {
+    const sig = parseOwsSignature('0x' + R + S + '1b')
+    expect(sig.r).toBe('0x' + R)
+    expect(sig.v).toBe(27n)
   })
 })

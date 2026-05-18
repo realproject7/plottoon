@@ -10,11 +10,29 @@ export interface OwsAccountParams {
   passphrase?: string
 }
 
-function parseOwsSignature(signature: string, recoveryId: number): { r: Hex; s: Hex; v: bigint } {
+export function parseOwsSignature(
+  signature: string,
+  recoveryId?: number | null
+): { r: Hex; s: Hex; v: bigint } {
   const raw = signature.startsWith('0x') ? signature.slice(2) : signature
+  const byteLength = raw.length / 2
+
+  if (byteLength < 64) {
+    throw new Error(`OWS signature too short: expected at least 64 bytes, got ${byteLength}`)
+  }
+
   const r = ('0x' + raw.slice(0, 64)) as Hex
   const s = ('0x' + raw.slice(64, 128)) as Hex
-  const v = BigInt(recoveryId + 27)
+
+  let v: bigint
+  if (recoveryId != null) {
+    v = BigInt(recoveryId + 27)
+  } else if (byteLength >= 65) {
+    v = BigInt(parseInt(raw.slice(128, 130), 16))
+  } else {
+    throw new Error('OWS signature missing recoveryId and too short to contain v byte')
+  }
+
   return { r, s, v }
 }
 
@@ -38,7 +56,7 @@ export function createOwsViemAccount(params: OwsAccountParams): LocalAccount {
       const serialized = serializeTransaction(tx)
       const txHex = stripHexPrefix(serialized)
       const result = ows.signTransaction(walletName, chain, txHex, passphrase ?? null)
-      const sig = parseOwsSignature(result.signature, result.recoveryId ?? 0)
+      const sig = parseOwsSignature(result.signature, result.recoveryId)
       return serializeTransaction(tx, sig)
     },
 
