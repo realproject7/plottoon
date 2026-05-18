@@ -36,7 +36,7 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
       const wallet = deps.walletState.wallet
       if (!wallet) return { info: null, error: null }
 
-      const reserveToken = deps.royaltyConfig.defaultReserveToken
+      const reserveToken = deps.royaltyConfig.plotTokenAddress
       if (!reserveToken || reserveToken === '0x0000000000000000000000000000000000000000') {
         return { info: null, error: null }
       }
@@ -79,7 +79,7 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
         return { success: false, error: 'No wallet connected' }
       }
 
-      const reserveToken = deps.royaltyConfig.defaultReserveToken
+      const reserveToken = deps.royaltyConfig.plotTokenAddress
       if (!reserveToken || reserveToken === '0x0000000000000000000000000000000000000000') {
         return { success: false, error: 'Reserve token not configured' }
       }

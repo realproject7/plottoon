@@ -38,8 +38,8 @@ function getHandler(channel: string): IpcHandler {
 function mockConfig(): RoyaltyClaimConfig {
   return {
     rpcUrl: 'https://rpc.example',
-    contractAddress: '0x1234567890abcdef1234567890abcdef12345678',
-    defaultReserveToken: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+    mcv2BondAddress: '0x1234567890abcdef1234567890abcdef12345678',
+    plotTokenAddress: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
   }
 }
 
@@ -76,7 +76,7 @@ describe('royalty:info', () => {
 
   it('returns null info when reserve token is zero address', async () => {
     const config = mockConfig()
-    config.defaultReserveToken = '0x0000000000000000000000000000000000000000'
+    config.plotTokenAddress = '0x0000000000000000000000000000000000000000'
     const deps = createDeps({
       walletState: {
         wallet: {
@@ -188,7 +188,7 @@ describe('royalty:claim', () => {
 
   it('rejects when reserve token is zero address', async () => {
     const config = mockConfig()
-    config.defaultReserveToken = '0x0000000000000000000000000000000000000000'
+    config.plotTokenAddress = '0x0000000000000000000000000000000000000000'
     const deps = createDeps({
       walletState: {
         wallet: {
