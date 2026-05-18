@@ -57,6 +57,13 @@ export function AppShell({ children, view, onNavigate }: AppShellProps): JSX.Ele
           </button>
           <button
             type="button"
+            className={`nav-item ${view === 'dashboard' ? 'nav-item--active' : ''}`}
+            onClick={() => onNavigate('dashboard')}
+          >
+            Dashboard
+          </button>
+          <button
+            type="button"
             className={`nav-item ${view === 'status' ? 'nav-item--active' : ''}`}
             onClick={() => onNavigate('status')}
           >
