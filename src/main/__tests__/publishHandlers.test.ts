@@ -338,6 +338,47 @@ describe('publish:execute', () => {
     expect(result.error).toContain('Failed to fetch creation fee')
   })
 
+  it('passes fetched creation fee to realPublish when config fee is undefined', async () => {
+    const { realPublish: realPublishMock, fetchCreationFee: fetchCreationFeeMock } =
+      await import('../services/plotlinkPublish')
+    ;(fetchCreationFeeMock as ReturnType<typeof vi.fn>).mockResolvedValue('777000000000000')
+    ;(realPublishMock as ReturnType<typeof vi.fn>).mockResolvedValue({
+      txHash: '0xfeetx',
+      confirmed: true,
+      storylineId: '200',
+      plotIndex: 0,
+      contentCid: 'bafyfee',
+      contentHash: '0x' + 'dd'.repeat(32),
+      gasCostWei: '21000000000000',
+      authorAddress: '0xabc',
+      indexed: true
+    })
+
+    const config = mockConfig()
+    config.creationFeeWei = undefined
+    const deps = createDeps({
+      signer: mockSigner(false),
+      walletState: {
+        wallet: {
+          address: '0xabc',
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-18T00:00:00Z'
+        }
+      },
+      config
+    })
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:execute')
+    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
+
+    expect(result.success).toBe(true)
+    expect(fetchCreationFeeMock).toHaveBeenCalledWith(config)
+    const publishCall = (realPublishMock as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(publishCall[0].creationFeeWei).toBe('777000000000000')
+  })
+
   it('persists published result to status file', async () => {
     const { realPublish: realPublishMock } = await import('../services/plotlinkPublish')
     ;(realPublishMock as ReturnType<typeof vi.fn>).mockResolvedValue({
