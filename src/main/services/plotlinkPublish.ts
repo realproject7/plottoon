@@ -99,7 +99,7 @@ const plotlinkAbi = [
       { name: 'contentHash', type: 'bytes32' },
       { name: 'hasDeadline', type: 'bool' }
     ],
-    outputs: [],
+    outputs: [{ name: 'storylineId', type: 'uint256' }],
     stateMutability: 'payable'
   },
   {
@@ -119,6 +119,12 @@ const plotlinkAbi = [
     name: 'StorylineCreated',
     inputs: [
       { name: 'storylineId', type: 'uint256', indexed: true },
+      { name: 'writer', type: 'address', indexed: true },
+      { name: 'token', type: 'address', indexed: false },
+      { name: 'title', type: 'string', indexed: false },
+      { name: 'contentCID', type: 'string', indexed: false },
+      { name: 'contentHash', type: 'bytes32', indexed: false },
+      { name: 'hasDeadline', type: 'bool', indexed: false },
       { name: 'plotIndex', type: 'uint256', indexed: false }
     ]
   },
@@ -127,7 +133,11 @@ const plotlinkAbi = [
     name: 'PlotChained',
     inputs: [
       { name: 'storylineId', type: 'uint256', indexed: true },
-      { name: 'plotIndex', type: 'uint256', indexed: false }
+      { name: 'plotIndex', type: 'uint256', indexed: true },
+      { name: 'writer', type: 'address', indexed: false },
+      { name: 'title', type: 'string', indexed: false },
+      { name: 'contentCID', type: 'string', indexed: false },
+      { name: 'contentHash', type: 'bytes32', indexed: false }
     ]
   }
 ] as const
