@@ -37,7 +37,9 @@ export function createConfirmationState(isDryRun: boolean): ConfirmationState {
   }
 }
 
-export function computePayloadHash(preview: Omit<PublishPreview, 'payloadHash'>): string {
+export async function computePayloadHash(
+  preview: Omit<PublishPreview, 'payloadHash'>
+): Promise<string> {
   const payload = JSON.stringify({
     title: preview.title,
     contentType: preview.contentType,
@@ -50,15 +52,15 @@ export function computePayloadHash(preview: Omit<PublishPreview, 'payloadHash'>)
     imageOrder: preview.imageOrder,
     imageIdentities: preview.imageIdentities
   })
-  let hash = 0
-  for (let i = 0; i < payload.length; i++) {
-    const ch = payload.charCodeAt(i)
-    hash = ((hash << 5) - hash + ch) | 0
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0')
+  const encoded = new TextEncoder().encode(payload)
+  const digest = await crypto.subtle.digest('SHA-256', encoded)
+  const bytes = new Uint8Array(digest)
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
 }
 
-export function buildPublishPreview(
+export async function buildPublishPreview(
   title: string,
   markdown: string,
   exportMetas: ExportMeta[],
@@ -67,7 +69,7 @@ export function buildPublishPreview(
     hasAltText: boolean
     matureFlag?: boolean
   }
-): PublishPreview {
+): Promise<PublishPreview> {
   const imageOrder = exportMetas.map((m) => m.cutId)
   const totalUploadedBytes = exportMetas.reduce((sum, m) => sum + m.byteSize, 0)
   const imageIdentities: ImageIdentity[] = exportMetas.map((m) => ({
@@ -90,7 +92,7 @@ export function buildPublishPreview(
     imageIdentities
   }
 
-  return { ...partial, payloadHash: computePayloadHash(partial) }
+  return { ...partial, payloadHash: await computePayloadHash(partial) }
 }
 
 export function confirmPublish(
