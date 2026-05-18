@@ -548,8 +548,7 @@ export function getDefaultPublishConfig(): PublishConfig {
   return {
     rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
     plotlinkBaseUrl: process.env.PLOTLINK_BASE_URL || 'https://plotlink.xyz',
-    storyFactoryAddress:
-      process.env.PLOTLINK_STORY_FACTORY_ADDRESS || STORY_FACTORY_BASE_MAINNET,
+    storyFactoryAddress: process.env.PLOTLINK_STORY_FACTORY_ADDRESS || STORY_FACTORY_BASE_MAINNET,
     mcv2BondAddress: process.env.MCV2_BOND_ADDRESS || MCV2_BOND_BASE_MAINNET,
     creationFeeWei: process.env.PLOTLINK_CREATION_FEE_WEI || undefined,
     indexRetries: 10,
