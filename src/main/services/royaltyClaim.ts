@@ -4,7 +4,7 @@ import type { OWSCoreModule } from './owsAdapter'
 import { createOwsViemAccount } from './owsViemAccount'
 import type { RoyaltyInfo, RoyaltyClaimResult } from '../../shared/royaltyFlow'
 
-export const PLOT_TOKEN_BASE_MAINNET = '0x7c12cAfb7a3584F6b4d4FB0cce2a3968cB89B5C7'
+export const PLOT_TOKEN_BASE_MAINNET = '0x4F567DACBF9D15A6acBe4A47FC2Ade0719Fb63C4'
 
 const royaltyAbi = [
   {
@@ -42,6 +42,12 @@ export function validateRoyaltyConfig(config: RoyaltyClaimConfig): string[] {
     config.mcv2BondAddress === '0x0000000000000000000000000000000000000000'
   ) {
     errors.push('MCV2_BOND_ADDRESS is required for royalty operations')
+  }
+  if (
+    !config.plotTokenAddress ||
+    config.plotTokenAddress === '0x0000000000000000000000000000000000000000'
+  ) {
+    errors.push('PLOT_TOKEN_ADDRESS is required for royalty operations')
   }
   if (!config.rpcUrl) {
     errors.push('BASE_RPC_URL is required for royalty operations')
