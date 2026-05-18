@@ -21,6 +21,20 @@ const agentRegistryAbi = [
   },
   {
     type: 'function',
+    name: 'agentIdByWallet',
+    inputs: [{ name: 'wallet', type: 'address' }],
+    outputs: [{ name: 'agentId', type: 'uint256' }],
+    stateMutability: 'view'
+  },
+  {
+    type: 'function',
+    name: 'balanceOf',
+    inputs: [{ name: 'owner', type: 'address' }],
+    outputs: [{ name: 'balance', type: 'uint256' }],
+    stateMutability: 'view'
+  },
+  {
+    type: 'function',
     name: 'registerAgent',
     inputs: [
       { name: 'agentName', type: 'string' },
@@ -58,20 +72,68 @@ export async function readAgentStatus(
     transport: http(deps.config.rpcUrl)
   })
 
-  const result = await client.readContract({
-    address: deps.config.registryAddress as Hex,
-    abi: agentRegistryAbi,
-    functionName: 'getAgentInfo',
-    args: [walletAddress as Hex]
-  })
+  const registryAddr = deps.config.registryAddress as Hex
+  const wallet = walletAddress as Hex
 
-  const [agentId, agentName, modelLabel, registered] = result as [bigint, string, string, boolean]
+  try {
+    const agentId = (await client.readContract({
+      address: registryAddr,
+      abi: agentRegistryAbi,
+      functionName: 'agentIdByWallet',
+      args: [wallet]
+    })) as bigint
+
+    if (agentId > BigInt(0)) {
+      const info = await client.readContract({
+        address: registryAddr,
+        abi: agentRegistryAbi,
+        functionName: 'getAgentInfo',
+        args: [wallet]
+      })
+      const [, agentName, modelLabel] = info as [bigint, string, string, boolean]
+      return {
+        registered: true,
+        agentId: agentId.toString(),
+        agentName,
+        modelLabel
+      }
+    }
+  } catch {
+    // agentIdByWallet not available, fall through to getAgentInfo
+  }
+
+  try {
+    const result = await client.readContract({
+      address: registryAddr,
+      abi: agentRegistryAbi,
+      functionName: 'getAgentInfo',
+      args: [wallet]
+    })
+
+    const [agentId, agentName, modelLabel, registered] = result as [bigint, string, string, boolean]
+
+    return {
+      registered,
+      agentId: registered ? agentId.toString() : null,
+      agentName: registered ? agentName : null,
+      modelLabel: registered ? modelLabel : null
+    }
+  } catch {
+    // getAgentInfo failed, try balanceOf as token fallback
+  }
+
+  const balance = (await client.readContract({
+    address: registryAddr,
+    abi: agentRegistryAbi,
+    functionName: 'balanceOf',
+    args: [wallet]
+  })) as bigint
 
   return {
-    registered,
-    agentId: registered ? agentId.toString() : null,
-    agentName: registered ? agentName : null,
-    modelLabel: registered ? modelLabel : null
+    registered: balance > BigInt(0),
+    agentId: null,
+    agentName: null,
+    modelLabel: null
   }
 }
 
@@ -144,7 +206,8 @@ export async function executeAgentRegistration(
     return { success: false, txHash, error: 'Registration transaction reverted' }
   }
 
-  const agentId = txHash
+  const postStatus = await readAgentStatus(deps.walletAddress, { config: deps.config })
+  const agentId = postStatus.agentId ?? txHash
 
   return { success: true, agentId, txHash }
 }
