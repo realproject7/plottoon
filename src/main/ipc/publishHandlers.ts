@@ -107,9 +107,7 @@ function toResultMeta(record: PublishResultRecord): PublishResultMeta {
 function mockPublishResult(request: PublishRequest): PublishResultMeta {
   const mockTxHash = '0x' + 'mock'.repeat(16)
   const mockStorylineId =
-    request.action === 'create-storyline'
-      ? String(Date.now())
-      : (request.storylineId ?? null)
+    request.action === 'create-storyline' ? String(Date.now()) : (request.storylineId ?? null)
   return {
     txHash: mockTxHash,
     storylineId: mockStorylineId,
