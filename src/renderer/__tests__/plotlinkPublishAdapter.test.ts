@@ -74,8 +74,8 @@ function liveConfig(
     commitContent: mockCommitContent(),
     contentHash: mockContentHash(),
     mode: 'live',
-    creationFee: '0.001',
-    deadline: 3600,
+    creationFeeWei: '1000000000000000',
+    hasDeadline: true,
     ...overrides
   }
 }
@@ -114,7 +114,7 @@ describe('plotlinkPublish — new storyline', () => {
     expect(body.signature).toBe('test-signature')
   })
 
-  it('sends create-storyline transaction with creationFee and deadline', async () => {
+  it('sends create-storyline transaction with creationFeeWei and hasDeadline', async () => {
     const signer = mockSigner()
     const fetchFn = mockFetch([{ body: { success: true } }])
     const config = liveConfig({ signer, fetch: fetchFn })
@@ -128,8 +128,8 @@ describe('plotlinkPublish — new storyline', () => {
     expect(payload.title).toBe('My Cartoon')
     expect(payload.contentCid).toBe('bafytest123')
     expect(payload.contentHash).toBe('0x' + 'ab'.repeat(32))
-    expect(payload.creationFee).toBe('0.001')
-    expect(payload.deadline).toBe(3600)
+    expect(payload.creationFeeWei).toBe('1000000000000000')
+    expect(payload.hasDeadline).toBe(true)
   })
 
   it('validates content hash is 0x-prefixed keccak256 bytes32', async () => {
@@ -241,7 +241,7 @@ describe('plotlinkPublish — existing storyline', () => {
     expect('contentType' in body).toBe(false)
   })
 
-  it('sends chain-plot transaction without creationFee or deadline', async () => {
+  it('sends chain-plot transaction without creationFeeWei or hasDeadline', async () => {
     const signer = mockSigner()
     const fetchFn = mockFetch([{ body: { success: true } }])
     const config = liveConfig({ signer, fetch: fetchFn })
@@ -252,8 +252,8 @@ describe('plotlinkPublish — existing storyline', () => {
     const payload = sendTx.mock.calls[0][0]
     expect(payload.action).toBe('chain-plot')
     expect(payload.storylineId).toBe('storyline-abc')
-    expect(payload.creationFee).toBeUndefined()
-    expect(payload.deadline).toBeUndefined()
+    expect(payload.creationFeeWei).toBeUndefined()
+    expect(payload.hasDeadline).toBeUndefined()
   })
 
   it('fails when chain-plot transaction does not return plotIndex', async () => {
