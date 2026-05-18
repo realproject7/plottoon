@@ -47,7 +47,7 @@ app.whenReady().then(async () => {
   const vaultConfig: OWSVaultConfig = {
     vaultPath: process.env.OWS_VAULT_PATH,
     passphrase: process.env.OWS_PASSPHRASE,
-    chain: 'eip155:1'
+    chain: process.env.OWS_DEFAULT_CHAIN || 'eip155:8453'
   }
   const walletConfig = createOWSConfig(owsModule, vaultConfig)
   const walletState = createSelectedWalletState()
