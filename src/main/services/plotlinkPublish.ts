@@ -17,7 +17,8 @@ import { createOwsViemAccount } from './owsViemAccount'
 export interface PublishConfig {
   rpcUrl: string
   plotlinkBaseUrl: string
-  contractAddress: string
+  storyFactoryAddress: string
+  mcv2BondAddress: string
   ipfsUploadUrl: string
   creationFeeWei?: string
   indexRetries: number
@@ -144,7 +145,7 @@ const plotlinkAbi = [
 const creationFeeAbi = [
   {
     type: 'function',
-    name: 'getCreationFee',
+    name: 'creationFee',
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view'
@@ -153,16 +154,16 @@ const creationFeeAbi = [
 
 export async function fetchCreationFee(config: {
   rpcUrl: string
-  contractAddress: string
+  mcv2BondAddress: string
 }): Promise<string> {
   const client = createPublicClient({
     chain: base,
     transport: http(config.rpcUrl)
   })
   const fee = (await client.readContract({
-    address: config.contractAddress as Hex,
+    address: config.mcv2BondAddress as Hex,
     abi: creationFeeAbi,
-    functionName: 'getCreationFee'
+    functionName: 'creationFee'
   })) as bigint
   return fee.toString()
 }
@@ -345,7 +346,7 @@ export async function realPublish(
   }
 
   const { txHash } = await deps.signer.sendTransaction({
-    to: deps.config.contractAddress,
+    to: deps.config.storyFactoryAddress,
     data: txData,
     value: txValue
   })
@@ -432,7 +433,7 @@ export function createPublishTransactionFn(deps: PlotlinkPublishDeps, walletName
     deps.ows.signMessage(walletName, 'eip155:8453', message)
 
     const { txHash } = await deps.signer.sendTransaction({
-      to: deps.config.contractAddress,
+      to: deps.config.storyFactoryAddress,
       data: txData,
       value: txValue
     })
@@ -477,10 +478,16 @@ export function createRealPublishDeps(
 export function validatePublishConfig(config: PublishConfig): string[] {
   const errors: string[] = []
   if (
-    !config.contractAddress ||
-    config.contractAddress === '0x0000000000000000000000000000000000000000'
+    !config.storyFactoryAddress ||
+    config.storyFactoryAddress === '0x0000000000000000000000000000000000000000'
   ) {
-    errors.push('PLOTLINK_CONTRACT_ADDRESS is required for live publish')
+    errors.push('PLOTLINK_STORY_FACTORY_ADDRESS is required for live publish')
+  }
+  if (
+    !config.mcv2BondAddress ||
+    config.mcv2BondAddress === '0x0000000000000000000000000000000000000000'
+  ) {
+    errors.push('MCV2_BOND_ADDRESS is required for live publish')
   }
   if (!config.rpcUrl) {
     errors.push('BASE_RPC_URL is required for live publish')
@@ -495,11 +502,12 @@ export function getDefaultPublishConfig(): PublishConfig {
   return {
     rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
     plotlinkBaseUrl: process.env.PLOTLINK_BASE_URL || 'https://plotlink.xyz',
-    contractAddress: process.env.PLOTLINK_CONTRACT_ADDRESS || '',
+    storyFactoryAddress: process.env.PLOTLINK_STORY_FACTORY_ADDRESS || '',
+    mcv2BondAddress: process.env.MCV2_BOND_ADDRESS || '',
     ipfsUploadUrl: process.env.IPFS_UPLOAD_URL || '',
     creationFeeWei: process.env.PLOTLINK_CREATION_FEE_WEI || undefined,
-    indexRetries: 3,
-    indexRetryDelayMs: 5000,
+    indexRetries: 10,
+    indexRetryDelayMs: 30000,
     indexInitialDelayMs: 8000
   }
 }
