@@ -4,7 +4,7 @@ import type { OWSCoreModule } from './owsAdapter'
 import { createOwsViemAccount } from './owsViemAccount'
 import type { RoyaltyInfo, RoyaltyClaimResult } from '../../shared/royaltyFlow'
 
-export const PLOT_TOKEN_BASE_MAINNET = '0x7C12CafB7A3584f6b4d4fB0cCE2a3968CB89B5c7'
+export const PLOT_TOKEN_BASE_MAINNET = '0x4F567DACBF9D15A6acBe4A47FC2Ade0719Fb63C4'
 
 const royaltyAbi = [
   {
