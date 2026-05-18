@@ -159,6 +159,12 @@ beforeEach(() => {
         royalty: { earnedWei: null, claimedWei: null, unclaimedWei: null, error: null },
         generatedAt: '2026-05-18T00:00:00Z'
       })
+    },
+    royalty: {
+      getInfo: vi.fn().mockResolvedValue({ info: null, error: null }),
+      claim: vi.fn().mockResolvedValue({ success: false, error: 'Not configured' }),
+      getClaimHistory: vi.fn().mockResolvedValue({ claims: [] }),
+      onProgress: vi.fn().mockReturnValue(() => {})
     }
   }
 })

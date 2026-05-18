@@ -83,6 +83,19 @@ contextBridge.exposeInMainWorld('plottoon', {
   dashboard: {
     getData: () => ipcRenderer.invoke('dashboard:getData')
   },
+  royalty: {
+    getInfo: () => ipcRenderer.invoke('royalty:info'),
+    claim: (confirmed: boolean) => ipcRenderer.invoke('royalty:claim', confirmed),
+    getClaimHistory: () => ipcRenderer.invoke('royalty:claimHistory'),
+    onProgress: (callback: (progress: { state: string; detail?: string }) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        progress: { state: string; detail?: string }
+      ) => callback(progress)
+      ipcRenderer.on('royalty:progress', handler)
+      return () => ipcRenderer.removeListener('royalty:progress', handler)
+    }
+  },
   project: {
     discover: () => ipcRenderer.invoke('project:discover'),
     readMeta: (projectId: string) => ipcRenderer.invoke('project:readMeta', projectId),

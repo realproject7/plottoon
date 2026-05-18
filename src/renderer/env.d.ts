@@ -263,6 +263,45 @@ interface PlottoonDashboard {
   getData(): Promise<DashboardData>
 }
 
+interface RoyaltyInfoResult {
+  info: {
+    earnedWei: string
+    claimedWei: string
+    unclaimedWei: string
+    reserveToken: string
+  } | null
+  error: string | null
+}
+
+interface RoyaltyClaimResult {
+  success: boolean
+  txHash?: string
+  gasCostWei?: string
+  error?: string
+}
+
+interface RoyaltyClaimRecord {
+  txHash: string
+  walletAddress: string
+  reserveToken: string
+  gasCostWei: string | null
+  status: 'confirmed' | 'failed'
+  error: string | null
+  claimedAt: string
+}
+
+interface RoyaltyClaimProgress {
+  state: string
+  detail?: string
+}
+
+interface PlottoonRoyalty {
+  getInfo(): Promise<RoyaltyInfoResult>
+  claim(confirmed: boolean): Promise<RoyaltyClaimResult>
+  getClaimHistory(): Promise<{ claims: RoyaltyClaimRecord[] }>
+  onProgress(callback: (progress: RoyaltyClaimProgress) => void): () => void
+}
+
 interface PlottoonPublish {
   preflight(): Promise<PublishPreflightResult>
   execute(request: PublishRequest, confirmed: boolean): Promise<PublishExecuteResult>
@@ -276,6 +315,7 @@ interface Window {
     fs: PlottoonFs
     publish: PlottoonPublish
     dashboard: PlottoonDashboard
+    royalty: PlottoonRoyalty
     project: PlottoonProject
     capability: PlottoonCapability
     actionLog: PlottoonActionLog
