@@ -21,7 +21,7 @@ function mockConfig(
 }
 
 describe('discoverExistingWallets', () => {
-  it('returns only plotlink-writer entries from vault', async () => {
+  it('returns plotlink-writer and plottoon-writer entries from vault', async () => {
     const config = mockConfig([
       { name: 'plotlink-writer-main', address: '0xabc' },
       { name: 'plottoon-writer-123', address: '0xdef' },
@@ -30,14 +30,16 @@ describe('discoverExistingWallets', () => {
 
     const options = await discoverExistingWallets(config)
 
-    expect(options).toHaveLength(1)
+    expect(options).toHaveLength(2)
     expect(options[0].type).toBe('reuse-existing')
     expect(options[0].source).toBe('plotlink-writer')
     expect(options[0].address).toBe('0xabc')
-    expect(options[0].name).toBe('plotlink-writer-main')
+    expect(options[1].type).toBe('reuse-existing')
+    expect(options[1].source).toBe('plottoon-writer')
+    expect(options[1].address).toBe('0xdef')
   })
 
-  it('returns empty array when no plotlink-writer wallets exist', async () => {
+  it('returns empty array when no recognized wallets exist', async () => {
     const config = mockConfig([{ name: 'random-wallet', address: '0x111' }])
 
     const options = await discoverExistingWallets(config)
@@ -56,17 +58,17 @@ describe('getConnectionOptions', () => {
     expect(options[0].source).toBe('plottoon-writer')
   })
 
-  it('appends discovered plotlink-writer wallets', async () => {
+  it('appends discovered reusable wallets', async () => {
     const config = mockConfig([
       { name: 'plotlink-writer-1', address: '0xaaa' },
-      { name: 'plotlink-writer-2', address: '0xbbb' }
+      { name: 'plottoon-writer-2', address: '0xbbb' }
     ])
 
     const options = await getConnectionOptions(config)
 
     expect(options).toHaveLength(3)
-    expect(options[1].type).toBe('reuse-existing')
-    expect(options[2].type).toBe('reuse-existing')
+    expect(options[1].source).toBe('plotlink-writer')
+    expect(options[2].source).toBe('plottoon-writer')
   })
 })
 
