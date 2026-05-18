@@ -302,6 +302,49 @@ interface PlottoonRoyalty {
   onProgress(callback: (progress: RoyaltyClaimProgress) => void): () => void
 }
 
+interface AgentCacheEntry {
+  agentId: string
+  agentName: string
+  genre: string
+  modelLabel: string
+  registeredAt: string
+  registeredBy: string
+  walletAddress: string
+}
+
+interface AgentRegistrationStatus {
+  registered: boolean
+  agentId: string | null
+  agentName: string | null
+  modelLabel: string | null
+}
+
+interface AgentRegistrationResult {
+  success: boolean
+  agentId?: string
+  txHash?: string
+  error?: string
+}
+
+interface OwnerBindingProof {
+  message: string
+  signature: string
+  owsWalletAddress: string
+  cachedAgent: AgentCacheEntry | null
+}
+
+interface AgentStatusResult {
+  status: AgentRegistrationStatus | null
+  cached: AgentCacheEntry | null
+  error: string | null
+}
+
+interface PlottoonAgent {
+  getStatus(): Promise<AgentStatusResult>
+  register(params: { agentName: string; genre?: string }): Promise<AgentRegistrationResult>
+  getBindingProof(humanWallet: string): Promise<OwnerBindingProof | { error: string }>
+}
+
 interface PlottoonPublish {
   preflight(): Promise<PublishPreflightResult>
   execute(request: PublishRequest, confirmed: boolean): Promise<PublishExecuteResult>
@@ -314,6 +357,7 @@ interface Window {
     terminal: PlottoonTerminal
     fs: PlottoonFs
     publish: PlottoonPublish
+    agent: PlottoonAgent
     dashboard: PlottoonDashboard
     royalty: PlottoonRoyalty
     project: PlottoonProject
