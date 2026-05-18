@@ -4,5 +4,5 @@
     "composite": true,
     "outDir": "dist/main"
   },
-  "include": ["src/main/**/*"]
+  "include": ["src/main/**/*", "src/shared/**/*"]
 }

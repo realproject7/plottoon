@@ -4,5 +4,5 @@
     "composite": true,
     "outDir": "dist/renderer"
   },
-  "include": ["src/renderer/**/*"]
+  "include": ["src/renderer/**/*", "src/shared/**/*"]
 }

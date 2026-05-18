@@ -154,7 +154,9 @@ describe('toPublishSignerAddress', () => {
 })
 
 describe('createAppOwnedSigner', () => {
-  it('creates a signer with sign, sendTransaction, and getAddress', async () => {
+  const validContentHash = '0x' + 'ab'.repeat(32)
+
+  it('passes create-storyline payload with creationFeeWei and hasDeadline', async () => {
     const wallet: WalletMetadata = {
       address: '0xsigner-addr',
       source: 'plottoon-writer',
@@ -162,7 +164,12 @@ describe('createAppOwnedSigner', () => {
       createdAt: '2026-05-18T00:00:00.000Z'
     }
     const signFn = vi.fn().mockResolvedValue('sig-abc')
-    const txFn = vi.fn().mockResolvedValue({ txHash: 'tx-xyz', confirmed: true })
+    const txFn = vi.fn().mockResolvedValue({
+      txHash: 'tx-xyz',
+      confirmed: true,
+      storylineId: 'sl-new',
+      plotIndex: 0
+    })
 
     const signer = createAppOwnedSigner(wallet, signFn, txFn)
 
@@ -176,10 +183,49 @@ describe('createAppOwnedSigner', () => {
       action: 'create-storyline',
       title: 'My Story',
       contentCid: 'bafy123',
-      contentHash: 'sha256-abc'
+      contentHash: validContentHash,
+      creationFeeWei: '1000000000000000',
+      hasDeadline: true
     })
     expect(txResult.txHash).toBe('tx-xyz')
     expect(txResult.confirmed).toBe(true)
+    expect(txResult.storylineId).toBe('sl-new')
+    expect(txResult.plotIndex).toBe(0)
+    expect(txFn).toHaveBeenCalledWith({
+      action: 'create-storyline',
+      title: 'My Story',
+      contentCid: 'bafy123',
+      contentHash: validContentHash,
+      creationFeeWei: '1000000000000000',
+      hasDeadline: true
+    })
+  })
+
+  it('passes chain-plot payload without create-storyline fields', async () => {
+    const wallet: WalletMetadata = {
+      address: '0xaddr',
+      source: 'plotlink-writer',
+      name: 'plotlink-writer-main',
+      createdAt: '2026-05-18T00:00:00.000Z'
+    }
+    const txFn = vi.fn().mockResolvedValue({
+      txHash: 'tx-chain',
+      confirmed: true,
+      plotIndex: 3
+    })
+    const signer = createAppOwnedSigner(wallet, async (msg) => `signed:${msg}`, txFn)
+
+    const txResult = await signer.sendTransaction({
+      action: 'chain-plot',
+      storylineId: 'sl-existing',
+      title: 'Episode 4',
+      contentCid: 'bafychained',
+      contentHash: validContentHash
+    })
+    expect(txResult.txHash).toBe('tx-chain')
+    expect(txResult.plotIndex).toBe(3)
+    expect(txFn.mock.calls[0][0].creationFeeWei).toBeUndefined()
+    expect(txFn.mock.calls[0][0].hasDeadline).toBeUndefined()
   })
 
   it('signer interface is compatible with PlotLinkSigner', async () => {

@@ -112,26 +112,21 @@ export function toPublishSignerAddress(wallet: WalletMetadata): string {
   return wallet.address
 }
 
+import type {
+  PublishTransactionPayload,
+  PublishTransactionResult
+} from '../../shared/publishTransaction'
+
 export interface AppOwnedSigner {
   sign(message: string): Promise<string>
-  sendTransaction(payload: {
-    action: 'create-storyline' | 'chain-plot'
-    storylineId?: string
-    title: string
-    contentCid: string
-    contentHash: string
-  }): Promise<{ txHash: string; confirmed: boolean }>
+  sendTransaction(payload: PublishTransactionPayload): Promise<PublishTransactionResult>
   getAddress(): string
 }
 
 export type SignFn = (message: string) => Promise<string>
-export type TransactionFn = (payload: {
-  action: 'create-storyline' | 'chain-plot'
-  storylineId?: string
-  title: string
-  contentCid: string
-  contentHash: string
-}) => Promise<{ txHash: string; confirmed: boolean }>
+export type TransactionFn = (
+  payload: PublishTransactionPayload
+) => Promise<PublishTransactionResult>
 
 export function createAppOwnedSigner(
   wallet: WalletMetadata,

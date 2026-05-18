@@ -1,26 +1,16 @@
 import type { OutboundPublishRequest } from './cartoonPublish'
 import type { CutUrl } from './publishGenerator'
+import type {
+  PublishTransactionPayload,
+  PublishTransactionResult
+} from '../shared/publishTransaction'
+
+export type TransactionPayload = PublishTransactionPayload
+export type TransactionResult = PublishTransactionResult
 
 export interface PlotLinkSigner {
   sign(message: string): Promise<string>
   sendTransaction(payload: TransactionPayload): Promise<TransactionResult>
-}
-
-export interface TransactionPayload {
-  action: 'create-storyline' | 'chain-plot'
-  storylineId?: string
-  title: string
-  contentCid: string
-  contentHash: string
-  creationFeeWei?: string
-  hasDeadline?: boolean
-}
-
-export interface TransactionResult {
-  txHash: string
-  confirmed: boolean
-  storylineId?: string
-  plotIndex?: number
 }
 
 export interface ContentCommitResult {
