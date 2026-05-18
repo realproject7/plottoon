@@ -12,11 +12,15 @@ export interface TransactionPayload {
   title: string
   contentCid: string
   contentHash: string
+  creationFee?: string
+  deadline?: number
 }
 
 export interface TransactionResult {
   txHash: string
   confirmed: boolean
+  storylineId?: string
+  plotIndex?: number
 }
 
 export interface ContentCommitResult {
@@ -25,6 +29,8 @@ export interface ContentCommitResult {
 }
 
 export type ContentCommitFn = (markdown: string) => Promise<ContentCommitResult>
+
+export type ContentHashFn = (markdown: string) => string
 
 export interface PlotLinkStorylineIndexRequest {
   storylineTitle: string
@@ -49,26 +55,16 @@ export interface PlotLinkPlotIndexRequest {
   signature: string
 }
 
-export interface PlotLinkStorylineIndexResponse {
+export interface PlotLinkIndexResponse {
   success: boolean
-  storylineId?: string
-  plotId?: string
-  plotUrl?: string
-  error?: string
-}
-
-export interface PlotLinkPlotIndexResponse {
-  success: boolean
-  plotId?: string
-  plotUrl?: string
   error?: string
 }
 
 export interface PlotLinkPublishResponse {
   success: boolean
   storylineId?: string
-  plotId?: string
-  plotUrl?: string
+  plotIndex?: number
+  txHash?: string
   error?: string
 }
 
@@ -78,8 +74,15 @@ export interface PlotLinkPublishAdapterConfig {
   baseUrl: string
   signer: PlotLinkSigner
   commitContent: ContentCommitFn
+  contentHash: ContentHashFn
   fetch?: PlotLinkFetchFn
   mode: 'live' | 'mock'
+  creationFee?: string
+  deadline?: number
+}
+
+function isValidContentHash(hash: string): boolean {
+  return /^0x[0-9a-f]{64}$/i.test(hash)
 }
 
 function buildSignMessage(action: 'create-storyline' | 'chain-plot'): string {
@@ -94,7 +97,7 @@ async function indexNewStoryline(
   message: string,
   signature: string,
   txHash: string
-): Promise<PlotLinkStorylineIndexResponse> {
+): Promise<PlotLinkIndexResponse> {
   const request: PlotLinkStorylineIndexRequest = {
     storylineTitle: outbound.storylineTitle ?? '',
     contentType: 'cartoon',
@@ -118,7 +121,7 @@ async function indexNewStoryline(
     return { success: false, error: `HTTP ${response.status}` }
   }
 
-  return (await response.json()) as PlotLinkStorylineIndexResponse
+  return (await response.json()) as PlotLinkIndexResponse
 }
 
 async function indexPlot(
@@ -128,7 +131,7 @@ async function indexPlot(
   message: string,
   signature: string,
   txHash: string
-): Promise<PlotLinkPlotIndexResponse> {
+): Promise<PlotLinkIndexResponse> {
   const request: PlotLinkPlotIndexRequest = {
     storylineId,
     isNsfw: String(outbound.matureFlag ?? false),
@@ -151,15 +154,15 @@ async function indexPlot(
     return { success: false, error: `HTTP ${response.status}` }
   }
 
-  return (await response.json()) as PlotLinkPlotIndexResponse
+  return (await response.json()) as PlotLinkIndexResponse
 }
 
 function mockPublishResponse(outbound: OutboundPublishRequest): PlotLinkPublishResponse {
   return {
     success: true,
     storylineId: outbound.storylineId ?? `mock-storyline-${Date.now()}`,
-    plotId: `mock-plot-${Date.now()}`,
-    plotUrl: `https://plotlink.example/plots/mock-${Date.now()}`
+    plotIndex: 0,
+    txHash: `mock-tx-${Date.now()}`
   }
 }
 
@@ -178,28 +181,42 @@ export async function plotlinkPublish(
 
   const commitResult = await config.commitContent(outbound.markdown)
 
-  const txResult = await config.signer.sendTransaction({
+  const computedHash = config.contentHash(outbound.markdown)
+  if (!isValidContentHash(computedHash)) {
+    return { success: false, error: 'Content hash must be 0x-prefixed keccak256 bytes32' }
+  }
+
+  const txPayload: TransactionPayload = {
     action,
     storylineId: outbound.storylineId,
     title: isNew ? (outbound.storylineTitle ?? '') : outbound.plotTitle,
     contentCid: commitResult.cid,
-    contentHash: commitResult.contentHash
-  })
+    contentHash: computedHash,
+    creationFee: isNew ? config.creationFee : undefined,
+    deadline: isNew ? config.deadline : undefined
+  }
+
+  const txResult = await config.signer.sendTransaction(txPayload)
 
   if (!txResult.confirmed) {
     return { success: false, error: 'Transaction not confirmed' }
   }
 
   if (isNew) {
+    if (!txResult.storylineId) {
+      return { success: false, error: 'Transaction did not return storylineId' }
+    }
+
     const slResult = await indexNewStoryline(outbound, config, message, signature, txResult.txHash)
     if (!slResult.success) {
-      return { success: false, error: `Storyline creation failed: ${slResult.error}` }
+      return { success: false, error: `Storyline indexing failed: ${slResult.error}` }
     }
+
     return {
       success: true,
-      storylineId: slResult.storylineId,
-      plotId: slResult.plotId,
-      plotUrl: slResult.plotUrl
+      storylineId: txResult.storylineId,
+      plotIndex: txResult.plotIndex ?? 0,
+      txHash: txResult.txHash
     }
   }
 
@@ -219,8 +236,8 @@ export async function plotlinkPublish(
   return {
     success: true,
     storylineId: outbound.storylineId,
-    plotId: plotResult.plotId,
-    plotUrl: plotResult.plotUrl
+    plotIndex: txResult.plotIndex,
+    txHash: txResult.txHash
   }
 }
 
@@ -229,9 +246,11 @@ export function createPlotLinkPublishFn(config: PlotLinkPublishAdapterConfig) {
     const result = await plotlinkPublish(outbound, config)
     return {
       success: result.success,
-      publishId: result.plotId,
+      publishId: result.txHash,
       storylineId: result.storylineId,
-      plotUrl: result.plotUrl,
+      plotUrl: result.storylineId
+        ? `${config.baseUrl}/storyline/${result.storylineId}/plot/${result.plotIndex ?? 0}`
+        : undefined,
       error: result.error,
       timestamp: new Date().toISOString(),
       isDryRun: false
