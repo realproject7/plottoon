@@ -120,7 +120,32 @@ app.whenReady().then(async () => {
             })
             return balance.toString()
           }
-        : undefined
+        : undefined,
+      fetchEthPrice: async () => {
+        const response = await fetch(
+          'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd'
+        )
+        if (!response.ok) throw new Error(`Price API returned ${response.status}`)
+        const json = (await response.json()) as { ethereum?: { usd?: number } }
+        const usd = json.ethereum?.usd
+        if (typeof usd !== 'number') throw new Error('Unexpected price response format')
+        return usd
+      },
+      fetchRoyalty: async (walletAddress: string) => {
+        const baseUrl = publishConfig.plotlinkBaseUrl
+        const response = await fetch(`${baseUrl}/api/royalty/${walletAddress}`)
+        if (!response.ok) throw new Error(`Royalty API returned ${response.status}`)
+        const json = (await response.json()) as {
+          earnedWei: string
+          claimedWei: string
+          unclaimedWei: string
+        }
+        return {
+          earnedWei: json.earnedWei,
+          claimedWei: json.claimedWei,
+          unclaimedWei: json.unclaimedWei
+        }
+      }
     })
   })
 
