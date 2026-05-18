@@ -41,13 +41,20 @@ export async function discoverExistingWallets(
 ): Promise<WalletConnectionOption[]> {
   const entries = await config.discoverVault()
   return entries
-    .filter((e) => e.name.startsWith(PLOTLINK_WALLET_PREFIX))
-    .map((e) => ({
-      type: 'reuse-existing' as const,
-      source: 'plotlink-writer' as WalletSource,
-      address: e.address,
-      name: e.name
-    }))
+    .filter(
+      (e) => e.name.startsWith(PLOTLINK_WALLET_PREFIX) || e.name.startsWith(PLOTTOON_WALLET_PREFIX)
+    )
+    .map((e) => {
+      const source: WalletSource = e.name.startsWith(PLOTLINK_WALLET_PREFIX)
+        ? 'plotlink-writer'
+        : 'plottoon-writer'
+      return {
+        type: 'reuse-existing' as const,
+        source,
+        address: e.address,
+        name: e.name
+      }
+    })
 }
 
 export async function getConnectionOptions(
