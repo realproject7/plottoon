@@ -19,7 +19,7 @@ import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
 import { createOWSConfig, createOWSFromCore } from './services/owsAdapter'
 import { getDefaultPublishConfig, createPlotlinkUploadClient } from './services/plotlinkPublish'
-import { resolveOwsVaultConfig, validatePublishChain } from './services/owsRuntimeConfig'
+import { resolveOwsVaultConfig } from './services/owsRuntimeConfig'
 import { resolveProjectFilePath } from './services/fsService'
 import { keccak256, toBytes } from 'viem'
 
@@ -57,12 +57,6 @@ app.whenReady().then(async () => {
     | 'live'
     | 'mock'
 
-  if (signerMode === 'live') {
-    const chainErrors = validatePublishChain(vaultConfig.chain)
-    if (chainErrors.length > 0) {
-      console.error('[plottoon] Chain validation failed:', chainErrors.join('; '))
-    }
-  }
   const walletState = createSelectedWalletState()
 
   const signer = createWalletSigner({
