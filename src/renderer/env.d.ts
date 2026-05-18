@@ -307,6 +307,7 @@ interface AgentCacheEntry {
   agentName: string
   genre: string
   modelLabel: string
+  agentURI: string
   registeredAt: string
   registeredBy: string
   walletAddress: string
@@ -315,8 +316,7 @@ interface AgentCacheEntry {
 interface AgentRegistrationStatus {
   registered: boolean
   agentId: string | null
-  agentName: string | null
-  modelLabel: string | null
+  agentURI: string | null
 }
 
 interface AgentRegistrationResult {

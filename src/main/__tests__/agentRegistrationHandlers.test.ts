@@ -109,6 +109,7 @@ describe('agent:status', () => {
       agentName: 'TestBot',
       genre: 'fantasy',
       modelLabel: 'Claude CLI 1.0.0',
+      agentURI: '{"name":"TestBot","model":"Claude CLI 1.0.0"}',
       registeredAt: '2026-05-18T00:00:00Z',
       registeredBy: 'plottoon',
       walletAddress: '0xabc'
@@ -118,12 +119,13 @@ describe('agent:status', () => {
     registerAgentRegistrationHandlers(deps)
     const handler = getHandler('agent:status')
     const result = (await handler()) as {
-      status: { registered: boolean; agentId: string }
+      status: { registered: boolean; agentId: string; agentURI: string }
       cached: { agentId: string }
       error: null
     }
     expect(result.status.registered).toBe(true)
     expect(result.status.agentId).toBe('mock-agent-1')
+    expect(result.status.agentURI).toContain('TestBot')
     expect(result.cached).toBeDefined()
   })
 
@@ -132,8 +134,7 @@ describe('agent:status', () => {
     ;(readAgentStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       registered: true,
       agentId: '42',
-      agentName: 'LiveBot',
-      modelLabel: 'Claude CLI 1.0.0'
+      agentURI: '{"name":"LiveBot"}'
     })
 
     const deps = createDeps({
@@ -160,6 +161,7 @@ describe('agent:status', () => {
       agentName: 'CachedBot',
       genre: '',
       modelLabel: 'Claude CLI',
+      agentURI: '{"name":"CachedBot"}',
       registeredAt: '2026-05-18T00:00:00Z',
       registeredBy: 'plottoon',
       walletAddress: '0xabc'
@@ -215,7 +217,7 @@ describe('agent:register', () => {
     expect(result.error).toContain('No wallet connected')
   })
 
-  it('returns mock success and caches in mock mode', async () => {
+  it('returns mock success and caches with agentURI in mock mode', async () => {
     const { upsertAgentCache } = await import('../services/agentRegistrationCache')
     const deps = createDeps({ walletState: { wallet: WALLET } })
     registerAgentRegistrationHandlers(deps)
@@ -234,19 +236,54 @@ describe('agent:register', () => {
         walletAddress: '0xabc'
       })
     )
+
+    const cachedEntry = (upsertAgentCache as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(cachedEntry.agentURI).toBeDefined()
+    const parsed = JSON.parse(cachedEntry.agentURI)
+    expect(parsed.name).toBe('MockBot')
+    expect(parsed.genre).toBe('scifi')
+    expect(parsed.registeredBy).toBe('plottoon')
   })
 
-  it('detects Claude CLI for model label', async () => {
+  it('detects Claude CLI for model label in agentURI', async () => {
     const { upsertAgentCache } = await import('../services/agentRegistrationCache')
     const deps = createDeps({ walletState: { wallet: WALLET } })
     registerAgentRegistrationHandlers(deps)
     const handler = getHandler('agent:register')
     await handler({}, { agentName: 'Bot' })
-    expect(upsertAgentCache).toHaveBeenCalledWith(
-      expect.objectContaining({
-        modelLabel: 'Claude CLI 1.0.0'
-      })
-    )
+
+    const cachedEntry = (upsertAgentCache as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(cachedEntry.modelLabel).toBe('Claude CLI 1.0.0')
+    const parsed = JSON.parse(cachedEntry.agentURI)
+    expect(parsed.model).toBe('Claude CLI 1.0.0')
+  })
+
+  it('passes agentURI to executeAgentRegistration in live mode', async () => {
+    const { executeAgentRegistration } = await import('../services/agentRegistration')
+    ;(executeAgentRegistration as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      agentId: '99',
+      txHash: '0xtx'
+    })
+
+    const deps = createDeps({
+      signerMode: 'live',
+      walletState: { wallet: WALLET }
+    })
+    registerAgentRegistrationHandlers(deps)
+    const handler = getHandler('agent:register')
+    const result = (await handler({}, { agentName: 'LiveBot', genre: 'horror' })) as {
+      success: boolean
+      agentId: string
+    }
+    expect(result.success).toBe(true)
+
+    const callArgs = (executeAgentRegistration as ReturnType<typeof vi.fn>).mock.calls[0]
+    const agentURI = callArgs[0] as string
+    const parsed = JSON.parse(agentURI)
+    expect(parsed.name).toBe('LiveBot')
+    expect(parsed.genre).toBe('horror')
+    expect(parsed.registeredBy).toBe('plottoon')
   })
 
   it('returns error when live registration fails', async () => {
@@ -317,6 +354,7 @@ describe('agent:bindingProof', () => {
       agentName: 'MyBot',
       genre: 'fantasy',
       modelLabel: 'Claude CLI 1.0.0',
+      agentURI: '{"name":"MyBot"}',
       registeredAt: '2026-05-18T00:00:00Z',
       registeredBy: 'plottoon',
       walletAddress: '0xabc'

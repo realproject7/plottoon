@@ -1,8 +1,7 @@
 export interface AgentRegistrationStatus {
   registered: boolean
   agentId: string | null
-  agentName: string | null
-  modelLabel: string | null
+  agentURI: string | null
 }
 
 export interface AgentRegistrationResult {
@@ -24,6 +23,7 @@ export interface AgentCacheEntry {
   agentName: string
   genre: string
   modelLabel: string
+  agentURI: string
   registeredAt: string
   registeredBy: string
   walletAddress: string

@@ -4,6 +4,7 @@ import type { OWSCoreModule, OWSVaultConfig } from '../services/owsAdapter'
 import {
   readAgentStatus,
   executeAgentRegistration,
+  buildAgentURI,
   signOwnerBinding,
   type AgentRegistrationConfig
 } from '../services/agentRegistration'
@@ -56,15 +57,14 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
             status: {
               registered: true,
               agentId: cached.agentId,
-              agentName: cached.agentName,
-              modelLabel: cached.modelLabel
+              agentURI: cached.agentURI
             },
             cached,
             error: null
           }
         }
         return {
-          status: { registered: false, agentId: null, agentName: null, modelLabel: null },
+          status: { registered: false, agentId: null, agentURI: null },
           cached: null,
           error: null
         }
@@ -79,8 +79,7 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
             ? {
                 registered: true,
                 agentId: cached.agentId,
-                agentName: cached.agentName,
-                modelLabel: cached.modelLabel
+                agentURI: cached.agentURI
               }
             : null,
           cached,
@@ -102,7 +101,11 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
       }
 
       const modelLabel = await detectModelLabel()
-      const metadata = JSON.stringify({ registeredBy: 'plottoon', genre: params.genre || '' })
+      const agentURI = buildAgentURI({
+        agentName: params.agentName,
+        modelLabel,
+        genre: params.genre
+      })
 
       if (deps.signerMode === 'mock') {
         const mockAgentId = `mock-agent-${Date.now()}`
@@ -112,6 +115,7 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
           agentName: params.agentName,
           genre: params.genre || '',
           modelLabel,
+          agentURI,
           registeredAt: new Date().toISOString(),
           registeredBy: 'plottoon',
           walletAddress: wallet.address
@@ -121,7 +125,7 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
       }
 
       try {
-        const result = await executeAgentRegistration(params.agentName, modelLabel, metadata, {
+        const result = await executeAgentRegistration(agentURI, {
           config: deps.registrationConfig,
           ows: deps.owsModule,
           walletName: wallet.name,
@@ -136,6 +140,7 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
             agentName: params.agentName,
             genre: params.genre || '',
             modelLabel,
+            agentURI,
             registeredAt: new Date().toISOString(),
             registeredBy: 'plottoon',
             walletAddress: wallet.address

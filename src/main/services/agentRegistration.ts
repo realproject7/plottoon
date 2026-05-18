@@ -1,4 +1,11 @@
-import { createPublicClient, createWalletClient, encodeFunctionData, http, type Hex } from 'viem'
+import {
+  createPublicClient,
+  createWalletClient,
+  decodeEventLog,
+  encodeFunctionData,
+  http,
+  type Hex
+} from 'viem'
 import { base } from 'viem/chains'
 import type { OWSCoreModule } from './owsAdapter'
 import { createOwsViemAccount } from './owsViemAccount'
@@ -10,15 +17,10 @@ import type {
 const agentRegistryAbi = [
   {
     type: 'function',
-    name: 'getAgentInfo',
-    inputs: [{ name: 'agentWallet', type: 'address' }],
-    outputs: [
-      { name: 'agentId', type: 'uint256' },
-      { name: 'agentName', type: 'string' },
-      { name: 'modelLabel', type: 'string' },
-      { name: 'registered', type: 'bool' }
-    ],
-    stateMutability: 'view'
+    name: 'register',
+    inputs: [{ name: 'agentURI', type: 'string' }],
+    outputs: [{ name: 'agentId', type: 'uint256' }],
+    stateMutability: 'nonpayable'
   },
   {
     type: 'function',
@@ -36,14 +38,36 @@ const agentRegistryAbi = [
   },
   {
     type: 'function',
-    name: 'registerAgent',
+    name: 'tokenOfOwnerByIndex',
     inputs: [
-      { name: 'agentName', type: 'string' },
-      { name: 'modelLabel', type: 'string' },
-      { name: 'metadata', type: 'string' }
+      { name: 'owner', type: 'address' },
+      { name: 'index', type: 'uint256' }
     ],
-    outputs: [{ name: 'agentId', type: 'uint256' }],
-    stateMutability: 'nonpayable'
+    outputs: [{ name: 'tokenId', type: 'uint256' }],
+    stateMutability: 'view'
+  },
+  {
+    type: 'function',
+    name: 'agentURI',
+    inputs: [{ name: 'agentId', type: 'uint256' }],
+    outputs: [{ name: 'uri', type: 'string' }],
+    stateMutability: 'view'
+  },
+  {
+    type: 'function',
+    name: 'tokenURI',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: 'uri', type: 'string' }],
+    stateMutability: 'view'
+  },
+  {
+    type: 'event',
+    name: 'Registered',
+    inputs: [
+      { name: 'agentId', type: 'uint256', indexed: true },
+      { name: 'agentURI', type: 'string', indexed: false },
+      { name: 'owner', type: 'address', indexed: true }
+    ]
   }
 ] as const
 
@@ -85,56 +109,74 @@ export async function readAgentStatus(
     })) as bigint
 
     if (agentId > BigInt(0)) {
-      const info = await client.readContract({
-        address: registryAddr,
-        abi: agentRegistryAbi,
-        functionName: 'getAgentInfo',
-        args: [wallet]
-      })
-      const [, agentName, modelLabel] = info as [bigint, string, string, boolean]
+      const uri = await readAgentURI(client, registryAddr, agentId)
       return {
         registered: true,
         agentId: agentId.toString(),
-        agentName,
-        modelLabel
+        agentURI: uri
       }
     }
   } catch {
-    // agentIdByWallet not available, fall through to getAgentInfo
+    // agentIdByWallet not available, fall through to ownership detection
   }
 
   try {
-    const result = await client.readContract({
+    const balance = (await client.readContract({
       address: registryAddr,
       abi: agentRegistryAbi,
-      functionName: 'getAgentInfo',
+      functionName: 'balanceOf',
       args: [wallet]
-    })
+    })) as bigint
 
-    const [agentId, agentName, modelLabel, registered] = result as [bigint, string, string, boolean]
+    if (balance > BigInt(0)) {
+      try {
+        const tokenId = (await client.readContract({
+          address: registryAddr,
+          abi: agentRegistryAbi,
+          functionName: 'tokenOfOwnerByIndex',
+          args: [wallet, BigInt(0)]
+        })) as bigint
 
-    return {
-      registered,
-      agentId: registered ? agentId.toString() : null,
-      agentName: registered ? agentName : null,
-      modelLabel: registered ? modelLabel : null
+        const uri = await readAgentURI(client, registryAddr, tokenId)
+        return {
+          registered: true,
+          agentId: tokenId.toString(),
+          agentURI: uri
+        }
+      } catch {
+        return { registered: true, agentId: null, agentURI: null }
+      }
     }
   } catch {
-    // getAgentInfo failed, try balanceOf as token fallback
+    // balanceOf not available
   }
 
-  const balance = (await client.readContract({
-    address: registryAddr,
-    abi: agentRegistryAbi,
-    functionName: 'balanceOf',
-    args: [wallet]
-  })) as bigint
+  return { registered: false, agentId: null, agentURI: null }
+}
 
-  return {
-    registered: balance > BigInt(0),
-    agentId: null,
-    agentName: null,
-    modelLabel: null
+async function readAgentURI(
+  client: ReturnType<typeof createPublicClient>,
+  registryAddr: Hex,
+  agentId: bigint
+): Promise<string | null> {
+  try {
+    return (await client.readContract({
+      address: registryAddr,
+      abi: agentRegistryAbi,
+      functionName: 'agentURI',
+      args: [agentId]
+    })) as string
+  } catch {
+    try {
+      return (await client.readContract({
+        address: registryAddr,
+        abi: agentRegistryAbi,
+        functionName: 'tokenURI',
+        args: [agentId]
+      })) as string
+    } catch {
+      return null
+    }
   }
 }
 
@@ -147,17 +189,55 @@ export interface AgentRegistrationWriteDeps {
   passphrase?: string
 }
 
+export function buildAgentURI(params: {
+  agentName: string
+  modelLabel: string
+  genre?: string
+}): string {
+  return JSON.stringify({
+    name: params.agentName,
+    model: params.modelLabel,
+    genre: params.genre || '',
+    registeredBy: 'plottoon'
+  })
+}
+
+export function encodeRegister(agentURI: string): string {
+  return encodeFunctionData({
+    abi: agentRegistryAbi,
+    functionName: 'register',
+    args: [agentURI]
+  })
+}
+
+export function decodeRegisteredEvent(
+  logs: { topics: Hex[]; data: Hex }[]
+): { agentId: string; agentURI: string; owner: string } | null {
+  for (const log of logs) {
+    try {
+      const decoded = decodeEventLog({
+        abi: agentRegistryAbi,
+        eventName: 'Registered',
+        topics: log.topics,
+        data: log.data
+      })
+      return {
+        agentId: (decoded.args as { agentId: bigint }).agentId.toString(),
+        agentURI: (decoded.args as { agentURI: string }).agentURI,
+        owner: (decoded.args as { owner: string }).owner
+      }
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
 export async function executeAgentRegistration(
-  agentName: string,
-  modelLabel: string,
-  metadata: string,
+  agentURI: string,
   deps: AgentRegistrationWriteDeps
 ): Promise<AgentRegistrationResult> {
-  const data = encodeFunctionData({
-    abi: agentRegistryAbi,
-    functionName: 'registerAgent',
-    args: [agentName, modelLabel, metadata]
-  })
+  const data = encodeRegister(agentURI)
 
   const account = createOwsViemAccount({
     ows: deps.ows,
@@ -189,9 +269,13 @@ export async function executeAgentRegistration(
     return { success: false, txHash, error: 'Registration transaction reverted' }
   }
 
-  const postStatus = await readAgentStatus(deps.walletAddress, { config: deps.config })
+  const registeredEvent = decodeRegisteredEvent(receipt.logs as { topics: Hex[]; data: Hex }[])
 
-  return { success: true, agentId: postStatus.agentId ?? undefined, txHash }
+  return {
+    success: true,
+    agentId: registeredEvent?.agentId,
+    txHash
+  }
 }
 
 export function buildOwnerBindingMessage(humanWallet: string, owsWallet: string): string {
