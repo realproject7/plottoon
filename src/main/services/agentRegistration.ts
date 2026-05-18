@@ -95,8 +95,7 @@ export function validateAgentRegistrationConfig(config: AgentRegistrationConfig)
 export function getDefaultAgentRegistrationConfig(): AgentRegistrationConfig {
   return {
     rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-    registryAddress:
-      process.env.PLOTLINK_AGENT_REGISTRY_ADDRESS || ERC8004_REGISTRY_BASE_MAINNET
+    registryAddress: process.env.PLOTLINK_AGENT_REGISTRY_ADDRESS || ERC8004_REGISTRY_BASE_MAINNET
   }
 }
 
