@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ipcMain } from 'electron'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import os from 'node:os'
 import { registerPublishHandlers, type PublishHandlerDeps } from '../ipc/publishHandlers'
 import type { WalletSigner } from '../services/walletSigning'
 import type { OWSCoreModule } from '../services/owsAdapter'
@@ -67,6 +70,8 @@ function mockIpfs(): IpfsClient {
   }
 }
 
+let tmpDir: string
+
 function createDeps(overrides?: Partial<PublishHandlerDeps>): PublishHandlerDeps {
   return {
     walletState: { wallet: null },
@@ -78,6 +83,7 @@ function createDeps(overrides?: Partial<PublishHandlerDeps>): PublishHandlerDeps
     keccak: vi.fn().mockReturnValue('0x' + 'ab'.repeat(32)),
     fetchFn: vi.fn(),
     getWindow: vi.fn().mockReturnValue(null),
+    resolvePlotDir: vi.fn().mockResolvedValue(tmpDir),
     ...overrides
   }
 }
@@ -91,9 +97,18 @@ function getHandler(channel: string): IpcHandler {
   return match[1] as IpcHandler
 }
 
+const mockRequest = {
+  action: 'create-storyline' as const,
+  title: 'Test Story',
+  markdown: '# Episode 1',
+  projectId: 'proj-1',
+  plotSlug: 'episode-1'
+}
+
 describe('publish:preflight', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plottoon-pubhandler-'))
   })
 
   it('returns ready in mock mode even without wallet', () => {
@@ -144,6 +159,30 @@ describe('publish:preflight', () => {
     expect(result.errors).toContain('PlotLink contract address not configured')
   })
 
+  it('returns errors in live mode with missing creation fee', () => {
+    const config = mockConfig()
+    config.creationFeeWei = ''
+    const deps = createDeps({
+      signer: mockSigner(false),
+      walletState: {
+        wallet: {
+          address: '0xabc',
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-18T00:00:00Z'
+        }
+      },
+      config
+    })
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:preflight')
+    const result = handler() as PublishPreflightResult
+
+    expect(result.ready).toBe(false)
+    expect(result.errors).toContain('Creation fee not configured')
+  })
+
   it('returns ready in live mode with wallet and config', () => {
     const deps = createDeps({
       signer: mockSigner(false),
@@ -192,8 +231,9 @@ describe('publish:preflight', () => {
 })
 
 describe('publish:execute', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plottoon-pubhandler-'))
   })
 
   it('rejects when not confirmed', async () => {
@@ -201,32 +241,40 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler(
-      {},
-      { action: 'create-storyline', title: 'Test', markdown: '# Test' },
-      false
-    )) as PublishExecuteResult
+    const result = (await handler({}, mockRequest, false)) as PublishExecuteResult
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('requires explicit confirmation')
   })
 
-  it('returns mock result in mock mode', async () => {
-    const deps = createDeps()
+  it('returns mock result in mock mode with estimating state', async () => {
+    const mockWin = {
+      isDestroyed: () => false,
+      webContents: { send: vi.fn() }
+    }
+    const deps = createDeps({
+      getWindow: vi.fn().mockReturnValue(mockWin)
+    })
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler(
-      {},
-      { action: 'create-storyline', title: 'Test Story', markdown: '# Episode 1' },
-      true
-    )) as PublishExecuteResult
+    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
 
     expect(result.success).toBe(true)
     expect(result.result).toBeDefined()
     expect(result.result!.txHash).toMatch(/^0x/)
     expect(result.result!.indexed).toBe(true)
-    expect(result.result!.publishedAt).toBeTruthy()
+
+    const progressStates = mockWin.webContents.send.mock.calls
+      .filter((c: unknown[]) => c[0] === 'publish:progress')
+      .map((c: unknown[]) => (c[1] as { state: string }).state)
+    expect(progressStates).toContain('estimating')
+    expect(progressStates).toContain('uploading')
+    expect(progressStates).toContain('signing')
+    expect(progressStates).toContain('broadcasting')
+    expect(progressStates).toContain('confirming')
+    expect(progressStates).toContain('indexing')
+    expect(progressStates).toContain('done')
   })
 
   it('returns error in live mode without wallet', async () => {
@@ -234,11 +282,7 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler(
-      {},
-      { action: 'create-storyline', title: 'Test', markdown: '# Test' },
-      true
-    )) as PublishExecuteResult
+    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('No wallet connected')
@@ -262,17 +306,37 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler(
-      {},
-      { action: 'create-storyline', title: 'T', markdown: '# T' },
-      true
-    )) as PublishExecuteResult
+    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('contract address not configured')
   })
 
-  it('calls realPublish in live mode and returns result', async () => {
+  it('returns error for create-storyline without creation fee', async () => {
+    const config = mockConfig()
+    config.creationFeeWei = ''
+    const deps = createDeps({
+      signer: mockSigner(false),
+      walletState: {
+        wallet: {
+          address: '0xabc',
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-18T00:00:00Z'
+        }
+      },
+      config
+    })
+    registerPublishHandlers(deps)
+
+    const handler = getHandler('publish:execute')
+    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Creation fee not configured')
+  })
+
+  it('persists published result to status file', async () => {
     const { realPublish: realPublishMock } = await import('../services/plotlinkPublish')
     ;(realPublishMock as ReturnType<typeof vi.fn>).mockResolvedValue({
       txHash: '0xrealtx',
@@ -300,22 +364,21 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler(
-      {},
-      { action: 'create-storyline', title: 'My Story', markdown: '# Ep 1' },
-      true
-    )) as PublishExecuteResult
+    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
 
     expect(result.success).toBe(true)
     expect(result.result!.txHash).toBe('0xrealtx')
-    expect(result.result!.storylineId).toBe('0xsl-id')
-    expect(result.result!.walletAddress).toBe('0xabc')
-    expect(result.result!.walletSource).toBe('plottoon-writer')
-    expect(result.result!.indexed).toBe(true)
     expect(result.result!.plotlinkUrl).toBe('https://plotlink.example/story/0xsl-id')
+
+    const statusRaw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
+    const status = JSON.parse(statusRaw)
+    expect(status.plotState).toBe('published')
+    expect(status.publishResult.txHash).toBe('0xrealtx')
+    expect(status.publishResult.storylineId).toBe('0xsl-id')
+    expect(status.publishResult.walletAddress).toBe('0xabc')
   })
 
-  it('returns published-not-indexed result when tx succeeds but index fails', async () => {
+  it('persists published-not-indexed when tx succeeds but index fails', async () => {
     const { realPublish: realPublishMock } = await import('../services/plotlinkPublish')
     ;(realPublishMock as ReturnType<typeof vi.fn>).mockResolvedValue({
       txHash: '0xrealtx',
@@ -344,19 +407,19 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler(
-      {},
-      { action: 'create-storyline', title: 'Story', markdown: '# Ep' },
-      true
-    )) as PublishExecuteResult
+    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
 
     expect(result.success).toBe(true)
-    expect(result.result!.txHash).toBe('0xrealtx')
     expect(result.result!.indexed).toBe(false)
-    expect(result.result!.indexError).toBe('Index failed after retries')
+
+    const statusRaw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
+    const status = JSON.parse(statusRaw)
+    expect(status.plotState).toBe('published-not-indexed')
+    expect(status.publishResult.txHash).toBe('0xrealtx')
+    expect(status.publishResult.indexError).toBe('Index failed after retries')
   })
 
-  it('returns error when realPublish throws', async () => {
+  it('persists failed state when realPublish throws', async () => {
     const { realPublish: realPublishMock } = await import('../services/plotlinkPublish')
     ;(realPublishMock as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('RPC connection refused')
@@ -376,13 +439,14 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler(
-      {},
-      { action: 'create-storyline', title: 'T', markdown: '# T' },
-      true
-    )) as PublishExecuteResult
+    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('RPC connection refused')
+
+    const statusRaw = await fs.readFile(path.join(tmpDir, '.publish-status.json'), 'utf-8')
+    const status = JSON.parse(statusRaw)
+    expect(status.plotState).toBe('failed')
+    expect(status.error).toBe('RPC connection refused')
   })
 })

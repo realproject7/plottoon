@@ -14,6 +14,7 @@ import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
 import { createOWSConfig, createOWSFromCore, type OWSVaultConfig } from './services/owsAdapter'
 import { getDefaultPublishConfig } from './services/plotlinkPublish'
+import { resolveProjectFilePath } from './services/fsService'
 import { keccak256, toBytes } from 'viem'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
@@ -76,7 +77,9 @@ app.whenReady().then(async () => {
     },
     keccak: (content: string) => keccak256(toBytes(content)),
     fetchFn: fetch as unknown as (url: string, init: RequestInit) => Promise<Response>,
-    getWindow: () => BrowserWindow.getAllWindows()[0] ?? null
+    getWindow: () => BrowserWindow.getAllWindows()[0] ?? null,
+    resolvePlotDir: async (projectId: string, plotSlug: string) =>
+      resolveProjectFilePath(projectId, 'plots', plotSlug)
   })
 
   createWindow()

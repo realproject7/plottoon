@@ -14,8 +14,7 @@ import {
   createViemContractEncoder,
   createOWSViemSigner
 } from '../services/plotlinkPublish'
-import type { OWSCoreModule } from '../services/owsAdapter'
-import type { OWSVaultConfig } from '../services/owsAdapter'
+import type { OWSCoreModule, OWSVaultConfig } from '../services/owsAdapter'
 import type {
   PublishPreflightResult,
   PublishRequest,
@@ -23,6 +22,16 @@ import type {
   PublishResultMeta,
   PublishProgress
 } from '../../shared/publishFlow'
+import {
+  readPublishStatus,
+  writePublishStatus,
+  createPublishStatus,
+  markPlotPublished,
+  markPublishedNotIndexed,
+  markPlotFailed,
+  setPlotState,
+  type PublishResultRecord
+} from '../services/publishStatus'
 
 export interface PublishHandlerDeps {
   walletState: SelectedWalletState
@@ -34,6 +43,7 @@ export interface PublishHandlerDeps {
   keccak: KeccakFn
   fetchFn: FetchFn
   getWindow: () => BrowserWindow | null
+  resolvePlotDir: (projectId: string, plotSlug: string) => Promise<string>
 }
 
 function sendProgress(deps: PublishHandlerDeps, progress: PublishProgress): void {
@@ -59,11 +69,11 @@ function buildPlotlinkUrl(
   return `${baseUrl}/story/${storylineId}`
 }
 
-function toResultMeta(
+function toResultRecord(
   result: PublishFullResult,
   wallet: { address: string; source: string },
   plotlinkUrl: string | null
-): PublishResultMeta {
+): PublishResultRecord {
   return {
     txHash: result.txHash,
     storylineId: result.storylineId ?? null,
@@ -76,7 +86,13 @@ function toResultMeta(
     walletAddress: wallet.address,
     walletSource: wallet.source,
     indexed: result.indexed,
-    indexError: result.indexError ?? null,
+    indexError: result.indexError ?? null
+  }
+}
+
+function toResultMeta(record: PublishResultRecord): PublishResultMeta {
+  return {
+    ...record,
     publishedAt: new Date().toISOString()
   }
 }
@@ -102,6 +118,14 @@ function mockPublishResult(request: PublishRequest): PublishResultMeta {
   }
 }
 
+async function loadOrCreateStatus(plotDir: string) {
+  try {
+    return await readPublishStatus(plotDir)
+  } catch {
+    return createPublishStatus([])
+  }
+}
+
 export function registerPublishHandlers(deps: PublishHandlerDeps): void {
   ipcMain.handle('publish:preflight', (): PublishPreflightResult => {
     const errors: string[] = []
@@ -119,6 +143,9 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
       }
       if (!deps.config.rpcUrl) {
         errors.push('Base RPC URL not configured')
+      }
+      if (!deps.config.creationFeeWei) {
+        errors.push('Creation fee not configured')
       }
     }
 
@@ -142,6 +169,7 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
 
       if (isMock) {
         sendProgress(deps, { state: 'uploading', detail: 'Mock: uploading content' })
+        sendProgress(deps, { state: 'estimating', detail: 'Mock: estimating gas' })
         sendProgress(deps, { state: 'signing', detail: 'Mock: signing transaction' })
         sendProgress(deps, { state: 'broadcasting', detail: 'Mock: broadcasting' })
         sendProgress(deps, { state: 'confirming', detail: 'Mock: confirming' })
@@ -167,7 +195,17 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
         return { success: false, error: 'Base RPC URL not configured' }
       }
 
+      if (request.action === 'create-storyline' && !deps.config.creationFeeWei) {
+        return { success: false, error: 'Creation fee not configured for new storyline' }
+      }
+
+      const plotDir = await deps.resolvePlotDir(request.projectId, request.plotSlug)
+
       try {
+        let status = await loadOrCreateStatus(plotDir)
+        status = setPlotState(status, 'publishing')
+        await writePublishStatus(plotDir, status)
+
         sendProgress(deps, { state: 'uploading', detail: 'Uploading content to IPFS' })
 
         const signer = createOWSViemSigner(
@@ -189,7 +227,7 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
           config: deps.config
         }
 
-        sendProgress(deps, { state: 'signing', detail: 'Signing transaction' })
+        sendProgress(deps, { state: 'estimating', detail: 'Estimating gas' })
 
         const indexMeta =
           request.action === 'create-storyline'
@@ -199,6 +237,7 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
               }
             : { isNsfw: request.isNsfw ?? 'false' }
 
+        sendProgress(deps, { state: 'signing', detail: 'Signing transaction' })
         sendProgress(deps, { state: 'broadcasting', detail: 'Broadcasting transaction' })
 
         const fullResult = await realPublish(
@@ -220,19 +259,12 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
 
         if (!fullResult.confirmed) {
           sendProgress(deps, { state: 'error', detail: 'Transaction reverted' })
+          status = markPlotFailed(status, 'Transaction reverted on chain')
+          await writePublishStatus(plotDir, status)
           return { success: false, error: 'Transaction reverted on chain' }
         }
 
         sendProgress(deps, { state: 'confirming', detail: 'Transaction confirmed' })
-
-        if (!fullResult.indexed) {
-          sendProgress(deps, {
-            state: 'error',
-            detail: fullResult.indexError ?? 'Indexing failed'
-          })
-        } else {
-          sendProgress(deps, { state: 'indexing', detail: 'Indexing on PlotLink' })
-        }
 
         const plotlinkUrl = buildPlotlinkUrl(
           deps.config.plotlinkBaseUrl,
@@ -241,11 +273,25 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
           request.action
         )
 
-        const resultMeta = toResultMeta(
+        const resultRecord = toResultRecord(
           fullResult,
           { address: wallet.address, source: wallet.source },
           plotlinkUrl
         )
+
+        if (fullResult.indexed) {
+          sendProgress(deps, { state: 'indexing', detail: 'Indexed on PlotLink' })
+          status = markPlotPublished(status, resultRecord)
+        } else {
+          sendProgress(deps, {
+            state: 'error',
+            detail: fullResult.indexError ?? 'Indexing failed'
+          })
+          status = markPublishedNotIndexed(status, resultRecord)
+        }
+        await writePublishStatus(plotDir, status)
+
+        const resultMeta = toResultMeta(resultRecord)
 
         sendProgress(deps, {
           state: fullResult.indexed ? 'done' : 'error',
@@ -256,6 +302,13 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown publish error'
         sendProgress(deps, { state: 'error', detail: message })
+        try {
+          let status = await loadOrCreateStatus(plotDir)
+          status = markPlotFailed(status, message)
+          await writePublishStatus(plotDir, status)
+        } catch {
+          // status persistence is best-effort
+        }
         return { success: false, error: message }
       }
     }

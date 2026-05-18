@@ -20,6 +20,8 @@ export interface PublishRequest {
   action: 'create-storyline' | 'chain-plot'
   title: string
   markdown: string
+  projectId: string
+  plotSlug: string
   storylineId?: string
   hasDeadline?: boolean
   isNsfw?: string
