@@ -69,9 +69,25 @@ Main Process (owns wallet, signs message)
 Renderer (attaches signature to upload request)
 ```
 
-## Publish Adapter
+## Publish Service (Main Process)
 
-`src/renderer/plotlinkPublishAdapter.ts` provides the concrete adapter mapping PlotToon publish data to PlotLink's index endpoint.
+All PlotLink publishing runs in the main process via `src/main/services/plotlinkPublish.ts`. The renderer never touches PlotLink APIs, signing, transactions, or indexing directly — it invokes `publish:preflight`, `publish:execute`, and `publish:retryIndex` IPC handles registered in `src/main/ipc/publishHandlers.ts`.
+
+### Architecture
+
+```
+Renderer
+    │  ipc: publish:preflight → validates wallet, config, chain
+    │  ipc: publish:execute   → uploads, signs, broadcasts, indexes
+    │  ipc: publish:retryIndex → retries failed indexing
+    ▼
+Main Process (owns wallet, OWS signer, contract encoder)
+    │  plotlinkPublish.ts  → realPublish(), createPlotlinkUploadClient()
+    │  owsViemAccount.ts   → OWS-backed viem LocalAccount
+    │  owsRuntimeConfig.ts → vault config, chain validation, contract defaults
+    ▼
+PlotLink (on-chain StoryFactory + index API)
+```
 
 ### Field Mapping
 
@@ -88,45 +104,19 @@ Renderer (attaches signature to upload request)
 | Route                       | When                     | Key Fields                                                     | Response            |
 | --------------------------- | ------------------------ | -------------------------------------------------------------- | ------------------- |
 | `POST /api/index/storyline` | New storylines only      | `storylineTitle`, `contentType`, `isNsfw`, `content`, `txHash` | `{ success: true }` |
-| `POST /api/index/plot`      | Existing storylines only | `storylineId`, `isNsfw`, `content`, `imageUrls`, `txHash`      | `{ success: true }` |
+| `POST /api/index/plot`      | Existing storylines only | `storylineId`, `isNsfw`, `content`, `txHash`                   | `{ success: true }` |
 
 New storylines call only `/api/index/storyline` — the genesis plot is indexed as part of that response. Existing storylines call only `/api/index/plot` with a `chain-plot` transaction hash. `isNsfw` is sent as a string literal (`"true"` / `"false"`).
 
 **Important:** Index routes return only `{ success: true }`. They do NOT return `storylineId`, `plotId`, or `plotUrl`. Publish identifiers must be derived from the transaction receipt/events, not from index responses.
 
-### Signer Interface
+### Content Upload
 
-The adapter accepts a `PlotLinkSigner` interface:
+Content is uploaded via `POST /api/upload` with `{ content, key }` JSON body. The upload client is created by `createPlotlinkUploadClient(plotlinkBaseUrl)` in `plotlinkPublish.ts`. Upload keys are generated per action: `plotlink/storylines/{ts}-{slug}.json` or `plotlink/plots/{storylineId}-{ts}-{slug}.json`.
 
-- `sign(message: string): Promise<string>` — signs the request message
-- `sendTransaction(payload): Promise<TransactionResult>` — submits the on-chain transaction
+### Transaction Signing
 
-`TransactionResult` shape:
-
-```typescript
-interface TransactionResult {
-  txHash: string
-  confirmed: boolean
-  storylineId?: string // decoded from receipt events (create-storyline only)
-  plotIndex?: number // decoded from receipt events
-}
-```
-
-In production this is backed by the IPC wallet boundary; the adapter never touches private keys.
-
-### Transaction Payload
-
-```typescript
-interface TransactionPayload {
-  action: 'create-storyline' | 'chain-plot'
-  storylineId?: string // required for chain-plot
-  title: string
-  contentCid: string
-  contentHash: string // 0x-prefixed keccak256 bytes32
-  creationFeeWei?: string // wei string, required for create-storyline
-  hasDeadline?: boolean // matches PlotLink createStoryline(title, cid, hash, hasDeadline)
-}
-```
+The main process creates an OWS-backed viem `LocalAccount` via `createOwsViemAccount()`. This account is used with viem's `WalletClient` to sign and broadcast transactions. The renderer never has access to wallet material.
 
 ### Content Hash
 
@@ -134,30 +124,23 @@ PlotLink verifies content hashes as `keccak256(toBytes(markdown))`, producing a 
 
 ### Transaction Flow
 
-1. Sign the request message (numeric timestamp format)
-2. Compute keccak256 content hash and validate format
-3. Submit transaction via `signer.sendTransaction` with action, content hash, creationFeeWei, and hasDeadline
-4. If confirmed, derive storylineId/plotIndex from transaction result
-5. Proceed to index; pass `txHash` to index request
-6. Return identifiers from transaction result (not index response)
+1. Upload markdown content to PlotLink `/api/upload`
+2. Compute keccak256 content hash
+3. Encode contract call via viem (`createStoryline` or `chainPlot` on StoryFactory)
+4. Sign and broadcast via OWS-backed viem account
+5. Wait for receipt; decode events for storylineId/plotIndex
+6. Index via `/api/index/storyline` or `/api/index/plot` with retry
+7. Track publish status per plot directory
 
-### Signature Message Format (Publish)
+### Runtime Config
 
-```text
-PlotLink: Create storyline and publish plot
-Timestamp: {numeric millisecond timestamp via Date.now()}
-```
+Contract addresses and chain config are resolved via `src/main/services/owsRuntimeConfig.ts`:
 
-For existing storylines:
-
-```text
-PlotLink: Publish plot
-Timestamp: {numeric millisecond timestamp via Date.now()}
-```
-
-### Blocking Gate
-
-Real publishing remains gated by #52. The adapter can run in `mock` mode for tests and dry-run.
+- **Chain:** `eip155:8453` (Base mainnet) — enforced in preflight and execute
+- **StoryFactory:** `0x9D2AE1E99D0A6300bfcCF41A82260374e38744Cf`
+- **MCV2_BOND:** `0xc5a076cad94176c2996B32d8466Be1cE757FAa27`
+- Env overrides: `PLOTLINK_STORY_FACTORY_ADDRESS`, `MCV2_BOND_ADDRESS`, `BASE_RPC_URL`, `PLOTLINK_BASE_URL`
+- OWS vault config loaded from `~/.plotlink-ows/.env` with process.env fallback
 
 ## Patterns to Reuse from PlotLink/plotlink-ows
 
