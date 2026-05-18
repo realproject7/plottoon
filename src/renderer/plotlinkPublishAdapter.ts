@@ -36,10 +36,7 @@ export interface PlotLinkPublishResponse {
   error?: string
 }
 
-export type PlotLinkFetchFn = (
-  url: string,
-  init: RequestInit
-) => Promise<Response>
+export type PlotLinkFetchFn = (url: string, init: RequestInit) => Promise<Response>
 
 export interface PlotLinkPublishAdapterConfig {
   indexEndpoint: string

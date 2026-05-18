@@ -75,13 +75,13 @@ Renderer (attaches signature to upload request)
 
 ### Field Mapping
 
-| PlotToon (internal)        | PlotLink (outbound)     | When                  |
-| -------------------------- | ----------------------- | --------------------- |
-| `matureFlag`               | `isNsfw`                | Always                |
-| `contentType: "cartoon"`   | `contentType: "cartoon"`| New storylines only   |
-| `storylineTitle`           | `storylineTitle`        | New storylines only   |
-| `storylineId`              | `storylineId`           | Existing storylines   |
-| `markdown`                 | `content`               | Always                |
+| PlotToon (internal)      | PlotLink (outbound)      | When                |
+| ------------------------ | ------------------------ | ------------------- |
+| `matureFlag`             | `isNsfw`                 | Always              |
+| `contentType: "cartoon"` | `contentType: "cartoon"` | New storylines only |
+| `storylineTitle`         | `storylineTitle`         | New storylines only |
+| `storylineId`            | `storylineId`            | Existing storylines |
+| `markdown`               | `content`                | Always              |
 
 ### Signer Interface
 
