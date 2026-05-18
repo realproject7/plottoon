@@ -12,8 +12,8 @@ export interface TransactionPayload {
   title: string
   contentCid: string
   contentHash: string
-  creationFee?: string
-  deadline?: number
+  creationFeeWei?: string
+  hasDeadline?: boolean
 }
 
 export interface TransactionResult {
@@ -77,8 +77,8 @@ export interface PlotLinkPublishAdapterConfig {
   contentHash: ContentHashFn
   fetch?: PlotLinkFetchFn
   mode: 'live' | 'mock'
-  creationFee?: string
-  deadline?: number
+  creationFeeWei?: string
+  hasDeadline?: boolean
 }
 
 function isValidContentHash(hash: string): boolean {
@@ -192,8 +192,8 @@ export async function plotlinkPublish(
     title: isNew ? (outbound.storylineTitle ?? '') : outbound.plotTitle,
     contentCid: commitResult.cid,
     contentHash: computedHash,
-    creationFee: isNew ? config.creationFee : undefined,
-    deadline: isNew ? config.deadline : undefined
+    creationFeeWei: isNew ? config.creationFeeWei : undefined,
+    hasDeadline: isNew ? (config.hasDeadline ?? false) : undefined
   }
 
   const txResult = await config.signer.sendTransaction(txPayload)

@@ -123,8 +123,8 @@ interface TransactionPayload {
   title: string
   contentCid: string
   contentHash: string // 0x-prefixed keccak256 bytes32
-  creationFee?: string // required for create-storyline
-  deadline?: number // seconds, required for create-storyline
+  creationFeeWei?: string // wei string, required for create-storyline
+  hasDeadline?: boolean // matches PlotLink createStoryline(title, cid, hash, hasDeadline)
 }
 ```
 
@@ -136,7 +136,7 @@ PlotLink verifies content hashes as `keccak256(toBytes(markdown))`, producing a 
 
 1. Sign the request message (numeric timestamp format)
 2. Compute keccak256 content hash and validate format
-3. Submit transaction via `signer.sendTransaction` with action, content hash, fee, and deadline
+3. Submit transaction via `signer.sendTransaction` with action, content hash, creationFeeWei, and hasDeadline
 4. If confirmed, derive storylineId/plotIndex from transaction result
 5. Proceed to index; pass `txHash` to index request
 6. Return identifiers from transaction result (not index response)
