@@ -118,10 +118,10 @@ export function batchInputs(inputs: CutUploadInput[]): CutUploadInput[][] {
   return batches
 }
 
-function buildSignatureMessage(): { message: string; timestamp: string } {
-  const timestamp = new Date().toISOString()
-  const message = `PlotLink: Upload plot images\nTimestamp: ${timestamp}`
-  return { message, timestamp }
+function buildSignatureMessage(): { message: string; timestampMs: number } {
+  const timestampMs = Date.now()
+  const message = `PlotLink: Upload plot images\nTimestamp: ${timestampMs}`
+  return { message, timestampMs }
 }
 
 async function uploadBatch(
@@ -141,14 +141,12 @@ async function uploadBatch(
       `${input.cutId}.${input.meta.mimeType === 'image/webp' ? 'webp' : 'jpg'}`
     )
   }
+  formData.append('message', message)
+  formData.append('signature', signature)
 
   const fetchFn = config.fetch ?? globalThis.fetch
   const response = await fetchFn(config.endpoint, {
     method: 'POST',
-    headers: {
-      'X-Signature': signature,
-      'X-Signature-Message': message
-    },
     body: formData
   })
 

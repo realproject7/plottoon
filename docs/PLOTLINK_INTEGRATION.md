@@ -6,11 +6,12 @@ Phase 6 implementation boundaries for PlotToon → PlotLink cartoon publishing.
 
 - **Method:** `POST /api/upload-plot-images`
 - **Auth:** Wallet signature (see Wallet Signing Boundary below)
+- **Signature transport:** `message` and `signature` fields in the multipart `FormData` body (not headers)
 - **Signature message format:**
 
 ```text
 PlotLink: Upload plot images
-Timestamp: {ISO 8601 timestamp}
+Timestamp: {numeric millisecond timestamp via Date.now()}
 ```
 
 ### Constraints
