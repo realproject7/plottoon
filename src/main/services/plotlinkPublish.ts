@@ -2,7 +2,7 @@ import type {
   PublishTransactionPayload,
   PublishTransactionResult
 } from '../../shared/publishTransaction'
-import type { OWSCoreModule, OWSSignResult } from './owsAdapter'
+import type { OWSCoreModule } from './owsAdapter'
 
 export interface PublishConfig {
   rpcUrl: string
@@ -32,16 +32,32 @@ export interface PublishFullResult {
   indexError?: string
 }
 
-export interface RpcClient {
-  sendTransaction(params: { to: string; data: string; value?: string }): Promise<{ txHash: string }>
-  waitForReceipt(txHash: string): Promise<TransactionReceipt>
-}
-
 export interface TransactionReceipt {
   status: 'success' | 'reverted'
   logs: Array<{ topics: string[]; data: string }>
   gasUsed: string
   effectiveGasPrice: string
+}
+
+export interface DecodedPublishEvent {
+  storylineId?: string
+  plotIndex?: number
+}
+
+export interface ContractEncoder {
+  encodeCreateStoryline(
+    title: string,
+    cid: string,
+    contentHash: string,
+    hasDeadline: boolean
+  ): string
+  encodeChainPlot(storylineId: string, title: string, cid: string, contentHash: string): string
+  decodePublishEvents(receipt: TransactionReceipt): DecodedPublishEvent
+}
+
+export interface TransactionSigner {
+  sendTransaction(params: { to: string; data: string; value?: string }): Promise<{ txHash: string }>
+  waitForReceipt(txHash: string): Promise<TransactionReceipt>
 }
 
 export interface IpfsClient {
@@ -54,69 +70,12 @@ export type FetchFn = (url: string, init: RequestInit) => Promise<Response>
 
 export interface PlotlinkPublishDeps {
   ows: OWSCoreModule
-  rpc: RpcClient
+  signer: TransactionSigner
+  encoder: ContractEncoder
   ipfs: IpfsClient
   keccak: KeccakFn
   fetch: FetchFn
   config: PublishConfig
-}
-
-const STORYLINE_CREATED_TOPIC =
-  '0x' +
-  '0'.repeat(24) +
-  'storyline_created'
-    .split('')
-    .map(() => 'a1')
-    .join('')
-    .slice(0, 40)
-const PLOT_CHAINED_TOPIC =
-  '0x' +
-  '0'.repeat(24) +
-  'plot_chained'
-    .split('')
-    .map(() => 'b2')
-    .join('')
-    .slice(0, 40)
-
-function encodeCreateStoryline(
-  title: string,
-  cid: string,
-  contentHash: string,
-  hasDeadline: boolean
-): string {
-  const selector = '0x' + 'c1ea7e01'
-  return `${selector}:createStoryline(${title},${cid},${contentHash},${hasDeadline})`
-}
-
-function encodeChainPlot(
-  storylineId: string,
-  title: string,
-  cid: string,
-  contentHash: string
-): string {
-  const selector = '0x' + 'a2b3c4d5'
-  return `${selector}:chainPlot(${storylineId},${title},${cid},${contentHash})`
-}
-
-function decodeStorylineId(receipt: TransactionReceipt): string | undefined {
-  for (const log of receipt.logs) {
-    if (log.topics[0] === STORYLINE_CREATED_TOPIC && log.topics[1]) {
-      return log.topics[1]
-    }
-  }
-  return undefined
-}
-
-function decodePlotIndex(receipt: TransactionReceipt): number | undefined {
-  for (const log of receipt.logs) {
-    if (log.topics[0] === PLOT_CHAINED_TOPIC && log.data) {
-      return parseInt(log.data, 16)
-    }
-    if (log.topics[0] === STORYLINE_CREATED_TOPIC && log.data) {
-      return parseInt(log.data, 16) || 0
-    }
-  }
-  return undefined
 }
 
 function computeGasCost(receipt: TransactionReceipt): string {
@@ -175,7 +134,7 @@ export async function realPublish(
   let txValue: string | undefined
 
   if (payload.action === 'create-storyline') {
-    txData = encodeCreateStoryline(
+    txData = deps.encoder.encodeCreateStoryline(
       payload.title,
       content.cid,
       content.contentHash,
@@ -183,16 +142,21 @@ export async function realPublish(
     )
     txValue = payload.creationFeeWei
   } else {
-    txData = encodeChainPlot(payload.storylineId!, payload.title, content.cid, content.contentHash)
+    txData = deps.encoder.encodeChainPlot(
+      payload.storylineId!,
+      payload.title,
+      content.cid,
+      content.contentHash
+    )
   }
 
-  const { txHash } = await deps.rpc.sendTransaction({
+  const { txHash } = await deps.signer.sendTransaction({
     to: deps.config.contractAddress,
     data: txData,
     value: txValue
   })
 
-  const receipt = await deps.rpc.waitForReceipt(txHash)
+  const receipt = await deps.signer.waitForReceipt(txHash)
 
   if (receipt.status === 'reverted') {
     return {
@@ -205,9 +169,10 @@ export async function realPublish(
     }
   }
 
+  const decoded = deps.encoder.decodePublishEvents(receipt)
   const storylineId =
-    payload.action === 'create-storyline' ? decodeStorylineId(receipt) : payload.storylineId
-  const plotIndex = decodePlotIndex(receipt)
+    payload.action === 'create-storyline' ? decoded.storylineId : payload.storylineId
+  const plotIndex = decoded.plotIndex
   const gasCostWei = computeGasCost(receipt)
 
   const indexUrl =
@@ -247,17 +212,32 @@ export async function realPublish(
   }
 }
 
+export function createOWSTransactionSigner(
+  ows: OWSCoreModule,
+  walletName: string,
+  chain: string,
+  passphrase: string | undefined,
+  rpcSender: TransactionSigner
+): TransactionSigner {
+  return {
+    async sendTransaction(params) {
+      const signResult = ows.signTransaction(walletName, chain, params.data, passphrase ?? null)
+      return rpcSender.sendTransaction({
+        ...params,
+        data: signResult.signature
+      })
+    },
+    waitForReceipt: rpcSender.waitForReceipt.bind(rpcSender)
+  }
+}
+
 export function createPublishTransactionFn(deps: PlotlinkPublishDeps, walletName: string) {
   return async (payload: PublishTransactionPayload): Promise<PublishTransactionResult> => {
-    const message = `PlotLink: ${payload.action === 'create-storyline' ? 'Create storyline' : 'Chain plot'}\nContent: ${payload.contentCid}`
-    const _signResult: OWSSignResult = deps.ows.signMessage(walletName, 'eip155:8453', message)
-    void _signResult
-
     let txData: string
     let txValue: string | undefined
 
     if (payload.action === 'create-storyline') {
-      txData = encodeCreateStoryline(
+      txData = deps.encoder.encodeCreateStoryline(
         payload.title,
         payload.contentCid,
         payload.contentHash,
@@ -265,7 +245,7 @@ export function createPublishTransactionFn(deps: PlotlinkPublishDeps, walletName
       )
       txValue = payload.creationFeeWei
     } else {
-      txData = encodeChainPlot(
+      txData = deps.encoder.encodeChainPlot(
         payload.storylineId!,
         payload.title,
         payload.contentCid,
@@ -273,21 +253,25 @@ export function createPublishTransactionFn(deps: PlotlinkPublishDeps, walletName
       )
     }
 
-    const { txHash } = await deps.rpc.sendTransaction({
+    const message = `PlotLink: ${payload.action}\nContent: ${payload.contentCid}`
+    deps.ows.signMessage(walletName, 'eip155:8453', message)
+
+    const { txHash } = await deps.signer.sendTransaction({
       to: deps.config.contractAddress,
       data: txData,
       value: txValue
     })
 
-    const receipt = await deps.rpc.waitForReceipt(txHash)
+    const receipt = await deps.signer.waitForReceipt(txHash)
 
     if (receipt.status === 'reverted') {
       return { txHash, confirmed: false }
     }
 
+    const decoded = deps.encoder.decodePublishEvents(receipt)
     const storylineId =
-      payload.action === 'create-storyline' ? decodeStorylineId(receipt) : payload.storylineId
-    const plotIndex = decodePlotIndex(receipt)
+      payload.action === 'create-storyline' ? decoded.storylineId : payload.storylineId
+    const plotIndex = decoded.plotIndex
 
     return { txHash, confirmed: true, storylineId, plotIndex }
   }
