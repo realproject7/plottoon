@@ -61,6 +61,7 @@ export function resolveOwsVaultConfig(envOverride?: Record<string, string>): OWS
 
 export function resolveRpcUrl(owsEnv?: Record<string, string>): string {
   if (process.env.BASE_RPC_URL) return process.env.BASE_RPC_URL
+  if (process.env.NEXT_PUBLIC_RPC_URL) return process.env.NEXT_PUBLIC_RPC_URL
   const ows = owsEnv ?? loadPlotlinkOwsEnv()
   if (ows.NEXT_PUBLIC_RPC_URL) return ows.NEXT_PUBLIC_RPC_URL
   return 'https://mainnet.base.org'
@@ -68,6 +69,7 @@ export function resolveRpcUrl(owsEnv?: Record<string, string>): string {
 
 export function resolvePlotlinkBaseUrl(owsEnv?: Record<string, string>): string {
   if (process.env.PLOTLINK_BASE_URL) return process.env.PLOTLINK_BASE_URL
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
   const ows = owsEnv ?? loadPlotlinkOwsEnv()
   if (ows.NEXT_PUBLIC_APP_URL) return ows.NEXT_PUBLIC_APP_URL
   return 'https://plotlink.xyz'

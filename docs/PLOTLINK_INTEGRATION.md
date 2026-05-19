@@ -140,7 +140,9 @@ Contract addresses and chain config are resolved via `src/main/services/owsRunti
 - **StoryFactory:** `0x9D2AE1E99D0A6300bfcCF41A82260374e38744Cf`
 - **MCV2_BOND:** `0xc5a076cad94176c2996B32d8466Be1cE757FAa27`
 - Env overrides: `PLOTLINK_STORY_FACTORY_ADDRESS`, `MCV2_BOND_ADDRESS`, `BASE_RPC_URL`, `PLOTLINK_BASE_URL`
-- OWS vault config loaded from `~/.plotlink-ows/.env` with process.env fallback
+- RPC URL precedence: `BASE_RPC_URL` > `NEXT_PUBLIC_RPC_URL` (process env) > `NEXT_PUBLIC_RPC_URL` (ows file) > default
+- PlotLink URL precedence: `PLOTLINK_BASE_URL` > `NEXT_PUBLIC_APP_URL` (process env) > `NEXT_PUBLIC_APP_URL` (ows file) > default
+- OWS vault config loaded from `~/.plotlink-ows/.env` as final fallback before public defaults
 
 ## Patterns to Reuse from PlotLink/plotlink-ows
 
