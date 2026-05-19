@@ -57,14 +57,28 @@ If indexing fails after a successful on-chain transaction:
 
 ## Runtime Config Resolution
 
-| Config       | Env Override                     | OWS Vault Fallback    | Default        |
-| ------------ | -------------------------------- | --------------------- | -------------- |
-| Base RPC URL | `BASE_RPC_URL`                   | `NEXT_PUBLIC_RPC_URL` | Public default |
-| PlotLink URL | `PLOTLINK_BASE_URL`              | `NEXT_PUBLIC_APP_URL` | Public default |
-| StoryFactory | `PLOTLINK_STORY_FACTORY_ADDRESS` | —                     | Hardcoded      |
-| MCV2 Bond    | `MCV2_BOND_ADDRESS`              | —                     | Hardcoded      |
+**Base RPC URL** precedence:
 
-OWS vault config is loaded from `~/.plotlink-ows/.env` as the final fallback before public defaults. Process environment variables take precedence.
+1. `BASE_RPC_URL` (process env)
+2. `NEXT_PUBLIC_RPC_URL` (process env)
+3. `NEXT_PUBLIC_RPC_URL` (loaded from `~/.plotlink-ows/.env`)
+4. Public default
+
+**PlotLink URL** precedence:
+
+1. `PLOTLINK_BASE_URL` (process env)
+2. `NEXT_PUBLIC_APP_URL` (process env)
+3. `NEXT_PUBLIC_APP_URL` (loaded from `~/.plotlink-ows/.env`)
+4. Public default
+
+**Contract addresses:**
+
+| Config       | Env Override                     | Default   |
+| ------------ | -------------------------------- | --------- |
+| StoryFactory | `PLOTLINK_STORY_FACTORY_ADDRESS` | Hardcoded |
+| MCV2 Bond    | `MCV2_BOND_ADDRESS`              | Hardcoded |
+
+OWS vault config is loaded from `~/.plotlink-ows/.env` as the final fallback before public defaults. Process environment variables at each level take precedence over the OWS vault file.
 
 ## Image Upload
 
