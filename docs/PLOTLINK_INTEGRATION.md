@@ -151,7 +151,7 @@ Contract addresses and chain config are resolved via `src/main/services/owsRunti
 | Per-file error handling in batch responses | ✓     | —                                              |
 | Upload state tracking / resume             | —     | Build PlotToon-specific state machine (#45)    |
 | Content type declaration (`cartoon`)       | ✓     | PlotToon sets at storyline level, not per-plot |
-| Reader markdown rendering                  | ✓     | Verify compatibility only (#50)                |
+| Reader markdown rendering                  | ✓     | Verify during pilot/release readiness          |
 
 ## Content Type
 
