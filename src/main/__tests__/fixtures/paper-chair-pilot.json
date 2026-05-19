@@ -1,0 +1,134 @@
+{
+  "project": {
+    "name": "Paper Chair",
+    "version": 1,
+    "createdAt": "2026-05-19T00:00:00.000Z",
+    "updatedAt": "2026-05-19T00:00:00.000Z",
+    "description": "Pilot project for end-to-end publish testing"
+  },
+  "plots": {
+    "seoul-in-all-this-noise": {
+      "version": 1,
+      "plotTitle": "Seoul, in All This Noise",
+      "synopsis": "A short approved excerpt for pilot testing.",
+      "cuts": [
+        {
+          "id": "cut-001",
+          "status": "planned",
+          "order": 0,
+          "dialogue": "Placeholder dialogue line one.",
+          "direction": "Wide establishing shot of a city street at dusk",
+          "imageState": {
+            "status": "pending",
+            "path": null,
+            "prompt": null,
+            "seed": null
+          },
+          "overlays": [
+            {
+              "id": "ovl-001",
+              "type": "text",
+              "content": "Placeholder dialogue line one.",
+              "x": 120,
+              "y": 40,
+              "width": 220,
+              "height": 48
+            }
+          ]
+        },
+        {
+          "id": "cut-002",
+          "status": "planned",
+          "order": 1,
+          "dialogue": "",
+          "direction": "Close-up on protagonist looking out a window",
+          "narration": "Placeholder narration for cut two.",
+          "imageState": {
+            "status": "pending",
+            "path": null,
+            "prompt": null,
+            "seed": null
+          },
+          "overlays": []
+        },
+        {
+          "id": "cut-003",
+          "status": "planned",
+          "order": 2,
+          "dialogue": "Placeholder dialogue line three.",
+          "direction": "Medium shot of two figures walking through a market",
+          "imageState": {
+            "status": "pending",
+            "path": null,
+            "prompt": null,
+            "seed": null
+          },
+          "overlays": [
+            {
+              "id": "ovl-002",
+              "type": "text",
+              "content": "Placeholder dialogue line three.",
+              "x": 80,
+              "y": 60,
+              "width": 200,
+              "height": 40
+            },
+            {
+              "id": "ovl-003",
+              "type": "sfx",
+              "content": "CHATTER",
+              "x": 300,
+              "y": 20,
+              "width": 100,
+              "height": 30
+            }
+          ]
+        },
+        {
+          "id": "cut-004",
+          "status": "planned",
+          "order": 3,
+          "dialogue": "Placeholder dialogue line four.",
+          "direction": "Over-the-shoulder shot looking at a neon sign",
+          "imageState": {
+            "status": "pending",
+            "path": null,
+            "prompt": null,
+            "seed": null
+          },
+          "overlays": [
+            {
+              "id": "ovl-004",
+              "type": "text",
+              "content": "Placeholder dialogue line four.",
+              "x": 100,
+              "y": 50,
+              "width": 240,
+              "height": 44
+            }
+          ]
+        },
+        {
+          "id": "cut-005",
+          "status": "planned",
+          "order": 4,
+          "dialogue": "",
+          "direction": "Wide pull-back shot of the city skyline at night",
+          "narration": "Placeholder narration closing the sequence.",
+          "imageState": {
+            "status": "pending",
+            "path": null,
+            "prompt": null,
+            "seed": null
+          },
+          "overlays": []
+        }
+      ],
+      "publishState": {
+        "published": false,
+        "exportedAt": null,
+        "format": null
+      }
+    }
+  }
+}
