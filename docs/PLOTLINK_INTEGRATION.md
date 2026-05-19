@@ -1,6 +1,6 @@
 # PlotLink Integration Reference
 
-Phase 6 implementation boundaries for PlotToon → PlotLink cartoon publishing.
+Integration reference for PlotToon → PlotLink cartoon publishing.
 
 ## Upload Endpoint
 
@@ -161,11 +161,6 @@ PlotLink content type is **storyline-level**, not per-plot:
 - `cartoon` — image-led PlotToon content
 
 PlotToon publishes as `cartoon`. This is set once per storyline on PlotLink, not per publish request.
-
-## Ticket Assessment: #49 and #50
-
-- **#49 (Wire PlotToon publish metadata to PlotLink cartoon contentType):** Requires implementation. PlotToon must send `contentType: "cartoon"` in new storyline publish requests (storyline-level, not per-plot). The PlotLink side is ready (plotlink#1212), but PlotToon's publish request builder needs to include it.
-- **#50 (Verify PlotToon markdown in PlotLink cartoon reader):** Verification-only after Phase 6 integration. Once #48 publish request is implemented, generate a test publish and confirm PlotLink's cartoon reader (plotlink#1214) renders the image sequence correctly. No new PlotToon code expected unless rendering issues surface.
 
 ## Public Repo Note
 
