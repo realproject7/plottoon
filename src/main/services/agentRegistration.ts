@@ -9,6 +9,7 @@ import {
 import { base } from 'viem/chains'
 import type { OWSCoreModule } from './owsAdapter'
 import { createOwsViemAccount } from './owsViemAccount'
+import { resolveRpcUrl } from './owsRuntimeConfig'
 import type {
   AgentRegistrationStatus,
   AgentRegistrationResult
@@ -94,7 +95,7 @@ export function validateAgentRegistrationConfig(config: AgentRegistrationConfig)
 
 export function getDefaultAgentRegistrationConfig(): AgentRegistrationConfig {
   return {
-    rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
+    rpcUrl: resolveRpcUrl(),
     registryAddress: process.env.PLOTLINK_AGENT_REGISTRY_ADDRESS || ERC8004_REGISTRY_BASE_MAINNET
   }
 }
