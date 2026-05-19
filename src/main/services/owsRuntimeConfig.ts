@@ -59,6 +59,20 @@ export function resolveOwsVaultConfig(envOverride?: Record<string, string>): OWS
   return { vaultPath, passphrase, chain }
 }
 
+export function resolveRpcUrl(owsEnv?: Record<string, string>): string {
+  if (process.env.BASE_RPC_URL) return process.env.BASE_RPC_URL
+  const ows = owsEnv ?? loadPlotlinkOwsEnv()
+  if (ows.NEXT_PUBLIC_RPC_URL) return ows.NEXT_PUBLIC_RPC_URL
+  return 'https://mainnet.base.org'
+}
+
+export function resolvePlotlinkBaseUrl(owsEnv?: Record<string, string>): string {
+  if (process.env.PLOTLINK_BASE_URL) return process.env.PLOTLINK_BASE_URL
+  const ows = owsEnv ?? loadPlotlinkOwsEnv()
+  if (ows.NEXT_PUBLIC_APP_URL) return ows.NEXT_PUBLIC_APP_URL
+  return 'https://plotlink.xyz'
+}
+
 export function resolvePublishContractDefaults(): {
   storyFactoryAddress: string
   mcv2BondAddress: string

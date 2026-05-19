@@ -2,6 +2,7 @@ import { encodeFunctionData, createWalletClient, createPublicClient, http, type 
 import { base } from 'viem/chains'
 import type { OWSCoreModule } from './owsAdapter'
 import { createOwsViemAccount } from './owsViemAccount'
+import { resolveRpcUrl } from './owsRuntimeConfig'
 import type { RoyaltyInfo, RoyaltyClaimResult } from '../../shared/royaltyFlow'
 
 export const PLOT_TOKEN_BASE_MAINNET = '0x4F567DACBF9D15A6acBe4A47FC2Ade0719Fb63C4'
@@ -57,7 +58,7 @@ export function validateRoyaltyConfig(config: RoyaltyClaimConfig): string[] {
 
 export function getDefaultRoyaltyConfig(): RoyaltyClaimConfig {
   return {
-    rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
+    rpcUrl: resolveRpcUrl(),
     mcv2BondAddress: process.env.MCV2_BOND_ADDRESS || '',
     plotTokenAddress: process.env.PLOT_TOKEN_ADDRESS || PLOT_TOKEN_BASE_MAINNET
   }

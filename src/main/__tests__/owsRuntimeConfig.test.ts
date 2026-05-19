@@ -3,6 +3,8 @@ import {
   parseEnvFile,
   resolveOwsVaultConfig,
   resolvePublishContractDefaults,
+  resolveRpcUrl,
+  resolvePlotlinkBaseUrl,
   validatePublishChain,
   BASE_CHAIN,
   STORY_FACTORY_BASE_MAINNET,
@@ -133,6 +135,78 @@ describe('resolvePublishContractDefaults', () => {
     const contracts = resolvePublishContractDefaults()
     expect(contracts.storyFactoryAddress).toBe('0xcustom1')
     expect(contracts.mcv2BondAddress).toBe('0xcustom2')
+  })
+})
+
+describe('resolveRpcUrl', () => {
+  const originalEnv = { ...process.env }
+
+  beforeEach(() => {
+    delete process.env.BASE_RPC_URL
+  })
+
+  afterEach(() => {
+    process.env = { ...originalEnv }
+  })
+
+  it('returns process env BASE_RPC_URL when set', () => {
+    process.env.BASE_RPC_URL = 'https://custom-rpc.example'
+    expect(resolveRpcUrl({ NEXT_PUBLIC_RPC_URL: 'https://ows-rpc.example' })).toBe(
+      'https://custom-rpc.example'
+    )
+  })
+
+  it('falls back to plotlink-ows NEXT_PUBLIC_RPC_URL', () => {
+    expect(resolveRpcUrl({ NEXT_PUBLIC_RPC_URL: 'https://ows-rpc.example' })).toBe(
+      'https://ows-rpc.example'
+    )
+  })
+
+  it('returns default when no env source provides a value', () => {
+    expect(resolveRpcUrl({})).toBe('https://mainnet.base.org')
+  })
+
+  it('BASE_RPC_URL wins over NEXT_PUBLIC_RPC_URL', () => {
+    process.env.BASE_RPC_URL = 'https://plottoon-rpc.example'
+    expect(resolveRpcUrl({ NEXT_PUBLIC_RPC_URL: 'https://ows-rpc.example' })).toBe(
+      'https://plottoon-rpc.example'
+    )
+  })
+})
+
+describe('resolvePlotlinkBaseUrl', () => {
+  const originalEnv = { ...process.env }
+
+  beforeEach(() => {
+    delete process.env.PLOTLINK_BASE_URL
+  })
+
+  afterEach(() => {
+    process.env = { ...originalEnv }
+  })
+
+  it('returns process env PLOTLINK_BASE_URL when set', () => {
+    process.env.PLOTLINK_BASE_URL = 'https://custom-plotlink.example'
+    expect(resolvePlotlinkBaseUrl({ NEXT_PUBLIC_APP_URL: 'https://ows-plotlink.example' })).toBe(
+      'https://custom-plotlink.example'
+    )
+  })
+
+  it('falls back to plotlink-ows NEXT_PUBLIC_APP_URL', () => {
+    expect(resolvePlotlinkBaseUrl({ NEXT_PUBLIC_APP_URL: 'https://ows-plotlink.example' })).toBe(
+      'https://ows-plotlink.example'
+    )
+  })
+
+  it('returns default when no env source provides a value', () => {
+    expect(resolvePlotlinkBaseUrl({})).toBe('https://plotlink.xyz')
+  })
+
+  it('PLOTLINK_BASE_URL wins over NEXT_PUBLIC_APP_URL', () => {
+    process.env.PLOTLINK_BASE_URL = 'https://plottoon-plotlink.example'
+    expect(resolvePlotlinkBaseUrl({ NEXT_PUBLIC_APP_URL: 'https://ows-plotlink.example' })).toBe(
+      'https://plottoon-plotlink.example'
+    )
   })
 })
 
