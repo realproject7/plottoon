@@ -10,13 +10,13 @@ import {
   generateTranscriptText,
   generateAltText
 } from '../publishGenerator'
-import { buildTranscriptArtifact, transcriptCoverage, hasAltTextForAll } from '../transcriptArtifact'
-import { validatePublishReadiness } from '../publishReadiness'
 import {
-  buildCartoonPayload,
-  validatePayload,
-  publishCartoon
-} from '../cartoonPublish'
+  buildTranscriptArtifact,
+  transcriptCoverage,
+  hasAltTextForAll
+} from '../transcriptArtifact'
+import { validatePublishReadiness } from '../publishReadiness'
+import { buildCartoonPayload, validatePayload, publishCartoon } from '../cartoonPublish'
 import type { Cut } from '../CutList'
 import type { PlottoonTerminal } from '../env'
 
@@ -181,14 +181,11 @@ describe('Full local workflow smoke test (Paper Chair pilot)', () => {
         forceOverwrite: true
       })
 
-      const binaryCalls = (
-        window.plottoon.fs.writeProjectFileBinary as ReturnType<typeof vi.fn>
-      ).mock.calls
+      const binaryCalls = (window.plottoon.fs.writeProjectFileBinary as ReturnType<typeof vi.fn>)
+        .mock.calls
       expect(binaryCalls).toHaveLength(5)
 
-      const textCalls = (
-        window.plottoon.fs.writeProjectFile as ReturnType<typeof vi.fn>
-      ).mock.calls
+      const textCalls = (window.plottoon.fs.writeProjectFile as ReturnType<typeof vi.fn>).mock.calls
       expect(textCalls).toHaveLength(6) // 5 metas + 1 manifest
     })
   })
@@ -343,14 +340,19 @@ describe('Full local workflow smoke test (Paper Chair pilot)', () => {
         url: `https://plotlink.example/mock/${c.id}.webp`
       }))
 
-      const payload = buildCartoonPayload(cuts, urls, {
-        type: 'new',
-        title: PLOT_TITLE
-      }, {
-        plotTitle: PLOT_TITLE,
-        isDryRun: false,
-        includeTranscript: false
-      })
+      const payload = buildCartoonPayload(
+        cuts,
+        urls,
+        {
+          type: 'new',
+          title: PLOT_TITLE
+        },
+        {
+          plotTitle: PLOT_TITLE,
+          isDryRun: false,
+          includeTranscript: false
+        }
+      )
 
       expect(payload.contentType).toBe('cartoon')
       expect(payload.imageCount).toBe(5)
@@ -368,14 +370,19 @@ describe('Full local workflow smoke test (Paper Chair pilot)', () => {
         url: `https://plotlink.example/mock/${c.id}.webp`
       }))
 
-      const payload = buildCartoonPayload(cuts, urls, {
-        type: 'new',
-        title: PLOT_TITLE
-      }, {
-        plotTitle: PLOT_TITLE,
-        isDryRun: true,
-        includeTranscript: false
-      })
+      const payload = buildCartoonPayload(
+        cuts,
+        urls,
+        {
+          type: 'new',
+          title: PLOT_TITLE
+        },
+        {
+          plotTitle: PLOT_TITLE,
+          isDryRun: true,
+          includeTranscript: false
+        }
+      )
 
       const result = await publishCartoon(payload, { mode: 'mock' })
 
@@ -390,13 +397,18 @@ describe('Full local workflow smoke test (Paper Chair pilot)', () => {
       const cuts = loadPilotCuts()
       const urls = cuts.map((c) => ({ cutId: c.id, url: '' }))
 
-      const payload = buildCartoonPayload(cuts, urls, {
-        type: 'new',
-        title: PLOT_TITLE
-      }, {
-        plotTitle: PLOT_TITLE,
-        isDryRun: true
-      })
+      const payload = buildCartoonPayload(
+        cuts,
+        urls,
+        {
+          type: 'new',
+          title: PLOT_TITLE
+        },
+        {
+          plotTitle: PLOT_TITLE,
+          isDryRun: true
+        }
+      )
 
       const errors = validatePayload(payload)
       expect(errors).toHaveLength(0)
@@ -409,13 +421,18 @@ describe('Full local workflow smoke test (Paper Chair pilot)', () => {
         url: `https://plotlink.example/mock/${c.id}.webp`
       }))
 
-      const payload = buildCartoonPayload(cuts, urls, {
-        type: 'new',
-        title: PLOT_TITLE
-      }, {
-        plotTitle: PLOT_TITLE,
-        isDryRun: true
-      })
+      const payload = buildCartoonPayload(
+        cuts,
+        urls,
+        {
+          type: 'new',
+          title: PLOT_TITLE
+        },
+        {
+          plotTitle: PLOT_TITLE,
+          isDryRun: true
+        }
+      )
 
       const persistFn = vi.fn().mockResolvedValue(undefined)
       await publishCartoon(payload, { mode: 'mock', persist: persistFn })
@@ -491,14 +508,19 @@ describe('Full local workflow smoke test (Paper Chair pilot)', () => {
         cutId: c.id,
         url: `https://plotlink.example/mock/${c.id}.webp`
       }))
-      const payload = buildCartoonPayload(cuts, mockUrls, {
-        type: 'new',
-        title: PLOT_TITLE
-      }, {
-        plotTitle: PLOT_TITLE,
-        isDryRun: true,
-        includeTranscript: false
-      })
+      const payload = buildCartoonPayload(
+        cuts,
+        mockUrls,
+        {
+          type: 'new',
+          title: PLOT_TITLE
+        },
+        {
+          plotTitle: PLOT_TITLE,
+          isDryRun: true,
+          includeTranscript: false
+        }
+      )
       const publishResult = await publishCartoon(payload, { mode: 'mock' })
       expect(publishResult.success).toBe(true)
       expect(publishResult.isDryRun).toBe(true)
