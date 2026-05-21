@@ -32,29 +32,6 @@ function formatDate(iso: string): string {
   })
 }
 
-const cardStyle: React.CSSProperties = {
-  background: 'var(--color-surface)',
-  borderRadius: 'var(--radius-md)',
-  border: '1px solid var(--color-border)',
-  padding: 'var(--space-4)'
-}
-
-const statLabelStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: 'var(--color-text-muted)',
-  fontWeight: 500,
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.04em'
-}
-
-const statValueStyle: React.CSSProperties = {
-  fontSize: 24,
-  fontFamily: 'var(--font-display)',
-  fontWeight: 600,
-  color: 'var(--color-text)',
-  lineHeight: 1.2
-}
-
 function StatCard({
   label,
   value,
@@ -65,68 +42,31 @@ function StatCard({
   accent?: boolean
 }) {
   return (
-    <div style={cardStyle}>
-      <div style={statLabelStyle}>{label}</div>
-      <div
-        style={{
-          ...statValueStyle,
-          color: accent ? 'var(--color-accent)' : 'var(--color-text)'
-        }}
-      >
-        {value}
-      </div>
+    <div className="dash-card">
+      <div className="dash-card__label">{label}</div>
+      <div className={`dash-card__value${accent ? ' dash-card__value--accent' : ''}`}>{value}</div>
     </div>
   )
 }
 
 function PlotStateBadge({ state }: { state: string }) {
-  const colors: Record<string, { bg: string; text: string }> = {
-    published: { bg: '#dcfce7', text: '#166534' },
-    'published-not-indexed': { bg: '#fef9c3', text: '#854d0e' },
-    failed: { bg: '#fee2e2', text: '#991b1b' },
-    draft: { bg: '#f4f4f5', text: '#71717a' },
-    ready: { bg: '#e0f2fe', text: '#075985' },
-    publishing: { bg: '#fef3c7', text: '#92400e' }
-  }
-  const c = colors[state] ?? colors.draft
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        fontSize: 11,
-        fontWeight: 500,
-        padding: '1px 6px',
-        borderRadius: 'var(--radius-sm)',
-        background: c.bg,
-        color: c.text
-      }}
-    >
-      {state}
-    </span>
-  )
+  return <span className={`plot-state plot-state--${state}`}>{state}</span>
 }
 
 function PlotRow({ plot }: { plot: DashboardPlotEntry }) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-3)',
-        padding: 'var(--space-2) 0',
-        borderBottom: '1px solid var(--color-border)',
-        fontSize: 13
-      }}
-    >
-      <span style={{ fontWeight: 500, flex: 1 }}>{plot.plotTitle}</span>
-      <span style={{ color: 'var(--color-text-muted)' }}>{plot.cutCount} cuts</span>
+    <div className="plot-row">
+      <span className="plot-row__title" title={plot.plotTitle}>
+        {plot.plotTitle}
+      </span>
+      <span className="plot-row__count">{plot.cutCount} cuts</span>
       <PlotStateBadge state={plot.plotState} />
       {plot.publishResult?.txHash && (
         <a
           href={`https://basescan.org/tx/${plot.publishResult.txHash}`}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: 'var(--color-text-muted)', fontSize: 12, textDecoration: 'none' }}
+          className="plot-row__link"
         >
           Tx
         </a>
@@ -136,7 +76,7 @@ function PlotRow({ plot }: { plot: DashboardPlotEntry }) {
           href={plot.publishResult.plotlinkUrl}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: 'var(--color-accent)', fontSize: 12, textDecoration: 'none' }}
+          className="plot-row__link plot-row__link--accent"
         >
           View →
         </a>
@@ -147,22 +87,17 @@ function PlotRow({ plot }: { plot: DashboardPlotEntry }) {
 
 function StorylineCard({ group }: { group: DashboardStorylineGroup }) {
   return (
-    <div style={{ ...cardStyle, marginBottom: 'var(--space-3)' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--space-2)'
-        }}
-      >
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{group.projectName}</div>
-          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>
+    <div className="dash-card dash-card--group">
+      <div className="dash-card__group-header">
+        <div style={{ minWidth: 0 }}>
+          <div className="dash-card__group-title" title={group.projectName}>
+            {group.projectName}
+          </div>
+          <div className="dash-card__group-id" title={group.storylineId}>
             {truncateAddress(group.storylineId)}
           </div>
         </div>
-        <div style={{ textAlign: 'right', fontSize: 12 }}>
+        <div className="dash-card__group-meta">
           <div>
             {group.publishedCount} published
             {group.notIndexedCount > 0 && (
@@ -172,7 +107,7 @@ function StorylineCard({ group }: { group: DashboardStorylineGroup }) {
               </span>
             )}
           </div>
-          <div style={{ color: 'var(--color-text-muted)' }}>
+          <div className="dash-card__group-meta-muted">
             Cost: {formatGasWei(group.totalPublishCostWei)}
           </div>
         </div>
@@ -186,8 +121,8 @@ function StorylineCard({ group }: { group: DashboardStorylineGroup }) {
 
 function LocalGroupCard({ group }: { group: DashboardLocalGroup }) {
   return (
-    <div style={{ ...cardStyle, marginBottom: 'var(--space-3)' }}>
-      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 'var(--space-2)' }}>
+    <div className="dash-card dash-card--group">
+      <div className="dash-card__group-title" title={group.projectName}>
         {group.projectName}
       </div>
       {group.plots.map((plot) => (
@@ -200,37 +135,21 @@ function LocalGroupCard({ group }: { group: DashboardLocalGroup }) {
 function WalletCard({ wallet }: { wallet: DashboardWalletSummary }) {
   if (!wallet.connected) {
     return (
-      <div style={cardStyle}>
-        <div style={statLabelStyle}>Wallet</div>
-        <div
-          style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}
-        >
-          Not connected
-        </div>
+      <div className="dash-card">
+        <div className="dash-card__label">Wallet</div>
+        <div className="dash-card__sub">Not connected</div>
       </div>
     )
   }
   return (
-    <div style={cardStyle}>
-      <div style={statLabelStyle}>Wallet</div>
-      <div
-        style={{
-          fontFamily: 'monospace',
-          fontSize: 13,
-          marginTop: 'var(--space-1)'
-        }}
-      >
+    <div className="dash-card">
+      <div className="dash-card__label">Wallet</div>
+      <div className="dash-card__mono" title={wallet.address ?? undefined}>
         {truncateAddress(wallet.address!)}
       </div>
-      <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{wallet.source}</div>
-      {wallet.balanceWei && (
-        <div style={{ fontSize: 13, fontWeight: 500, marginTop: 'var(--space-1)' }}>
-          {formatWei(wallet.balanceWei)}
-        </div>
-      )}
-      {wallet.balanceError && (
-        <div style={{ fontSize: 12, color: 'var(--color-error)' }}>{wallet.balanceError}</div>
-      )}
+      <div className="dash-card__sub">{wallet.source}</div>
+      {wallet.balanceWei && <div className="dash-card__value">{formatWei(wallet.balanceWei)}</div>}
+      {wallet.balanceError && <div className="dash-card__danger">{wallet.balanceError}</div>}
     </div>
   )
 }
@@ -301,11 +220,9 @@ function RoyaltyClaimCard({
 
   if (dashboardRoyalty.error && !info) {
     return (
-      <div style={cardStyle}>
-        <div style={statLabelStyle}>Royalties</div>
-        <div style={{ fontSize: 12, color: 'var(--color-error)', marginTop: 'var(--space-1)' }}>
-          {dashboardRoyalty.error}
-        </div>
+      <div className="dash-card">
+        <div className="dash-card__label">Royalties</div>
+        <div className="dash-card__danger">{dashboardRoyalty.error}</div>
       </div>
     )
   }
@@ -316,15 +233,15 @@ function RoyaltyClaimCard({
   if (!earned && !dashboardRoyalty.earnedWei) return null
 
   return (
-    <div style={cardStyle}>
-      <div style={statLabelStyle}>Royalties</div>
+    <div className="dash-card">
+      <div className="dash-card__label">Royalties</div>
       {earned && (
-        <div style={{ fontSize: 13, marginTop: 'var(--space-1)' }}>
-          <span style={{ fontWeight: 500 }}>Earned:</span> {formatWei(earned)}
+        <div className="dash-card__sub">
+          <span style={{ fontWeight: 500, color: 'var(--fg)' }}>Earned:</span> {formatWei(earned)}
         </div>
       )}
       {unclaimed && unclaimed !== '0' && (
-        <div style={{ fontSize: 13, color: 'var(--color-accent)' }}>
+        <div className="dash-card__sub" style={{ color: 'var(--accent)' }}>
           <span style={{ fontWeight: 500 }}>Unclaimed:</span> {formatWei(unclaimed)}
         </div>
       )}
@@ -485,15 +402,14 @@ export function Dashboard() {
   }, [])
 
   if (loadState === 'loading') {
-    return <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>Loading dashboard…</div>
+    return <div className="loading-state">Loading dashboard…</div>
   }
 
   if (loadState === 'error' || !data) {
     return (
-      <div>
-        <div style={{ color: 'var(--color-error)', fontSize: 13, marginBottom: 'var(--space-3)' }}>
-          {errorMsg ?? 'Failed to load dashboard'}
-        </div>
+      <div className="error-panel">
+        <div className="error-panel__title">Couldn't load dashboard</div>
+        <p className="error-panel__message">{errorMsg ?? 'Failed to load dashboard'}</p>
         <button type="button" className="btn-primary" onClick={load}>
           Retry
         </button>
@@ -506,47 +422,18 @@ export function Dashboard() {
   const isEmpty = !hasStorylines && !hasLocalGroups
 
   return (
-    <div style={{ maxWidth: 900 }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--space-6)'
-        }}
-      >
-        <h1
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 20,
-            fontWeight: 600,
-            letterSpacing: '-0.01em'
-          }}
-        >
-          Dashboard
-        </h1>
-        <button
-          type="button"
-          onClick={load}
-          style={{
-            all: 'unset',
-            fontSize: 12,
-            color: 'var(--color-text-muted)',
-            cursor: 'pointer'
-          }}
-        >
+    <div className="screen">
+      <div className="screen__header">
+        <div>
+          <h1 className="screen__title">Dashboard</h1>
+          <p className="screen__subtitle">Counts, wallet, and recent publish activity.</p>
+        </div>
+        <button type="button" className="text-btn" onClick={load}>
           Refresh
         </button>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: 'var(--space-3)',
-          marginBottom: 'var(--space-6)'
-        }}
-      >
+      <div className="stat-grid">
         <StatCard label="Projects" value={data.counts.totalProjects} />
         <StatCard label="Plots" value={data.counts.totalPlots} />
         <StatCard label="Published" value={data.counts.publishedPlots} accent />
@@ -557,26 +444,12 @@ export function Dashboard() {
         )}
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: data.wallet.connected ? '1fr 1fr' : '1fr',
-          gap: 'var(--space-3)',
-          marginBottom: 'var(--space-6)'
-        }}
-      >
+      <div className="dash-grid">
         <WalletCard wallet={data.wallet} />
         {data.tokenPrice.ethUsd && (
-          <div style={cardStyle}>
-            <div style={statLabelStyle}>ETH Price</div>
-            <div
-              style={{
-                fontSize: 18,
-                fontFamily: 'var(--font-display)',
-                fontWeight: 600,
-                marginTop: 'var(--space-1)'
-              }}
-            >
+          <div className="dash-card">
+            <div className="dash-card__label">ETH Price</div>
+            <div className="dash-card__value">
               ${data.tokenPrice.ethUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             </div>
           </div>
@@ -585,31 +458,14 @@ export function Dashboard() {
       </div>
 
       {isEmpty && (
-        <div
-          style={{
-            ...cardStyle,
-            textAlign: 'center',
-            padding: 'var(--space-8)',
-            color: 'var(--color-text-muted)',
-            fontSize: 13
-          }}
-        >
+        <div className="dash-empty">
           No plots yet. Create a project and add some plots to get started.
         </div>
       )}
 
       {hasStorylines && (
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              marginBottom: 'var(--space-3)',
-              color: 'var(--color-text-secondary)'
-            }}
-          >
-            Storylines
-          </h2>
+        <section className="screen__section">
+          <div className="screen__section-label">Storylines</div>
           {data.storylines.map((g) => (
             <StorylineCard key={g.storylineId} group={g} />
           ))}
@@ -617,26 +473,15 @@ export function Dashboard() {
       )}
 
       {hasLocalGroups && (
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              marginBottom: 'var(--space-3)',
-              color: 'var(--color-text-secondary)'
-            }}
-          >
-            Local Projects
-          </h2>
+        <section className="screen__section">
+          <div className="screen__section-label">Local Projects</div>
           {data.localGroups.map((g) => (
             <LocalGroupCard key={g.groupKey} group={g} />
           ))}
         </section>
       )}
 
-      <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'right' }}>
-        Updated {formatDate(data.generatedAt)}
-      </div>
+      <div className="screen__meta">Updated {formatDate(data.generatedAt)}</div>
     </div>
   )
 }

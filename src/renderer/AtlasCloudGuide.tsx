@@ -1,26 +1,15 @@
 export function AtlasCloudGuide(): JSX.Element {
   return (
-    <div style={{ maxWidth: 640 }}>
-      <h2
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontWeight: 'var(--font-weight-semibold)' as never,
-          fontSize: 18,
-          marginBottom: 'var(--space-2)'
-        }}
-      >
-        AtlasCloud Backend Guide
-      </h2>
-      <p
-        style={{
-          color: 'var(--color-text-secondary)',
-          fontSize: 13,
-          marginBottom: 'var(--space-6)'
-        }}
-      >
-        Advanced image generation using AtlasCloud-style API backends, managed entirely by your
-        connected Claude or Codex agent.
-      </p>
+    <div className="screen screen--narrow">
+      <div className="screen__header">
+        <div>
+          <h2 className="screen__title">AtlasCloud Backend Guide</h2>
+          <p className="screen__subtitle">
+            Advanced image generation using AtlasCloud-style API backends, managed entirely by your
+            connected Claude or Codex agent.
+          </p>
+        </div>
+      </div>
 
       <GuideSection title="API Key Configuration">
         <p>
@@ -131,82 +120,24 @@ function GuideSection({
   children: React.ReactNode
 }): JSX.Element {
   return (
-    <div style={{ marginBottom: 'var(--space-6)' }}>
-      <h3
-        style={{
-          fontSize: 13,
-          fontWeight: 'var(--font-weight-medium)' as never,
-          color: 'var(--color-text-secondary)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          marginBottom: 'var(--space-2)'
-        }}
-      >
-        {title}
-      </h3>
-      <div
-        style={{
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-4)',
-          fontSize: 13,
-          lineHeight: 1.6
-        }}
-      >
-        {children}
-      </div>
+    <div className="docs-section">
+      <h3 className="docs-section__title">{title}</h3>
+      <div className="docs-section__body">{children}</div>
     </div>
   )
 }
 
 function Code({ children }: { children: React.ReactNode }): JSX.Element {
-  return (
-    <code
-      style={{
-        fontFamily: 'var(--font-mono, monospace)',
-        fontSize: 12,
-        background: 'var(--color-bg)',
-        padding: '1px 4px',
-        borderRadius: 'var(--radius-sm, 2px)'
-      }}
-    >
-      {children}
-    </code>
-  )
+  return <code className="inline-code">{children}</code>
 }
 
 function CodeBlock({ children }: { children: React.ReactNode }): JSX.Element {
-  return (
-    <pre
-      style={{
-        fontFamily: 'var(--font-mono, monospace)',
-        fontSize: 12,
-        background: 'var(--color-bg)',
-        padding: 'var(--space-3)',
-        borderRadius: 'var(--radius-sm, 2px)',
-        margin: 'var(--space-2) 0',
-        overflowX: 'auto'
-      }}
-    >
-      {children}
-    </pre>
-  )
+  return <pre className="code-block">{children}</pre>
 }
 
 function WarningBox({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <div
-      role="alert"
-      style={{
-        background: 'var(--color-warning-bg, #fff8e1)',
-        border: '1px solid var(--color-warning-border, #ffe082)',
-        borderRadius: 'var(--radius-sm, 2px)',
-        padding: 'var(--space-3)',
-        margin: 'var(--space-2) 0',
-        fontSize: 12
-      }}
-    >
+    <div role="alert" className="warning-box">
       {children}
     </div>
   )
