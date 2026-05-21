@@ -262,16 +262,7 @@ function RoyaltyClaimCard({
             <button type="button" className="btn-primary" onClick={handleClaim}>
               Confirm Claim
             </button>
-            <button
-              type="button"
-              onClick={() => setConfirmOpen(false)}
-              style={{
-                all: 'unset',
-                fontSize: 12,
-                color: 'var(--color-text-muted)',
-                cursor: 'pointer'
-              }}
-            >
+            <button type="button" className="text-btn" onClick={() => setConfirmOpen(false)}>
               Cancel
             </button>
           </div>
