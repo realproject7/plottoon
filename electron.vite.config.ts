@@ -15,7 +15,13 @@ export default defineConfig({
     build: {
       outDir: 'dist/preload',
       lib: {
-        entry: 'src/preload/index.ts'
+        entry: 'src/preload/index.ts',
+        formats: ['cjs']
+      },
+      rollupOptions: {
+        output: {
+          entryFileNames: '[name].cjs'
+        }
       }
     }
   },
