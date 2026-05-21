@@ -20,10 +20,10 @@ function reducer(_state: State, action: Action): State {
   }
 }
 
-const STATUS_INDICATOR: Record<CheckStatus, { symbol: string; color: string }> = {
-  pass: { symbol: 'OK', color: 'var(--color-success)' },
-  fail: { symbol: 'FAIL', color: 'var(--color-error)' },
-  info: { symbol: 'INFO', color: 'var(--color-text-muted)' }
+const STATUS_INDICATOR: Record<CheckStatus, { symbol: string; modifier: string }> = {
+  pass: { symbol: 'OK', modifier: 'check-row__indicator--pass' },
+  fail: { symbol: 'FAIL', modifier: 'check-row__indicator--fail' },
+  info: { symbol: 'INFO', modifier: 'check-row__indicator--info' }
 }
 
 function augmentWithExportChecks(report: FirstRunReport): FirstRunReport {
@@ -78,17 +78,14 @@ export function CapabilityReport(): JSX.Element {
   }, [])
 
   if (state.phase === 'loading') {
-    return (
-      <div style={{ color: 'var(--color-text-muted)', padding: 'var(--space-4)' }}>
-        Running capability checks...
-      </div>
-    )
+    return <div className="loading-state">Running capability checks...</div>
   }
 
   if (state.phase === 'error') {
     return (
-      <div style={{ color: 'var(--color-error)', padding: 'var(--space-4)' }}>
-        Failed to load capability report: {state.error}
+      <div className="error-panel">
+        <div className="error-panel__title">Capability checks failed</div>
+        <p className="error-panel__message">{state.error}</p>
       </div>
     )
   }
@@ -96,71 +93,30 @@ export function CapabilityReport(): JSX.Element {
   const report = state.report!
 
   return (
-    <div style={{ maxWidth: 640 }}>
-      <h2
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontWeight: 'var(--font-weight-semibold)' as never,
-          fontSize: 18,
-          marginBottom: 'var(--space-6)'
-        }}
-      >
-        Capability Report
-      </h2>
+    <div className="screen screen--narrow">
+      <div className="screen__header">
+        <div>
+          <h2 className="screen__title">Capability Report</h2>
+          <p className="screen__subtitle">
+            Local capability checks for CLI tools, image export, and integrations.
+          </p>
+        </div>
+      </div>
 
       {report.sections.map((section) => (
-        <div key={section.title} style={{ marginBottom: 'var(--space-6)' }}>
-          <h3
-            style={{
-              fontSize: 13,
-              fontWeight: 'var(--font-weight-medium)' as never,
-              color: 'var(--color-text-secondary)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-              marginBottom: 'var(--space-2)'
-            }}
-          >
-            {section.title}
-          </h3>
-          <div
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-md)',
-              overflow: 'hidden'
-            }}
-          >
-            {section.checks.map((check, i) => {
+        <div key={section.title} className="screen__section">
+          <div className="screen__section-label">{section.title}</div>
+          <div className="check-panel">
+            {section.checks.map((check) => {
               const indicator = STATUS_INDICATOR[check.status]
               return (
-                <div
-                  key={check.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-3)',
-                    padding: 'var(--space-3) var(--space-4)',
-                    borderTop: i > 0 ? '1px solid var(--color-border)' : 'none'
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 'var(--font-weight-semibold)' as never,
-                      color: indicator.color,
-                      minWidth: 36,
-                      textAlign: 'center'
-                    }}
-                  >
+                <div key={check.id} className="check-row">
+                  <span className={`check-row__indicator ${indicator.modifier}`}>
                     {indicator.symbol}
                   </span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 'var(--font-weight-medium)' as never }}>
-                      {check.label}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                      {check.detail}
-                    </div>
+                  <div className="check-row__body">
+                    <div className="check-row__label">{check.label}</div>
+                    <div className="check-row__detail">{check.detail}</div>
                   </div>
                 </div>
               )
@@ -169,13 +125,7 @@ export function CapabilityReport(): JSX.Element {
         </div>
       ))}
 
-      <div
-        style={{
-          fontSize: 11,
-          color: 'var(--color-text-muted)',
-          marginTop: 'var(--space-2)'
-        }}
-      >
+      <div className="screen__meta">
         Generated at {new Date(report.generatedAt).toLocaleString()}
       </div>
     </div>
