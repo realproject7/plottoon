@@ -100,7 +100,7 @@ export function CutPreview({ cut, projectId, onImportCleanImage }: CutPreviewPro
             height: 480,
             background: 'var(--color-surface)',
             border: '2px dashed var(--color-border)',
-            borderRadius: 'var(--radius-md, 8px)',
+            borderRadius: 'var(--radius-md)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
@@ -177,13 +177,11 @@ export function CutPreview({ cut, projectId, onImportCleanImage }: CutPreviewPro
           gap: 'var(--space-2)'
         }}
       >
-        <div style={{ fontSize: 13, color: 'var(--color-error, #e53e3e)' }}>
-          {asyncState.message}
-        </div>
+        <div style={{ fontSize: 13, color: 'var(--danger)' }}>{asyncState.message}</div>
         <div
           style={{
             fontSize: 11,
-            fontFamily: 'var(--font-mono, monospace)',
+            fontFamily: 'var(--font-mono)',
             color: 'var(--color-text-muted)',
             maxWidth: '50ch',
             textAlign: 'center',
