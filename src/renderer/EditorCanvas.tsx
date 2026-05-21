@@ -250,13 +250,13 @@ export function EditorCanvas({
                 ...presetStyle,
                 ...(isSelected
                   ? {
-                      outline: '2px solid var(--color-accent, #3b82f6)',
+                      outline: '2px solid var(--accent)',
                       outlineOffset: '1px'
                     }
                   : {}),
                 ...(isOverflow
                   ? {
-                      boxShadow: 'inset 0 0 0 2px var(--color-error, #e53e3e)'
+                      boxShadow: 'inset 0 0 0 2px var(--danger)'
                     }
                   : {})
               }}

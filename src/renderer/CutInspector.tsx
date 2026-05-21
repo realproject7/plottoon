@@ -225,7 +225,7 @@ export function CutInspector({
                 <div
                   style={{
                     fontSize: 10,
-                    fontFamily: 'var(--font-mono, monospace)',
+                    fontFamily: 'var(--font-mono)',
                     color: 'var(--color-text-muted)',
                     wordBreak: 'break-all'
                   }}
@@ -394,7 +394,7 @@ export function CutInspector({
                   onClick={() => onDeleteOverlay(cut.id, overlay.id)}
                   style={{
                     ...inspectorBtnStyle,
-                    color: 'var(--color-error, #e53e3e)',
+                    color: 'var(--danger)',
                     marginTop: 4
                   }}
                 >
@@ -465,7 +465,7 @@ export function CutInspector({
               style={{
                 fontSize: 11,
                 fontWeight: 'var(--font-weight-semibold)' as never,
-                color: 'var(--color-error, #e53e3e)',
+                color: 'var(--danger)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
                 marginBottom: 4
@@ -517,7 +517,7 @@ export function CutInspector({
               style={{
                 fontSize: 11,
                 fontWeight: 'var(--font-weight-semibold)' as never,
-                color: report.ready ? 'var(--color-text-muted)' : 'var(--color-error, #e53e3e)',
+                color: report.ready ? 'var(--color-text-muted)' : 'var(--danger)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
                 marginBottom: 4
@@ -531,8 +531,7 @@ export function CutInspector({
                 data-testid={`readiness-${c.id}`}
                 style={{
                   fontSize: 11,
-                  color:
-                    c.level === 'block' ? 'var(--color-error, #e53e3e)' : 'var(--color-text-muted)',
+                  color: c.level === 'block' ? 'var(--danger)' : 'var(--color-text-muted)',
                   marginBottom: 2
                 }}
               >
@@ -571,7 +570,7 @@ function Field({
       <div
         style={{
           fontSize: 12,
-          fontFamily: mono ? 'var(--font-mono, monospace)' : undefined,
+          fontFamily: mono ? 'var(--font-mono)' : undefined,
           wordBreak: 'break-word'
         }}
       >
@@ -606,7 +605,7 @@ function NumberInput({
         style={{
           width: '100%',
           fontSize: 11,
-          fontFamily: 'var(--font-mono, monospace)',
+          fontFamily: 'var(--font-mono)',
           padding: '2px 4px',
           border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius-sm)',

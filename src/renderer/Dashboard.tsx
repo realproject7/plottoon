@@ -335,9 +335,9 @@ function RoyaltyClaimCard({
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
-                      color: 'var(--color-text-muted)',
+                      color: 'var(--muted)',
                       textDecoration: 'none',
-                      fontFamily: 'monospace'
+                      fontFamily: 'var(--font-mono)'
                     }}
                   >
                     {claim.txHash.slice(0, 10)}…
