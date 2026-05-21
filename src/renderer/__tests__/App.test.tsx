@@ -174,7 +174,13 @@ afterEach(cleanup)
 describe('App', () => {
   it('renders the PlotToon shell with sidebar branding', async () => {
     render(<App />)
-    await waitFor(() => expect(screen.getByText('PlotToon')).toBeDefined())
+    await waitFor(() => {
+      // The wordmark splits "Plot" and "Toon" across spans so the accent half
+      // can render in `--accent`; match by the joined textContent of the
+      // brand element rather than a single text node.
+      const brand = document.querySelector('.app-shell__brand')
+      expect(brand?.textContent).toBe('PlotToon')
+    })
   })
 
   it('renders the project list heading and nav', async () => {

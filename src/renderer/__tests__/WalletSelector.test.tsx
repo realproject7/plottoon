@@ -32,7 +32,7 @@ describe('WalletSelector', () => {
         .mockResolvedValue({ options: [{ type: 'create-new', source: 'plottoon-writer' }] })
     })
     render(<WalletSelector />)
-    const button = await screen.findByRole('button', { name: 'Create new PlotToon wallet' })
+    const button = await screen.findByRole('button', { name: 'Create new wallet' })
     expect((button as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -51,7 +51,7 @@ describe('WalletSelector', () => {
     })
     render(<WalletSelector />)
     const button = await screen.findByRole('button', {
-      name: 'Create new PlotToon wallet (unavailable)'
+      name: 'Create wallet (unavailable)'
     })
     expect((button as HTMLButtonElement).disabled).toBe(true)
     expect(screen.getByText('OWS native module is not available')).toBeDefined()
@@ -67,7 +67,7 @@ describe('WalletSelector', () => {
         .mockResolvedValue({ success: false, error: 'OWS native module is not available' })
     })
     render(<WalletSelector />)
-    const button = await screen.findByRole('button', { name: 'Create new PlotToon wallet' })
+    const button = await screen.findByRole('button', { name: 'Create new wallet' })
     fireEvent.click(button)
     await waitFor(() => {
       expect(screen.getByText('OWS native module is not available')).toBeDefined()
@@ -82,7 +82,7 @@ describe('WalletSelector', () => {
       connect: vi.fn().mockRejectedValue(new Error('ipc bridge unavailable'))
     })
     render(<WalletSelector />)
-    const button = await screen.findByRole('button', { name: 'Create new PlotToon wallet' })
+    const button = await screen.findByRole('button', { name: 'Create new wallet' })
     fireEvent.click(button)
     await waitFor(() => {
       expect(screen.getByText('ipc bridge unavailable')).toBeDefined()
@@ -107,7 +107,7 @@ describe('WalletSelector', () => {
     })
     render(<WalletSelector />)
     const button = await screen.findByRole('button', {
-      name: 'Create new PlotToon wallet (unavailable)'
+      name: 'Create wallet (unavailable)'
     })
     fireEvent.click(button)
     await waitFor(() => {
