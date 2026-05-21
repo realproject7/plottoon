@@ -27,15 +27,11 @@ function launchElectron() {
       reject(new Error(`Smoke test timed out after ${TIMEOUT_MS}ms`))
     }, TIMEOUT_MS)
 
-    const child = spawn(
-      electronPath,
-      [resolve(ROOT, 'scripts', 'smoke-preload-entry.mjs')],
-      {
-        cwd: ROOT,
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
-        stdio: ['ignore', 'pipe', 'pipe']
-      }
-    )
+    const child = spawn(electronPath, [resolve(ROOT, 'scripts', 'smoke-preload-entry.mjs')], {
+      cwd: ROOT,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
 
     let stdout = ''
     let stderr = ''
