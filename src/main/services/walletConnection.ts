@@ -1,3 +1,5 @@
+import { redactSecrets } from './actionLog'
+
 export type WalletSource = 'plottoon-writer' | 'plotlink-writer'
 
 export interface WalletMetadata {
@@ -110,13 +112,18 @@ export function walletMetadataIsSafe(wallet: WalletMetadata): boolean {
   return !secrets.some((s) => json.toLowerCase().includes(s))
 }
 
+const WALLET_SECRET_TERMS = ['private', 'mnemonic', 'seed', 'passphrase', 'secret']
+
 export function sanitizeWalletErrorMessage(message: string): string {
-  const secrets = ['private', 'mnemonic', 'seed', 'passphrase', 'secret']
   const lower = message.toLowerCase()
-  if (secrets.some((s) => lower.includes(s))) {
+  // Wallet-material terms imply the surrounding text may quote or describe a
+  // private key / mnemonic / seed / passphrase. Drop the whole message.
+  if (WALLET_SECRET_TERMS.some((s) => lower.includes(s))) {
     return 'Wallet operation failed'
   }
-  return message
+  // Otherwise strip credential-shaped substrings (api_key=..., token=...,
+  // Bearer ..., sk-..., xox?-...) using the shared action-log patterns.
+  return redactSecrets(message)
 }
 
 export function isOwsUnavailableError(error: unknown): boolean {

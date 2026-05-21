@@ -144,7 +144,7 @@ describe('sanitizeWalletErrorMessage', () => {
     )
   })
 
-  it('redacts messages that contain secret-like terms', () => {
+  it('redacts messages that contain wallet-material terms', () => {
     expect(sanitizeWalletErrorMessage('failed to decode mnemonic phrase')).toBe(
       'Wallet operation failed'
     )
@@ -152,6 +152,22 @@ describe('sanitizeWalletErrorMessage', () => {
     expect(sanitizeWalletErrorMessage('private key invalid')).toBe('Wallet operation failed')
     expect(sanitizeWalletErrorMessage('seed corrupt')).toBe('Wallet operation failed')
     expect(sanitizeWalletErrorMessage('secret store locked')).toBe('Wallet operation failed')
+  })
+
+  it('strips credential-shaped substrings from otherwise-passable messages', () => {
+    const cases: Array<[string, RegExp]> = [
+      ['OWS call failed: api_key=abcdef-1234', /api_key=abcdef-1234/i],
+      ['rejected token=eyJhbGciOiJIUzI1', /token=eyJhbGciOiJIUzI1/i],
+      ['Login failed password=hunter2', /password=hunter2/],
+      ['Authorization: Bearer eyJhbGciOi.payload.sig', /Bearer\s+eyJ/i],
+      ['OpenAI returned sk-abcdefghijklmnopqrstuvwxyz', /sk-abcdef/i],
+      ['Slack rejected xoxb-1234-abcd-token-value', /xoxb-1234-abcd-token-value/i]
+    ]
+    for (const [input, leakedPattern] of cases) {
+      const out = sanitizeWalletErrorMessage(input)
+      expect(out, `input: ${input}`).toContain('[REDACTED]')
+      expect(out, `input: ${input}`).not.toMatch(leakedPattern)
+    }
   })
 })
 
