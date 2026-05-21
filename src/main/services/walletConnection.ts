@@ -1,3 +1,5 @@
+import { redactSecrets } from './actionLog'
+
 export type WalletSource = 'plottoon-writer' | 'plotlink-writer'
 
 export interface WalletMetadata {
@@ -12,6 +14,8 @@ export interface WalletConnectionOption {
   source: WalletSource
   address?: string
   name?: string
+  available?: boolean
+  unavailableReason?: string
 }
 
 export interface WalletConnectionResult {
@@ -106,6 +110,25 @@ export function walletMetadataIsSafe(wallet: WalletMetadata): boolean {
   const json = JSON.stringify(wallet)
   const secrets = ['private', 'mnemonic', 'seed', 'passphrase', 'secret']
   return !secrets.some((s) => json.toLowerCase().includes(s))
+}
+
+const WALLET_SECRET_TERMS = ['private', 'mnemonic', 'seed', 'passphrase', 'secret']
+
+export function sanitizeWalletErrorMessage(message: string): string {
+  const lower = message.toLowerCase()
+  // Wallet-material terms imply the surrounding text may quote or describe a
+  // private key / mnemonic / seed / passphrase. Drop the whole message.
+  if (WALLET_SECRET_TERMS.some((s) => lower.includes(s))) {
+    return 'Wallet operation failed'
+  }
+  // Otherwise strip credential-shaped substrings (api_key=..., token=...,
+  // Bearer ..., sk-..., xox?-...) using the shared action-log patterns.
+  return redactSecrets(message)
+}
+
+export function isOwsUnavailableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('OWS native module is not available')
 }
 
 export function toPublishSignerAddress(wallet: WalletMetadata): string {

@@ -6,6 +6,8 @@ import {
   walletMetadataIsSafe,
   toPublishSignerAddress,
   createAppOwnedSigner,
+  sanitizeWalletErrorMessage,
+  isOwsUnavailableError,
   type WalletConnectionConfig,
   type WalletConnectionOption,
   type WalletMetadata
@@ -116,6 +118,71 @@ describe('connectWallet', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('requires address and name')
+  })
+})
+
+describe('connectWallet failure propagation', () => {
+  it('lets createWallet errors propagate so the IPC layer can handle them', async () => {
+    const config: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([]),
+      createWallet: vi.fn().mockRejectedValue(new Error('OWS native module is not available'))
+    }
+    const option: WalletConnectionOption = { type: 'create-new', source: 'plottoon-writer' }
+    await expect(connectWallet(option, config)).rejects.toThrow(
+      'OWS native module is not available'
+    )
+  })
+})
+
+describe('sanitizeWalletErrorMessage', () => {
+  it('passes through messages without secret-like terms', () => {
+    expect(sanitizeWalletErrorMessage('OWS native module is not available')).toBe(
+      'OWS native module is not available'
+    )
+    expect(sanitizeWalletErrorMessage('Created wallet has no EVM account')).toBe(
+      'Created wallet has no EVM account'
+    )
+  })
+
+  it('redacts messages that contain wallet-material terms', () => {
+    expect(sanitizeWalletErrorMessage('failed to decode mnemonic phrase')).toBe(
+      'Wallet operation failed'
+    )
+    expect(sanitizeWalletErrorMessage('bad passphrase supplied')).toBe('Wallet operation failed')
+    expect(sanitizeWalletErrorMessage('private key invalid')).toBe('Wallet operation failed')
+    expect(sanitizeWalletErrorMessage('seed corrupt')).toBe('Wallet operation failed')
+    expect(sanitizeWalletErrorMessage('secret store locked')).toBe('Wallet operation failed')
+  })
+
+  it('strips credential-shaped substrings from otherwise-passable messages', () => {
+    const cases: Array<[string, RegExp]> = [
+      ['OWS call failed: api_key=abcdef-1234', /api_key=abcdef-1234/i],
+      ['rejected token=eyJhbGciOiJIUzI1', /token=eyJhbGciOiJIUzI1/i],
+      ['Login failed password=hunter2', /password=hunter2/],
+      ['Authorization: Bearer eyJhbGciOi.payload.sig', /Bearer\s+eyJ/i],
+      ['OpenAI returned sk-abcdefghijklmnopqrstuvwxyz', /sk-abcdef/i],
+      ['Slack rejected xoxb-1234-abcd-token-value', /xoxb-1234-abcd-token-value/i]
+    ]
+    for (const [input, leakedPattern] of cases) {
+      const out = sanitizeWalletErrorMessage(input)
+      expect(out, `input: ${input}`).toContain('[REDACTED]')
+      expect(out, `input: ${input}`).not.toMatch(leakedPattern)
+    }
+  })
+})
+
+describe('isOwsUnavailableError', () => {
+  it('detects the OWS unavailable sentinel string', () => {
+    expect(isOwsUnavailableError(new Error('OWS native module is not available'))).toBe(true)
+    expect(
+      isOwsUnavailableError(new Error('outer wrap: OWS native module is not available (cause)'))
+    ).toBe(true)
+  })
+
+  it('returns false for unrelated errors', () => {
+    expect(isOwsUnavailableError(new Error('vault locked'))).toBe(false)
+    expect(isOwsUnavailableError(null)).toBe(false)
+    expect(isOwsUnavailableError(undefined)).toBe(false)
   })
 })
 

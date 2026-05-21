@@ -119,7 +119,7 @@ describe('walletConnectionHandlers', () => {
     expect(state.wallet).toBeNull()
   })
 
-  it('wallet:getOptions falls back to create-new when discoverVault throws', async () => {
+  it('wallet:getOptions returns disabled create-new option when OWS native module is unavailable', async () => {
     const brokenConfig: WalletConnectionConfig = {
       discoverVault: vi.fn().mockRejectedValue(new Error('OWS native module is not available')),
       createWallet: vi.fn()
@@ -128,10 +128,83 @@ describe('walletConnectionHandlers', () => {
     registerWalletConnectionHandlers(brokenConfig, createSelectedWalletState(), mockSigner())
 
     const result = await handlers['wallet:getOptions']({})
-    const typed = result as { options: { type: string; source: string }[] }
+    const typed = result as {
+      options: { type: string; source: string; available?: boolean; unavailableReason?: string }[]
+    }
     expect(typed.options).toHaveLength(1)
     expect(typed.options[0].type).toBe('create-new')
     expect(typed.options[0].source).toBe('plottoon-writer')
+    expect(typed.options[0].available).toBe(false)
+    expect(typed.options[0].unavailableReason).toContain('OWS native module is not available')
+  })
+
+  it('wallet:getOptions returns disabled option with sanitized reason on generic discovery failure', async () => {
+    const brokenConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockRejectedValue(new Error('vault read failed')),
+      createWallet: vi.fn()
+    }
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    registerWalletConnectionHandlers(brokenConfig, createSelectedWalletState(), mockSigner())
+
+    const result = await handlers['wallet:getOptions']({})
+    const typed = result as {
+      options: { available?: boolean; unavailableReason?: string }[]
+    }
+    expect(typed.options[0].available).toBe(false)
+    expect(typed.options[0].unavailableReason).toBe('vault read failed')
+  })
+
+  it('wallet:connect returns non-throwing failure when createWallet throws', async () => {
+    const failingConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([]),
+      createWallet: vi.fn().mockRejectedValue(new Error('OWS native module is not available'))
+    }
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const failingState = createSelectedWalletState()
+    registerWalletConnectionHandlers(failingConfig, failingState, mockSigner())
+
+    const result = await handlers['wallet:connect'](
+      {},
+      { type: 'create-new', source: 'plottoon-writer' }
+    )
+    const typed = result as { success: boolean; error?: string }
+    expect(typed.success).toBe(false)
+    expect(typed.error).toBe('OWS native module is not available')
+    expect(failingState.wallet).toBeNull()
+  })
+
+  it('wallet:connect sanitizes error messages that contain secret-like words', async () => {
+    const leakyConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([]),
+      createWallet: vi.fn().mockRejectedValue(new Error('mnemonic decoding failed'))
+    }
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    registerWalletConnectionHandlers(leakyConfig, createSelectedWalletState(), mockSigner())
+
+    const result = await handlers['wallet:connect'](
+      {},
+      { type: 'create-new', source: 'plottoon-writer' }
+    )
+    const typed = result as { success: boolean; error?: string }
+    expect(typed.success).toBe(false)
+    expect(typed.error).toBe('Wallet operation failed')
+    expect(typed.error).not.toMatch(/mnemonic/i)
+  })
+
+  it('wallet:connect short-circuits when option is marked unavailable', async () => {
+    const result = await handlers['wallet:connect'](
+      {},
+      {
+        type: 'create-new',
+        source: 'plottoon-writer',
+        available: false,
+        unavailableReason: 'OWS native module is not available'
+      }
+    )
+    const typed = result as { success: boolean; error?: string }
+    expect(typed.success).toBe(false)
+    expect(typed.error).toBe('OWS native module is not available')
+    expect(state.wallet).toBeNull()
   })
 
   it('rejects wallet with unsafe metadata', async () => {

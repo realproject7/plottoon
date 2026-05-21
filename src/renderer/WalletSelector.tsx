@@ -5,6 +5,8 @@ interface WalletOption {
   source: string
   address?: string
   name?: string
+  available?: boolean
+  unavailableReason?: string
 }
 
 interface ConnectedWallet {
@@ -71,15 +73,24 @@ export function WalletSelector() {
   }, [])
 
   const handleConnect = async (option: WalletOption) => {
+    if (option.available === false) {
+      setError(option.unavailableReason ?? 'Wallet option is not available')
+      return
+    }
     setLoading(true)
     setError(null)
-    const result = await window.plottoon.wallet.connect(option)
-    if (result.success) {
-      await refresh()
-    } else {
-      setError(result.error ?? 'Connection failed')
+    try {
+      const result = await window.plottoon.wallet.connect(option)
+      if (result.success) {
+        await refresh()
+      } else {
+        setError(result.error ?? 'Connection failed')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Wallet connection failed')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleDisconnect = async () => {
@@ -106,15 +117,30 @@ export function WalletSelector() {
       <h3>Connect Wallet</h3>
       {error && <div className="wallet-error">{error}</div>}
       <ul className="wallet-options">
-        {options.map((option, i) => (
-          <li key={i}>
-            <button onClick={() => handleConnect(option)} disabled={loading} type="button">
-              {option.type === 'create-new'
-                ? 'Create new PlotToon wallet'
-                : `Reuse ${option.name} (${option.address})`}
-            </button>
-          </li>
-        ))}
+        {options.map((option, i) => {
+          const isUnavailable = option.available === false
+          const label =
+            option.type === 'create-new'
+              ? isUnavailable
+                ? 'Create new PlotToon wallet (unavailable)'
+                : 'Create new PlotToon wallet'
+              : `Reuse ${option.name} (${option.address})`
+          return (
+            <li key={i}>
+              <button
+                onClick={() => handleConnect(option)}
+                disabled={loading || isUnavailable}
+                title={isUnavailable ? option.unavailableReason : undefined}
+                type="button"
+              >
+                {label}
+              </button>
+              {isUnavailable && option.unavailableReason && (
+                <span className="wallet-option-reason">{option.unavailableReason}</span>
+              )}
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
