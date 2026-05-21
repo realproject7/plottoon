@@ -15,7 +15,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke": "npm run typecheck && npm run build",
+    "smoke": "npm run typecheck && npm run build && node scripts/smoke-preload.mjs",
     "postinstall": "node node_modules/electron/install.js"
   },
   "dependencies": {
