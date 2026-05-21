@@ -50,7 +50,22 @@ app.whenReady().then(async () => {
   registerProjectHandlers()
   registerTerminalHandlers()
 
-  const owsModule = await createOWSFromCore()
+  let owsModule: import('./services/owsAdapter').OWSCoreModule
+  try {
+    owsModule = await createOWSFromCore()
+  } catch (err) {
+    console.warn('OWS native module unavailable — wallet features disabled:', err)
+    const unavailable = () => {
+      throw new Error('OWS native module is not available')
+    }
+    owsModule = {
+      listWallets: unavailable,
+      createWallet: unavailable,
+      signMessage: unavailable,
+      signTransaction: unavailable
+    } as unknown as import('./services/owsAdapter').OWSCoreModule
+  }
+
   const vaultConfig = resolveOwsVaultConfig()
 
   const signerMode = (process.env.PLOTLINK_SIGNER_MODE === 'live' ? 'live' : 'mock') as

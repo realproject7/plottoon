@@ -21,8 +21,13 @@ export function registerWalletConnectionHandlers(
   signer: WalletSigner
 ) {
   ipcMain.handle('wallet:getOptions', async () => {
-    const options = await getConnectionOptions(config)
-    return { options }
+    try {
+      const options = await getConnectionOptions(config)
+      return { options }
+    } catch {
+      // OWS unavailable — return only the create-new option so the UI is still usable
+      return { options: [{ type: 'create-new' as const, source: 'plottoon-writer' as const }] }
+    }
   })
 
   ipcMain.handle('wallet:connect', async (_event, option: WalletConnectionOption) => {

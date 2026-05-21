@@ -39,24 +39,32 @@ export function WalletSelector() {
   const [loading, setLoading] = useState(false)
 
   const refresh = useCallback(async () => {
-    const [optionsResult, connectedResult] = await Promise.all([
-      window.plottoon.wallet.getOptions(),
-      window.plottoon.wallet.getConnected()
-    ])
-    setOptions(optionsResult.options)
-    setConnected(connectedResult)
+    try {
+      const [optionsResult, connectedResult] = await Promise.all([
+        window.plottoon.wallet.getOptions(),
+        window.plottoon.wallet.getConnected()
+      ])
+      setOptions(optionsResult.options)
+      setConnected(connectedResult)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load wallet options')
+    }
   }, [])
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([window.plottoon.wallet.getOptions(), window.plottoon.wallet.getConnected()]).then(
-      ([optionsResult, connectedResult]) => {
+    Promise.all([window.plottoon.wallet.getOptions(), window.plottoon.wallet.getConnected()])
+      .then(([optionsResult, connectedResult]) => {
         if (!cancelled) {
           setOptions(optionsResult.options)
           setConnected(connectedResult)
         }
-      }
-    )
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load wallet options')
+        }
+      })
     return () => {
       cancelled = true
     }

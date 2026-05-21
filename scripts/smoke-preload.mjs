@@ -89,7 +89,7 @@ async function main() {
   }
 
   // Require all SMOKE result keys to be present
-  const requiredKeys = ['plottoonDefined', 'projectsHeading']
+  const requiredKeys = ['plottoonDefined', 'projectsHeading', 'pageErrors']
   const missingKeys = requiredKeys.filter((k) => !(k in results))
   if (missingKeys.length > 0) {
     console.error(`FAIL: Missing smoke results: ${missingKeys.join(', ')}`)
@@ -121,6 +121,15 @@ async function main() {
     console.log('PASS: Projects screen heading found')
   } else {
     console.error('FAIL: Projects screen heading not found')
+    passed = false
+  }
+
+  // Check 4: no page errors (e.g. wallet:getOptions IPC failures)
+  const errorCount = parseInt(results.pageErrors, 10)
+  if (errorCount === 0) {
+    console.log('PASS: No startup page errors')
+  } else {
+    console.error(`FAIL: ${errorCount} startup page error(s) detected`)
     passed = false
   }
 

@@ -141,10 +141,14 @@ export function createOWSConfig(
 }
 
 export async function createOWSFromCore(): Promise<OWSCoreModule> {
-  const ows = await import('@open-wallet-standard/core')
+  // @open-wallet-standard/core is a CJS native addon (NAPI-RS).
+  // Dynamic import of CJS wraps exports as { default: { listWallets, ... } }.
+  const imported = await import('@open-wallet-standard/core')
+  const ows = (imported as { default?: Record<string, unknown> }).default ?? imported
+  const mod = ows as unknown as OWSCoreModule
   return {
     listWallets(vaultPath?: string) {
-      return ows.listWallets(vaultPath)
+      return mod.listWallets(vaultPath)
     },
     createWallet(
       name: string,
@@ -152,7 +156,7 @@ export async function createOWSFromCore(): Promise<OWSCoreModule> {
       words?: number | null,
       vaultPath?: string | null
     ) {
-      return ows.createWallet(name, passphrase, words, vaultPath)
+      return mod.createWallet(name, passphrase, words, vaultPath)
     },
     signMessage(
       wallet: string,
@@ -163,7 +167,7 @@ export async function createOWSFromCore(): Promise<OWSCoreModule> {
       index?: number | null,
       vaultPath?: string | null
     ) {
-      return ows.signMessage(wallet, chain, message, passphrase, encoding, index, vaultPath)
+      return mod.signMessage(wallet, chain, message, passphrase, encoding, index, vaultPath)
     },
     signTransaction(
       wallet: string,
@@ -173,7 +177,7 @@ export async function createOWSFromCore(): Promise<OWSCoreModule> {
       index?: number | null,
       vaultPath?: string | null
     ) {
-      return ows.signTransaction(wallet, chain, txHex, passphrase, index, vaultPath)
+      return mod.signTransaction(wallet, chain, txHex, passphrase, index, vaultPath)
     }
   }
 }
