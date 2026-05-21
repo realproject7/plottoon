@@ -11,6 +11,7 @@ import {
   sanitizeWalletErrorMessage,
   isOwsUnavailableError
 } from '../services/walletConnection'
+import { OWS_UNAVAILABLE_MESSAGE } from '../services/owsAdapter'
 import type { WalletSigner } from '../services/walletSigning'
 
 export interface SelectedWalletState {
@@ -29,7 +30,7 @@ export function registerWalletConnectionHandlers(
     } catch (err) {
       const unavailable = isOwsUnavailableError(err)
       const reason = unavailable
-        ? 'OWS native module is not available'
+        ? OWS_UNAVAILABLE_MESSAGE
         : sanitizeWalletErrorMessage(err instanceof Error ? err.message : 'Wallet discovery failed')
       return {
         options: [

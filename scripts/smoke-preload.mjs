@@ -89,7 +89,7 @@ async function main() {
   }
 
   // Require all SMOKE result keys to be present
-  const requiredKeys = ['plottoonDefined', 'projectsHeading', 'pageErrors']
+  const requiredKeys = ['plottoonDefined', 'projectsHeading', 'pageErrors', 'walletOptions']
   const missingKeys = requiredKeys.filter((k) => !(k in results))
   if (missingKeys.length > 0) {
     console.error(`FAIL: Missing smoke results: ${missingKeys.join(', ')}`)
@@ -131,6 +131,49 @@ async function main() {
   } else {
     console.error(`FAIL: ${errorCount} startup page error(s) detected`)
     passed = false
+  }
+
+  // Check 5 (regression for #198): wallet:getOptions must resolve to an
+  // enabled create-new option in a normal build environment. If OWS is
+  // genuinely unavailable the reason must match the stable sentinel —
+  // never a bundler-internal name like `mod2.listWallets is not a function`.
+  let walletOptions = null
+  try {
+    walletOptions = JSON.parse(results.walletOptions)
+  } catch (e) {
+    console.error(`FAIL: walletOptions payload was not valid JSON: ${e.message}`)
+    passed = false
+  }
+  if (walletOptions) {
+    const first = walletOptions && walletOptions.options && walletOptions.options[0]
+    if (!first) {
+      console.error('FAIL: wallet:getOptions returned no options')
+      passed = false
+    } else if (first.available !== false) {
+      console.log('PASS: wallet:getOptions returned enabled create-new option')
+    } else {
+      const reason = String(first.unavailableReason || '')
+      const looksLikeBundlerLeak =
+        /\bmod\d*\./i.test(reason) ||
+        /\b(?:listWallets|createWallet|signMessage|signTransaction) is not a function\b/i.test(
+          reason
+        )
+      if (looksLikeBundlerLeak) {
+        console.error(
+          `FAIL: wallet:getOptions fell back with a bundler-internal reason: ${JSON.stringify(reason)}`
+        )
+        passed = false
+      } else if (reason === 'OWS wallet module is unavailable') {
+        console.log(
+          'PASS: wallet:getOptions fell back to the stable sentinel (OWS genuinely unavailable in this env)'
+        )
+      } else {
+        console.error(
+          `FAIL: wallet:getOptions disabled create-new with an unstable reason: ${JSON.stringify(reason)}`
+        )
+        passed = false
+      }
+    }
   }
 
   if (!passed) {

@@ -1,4 +1,9 @@
+import { createRequire } from 'node:module'
 import type { OWSVaultEntry, OWSVaultDiscoverFn, OWSWalletCreateFn } from './walletConnection'
+
+export const OWS_UNAVAILABLE_MESSAGE = 'OWS wallet module is unavailable'
+
+const OWS_CORE_METHODS = ['listWallets', 'createWallet', 'signMessage', 'signTransaction'] as const
 
 export interface OWSAccountInfo {
   chainId: string
@@ -140,12 +145,45 @@ export function createOWSConfig(
   }
 }
 
-export async function createOWSFromCore(): Promise<OWSCoreModule> {
-  // @open-wallet-standard/core is a CJS native addon (NAPI-RS).
-  // Dynamic import of CJS wraps exports as { default: { listWallets, ... } }.
-  const imported = await import('@open-wallet-standard/core')
-  const ows = (imported as { default?: Record<string, unknown> }).default ?? imported
-  const mod = ows as unknown as OWSCoreModule
+export function unwrapOwsCoreExports(raw: unknown): OWSCoreModule {
+  // electron-vite bundling can wrap CJS exports in one or more layers of
+  // `default` / namespace records, sometimes hiding the original native-addon
+  // functions behind chains like `{ default: { default: { listWallets, ... } } }`.
+  // Walk a small number of `default` layers until we find a layer that exposes
+  // the OWS core methods as functions.
+  let cur: unknown = raw
+  for (let depth = 0; depth < 4; depth++) {
+    if (cur && typeof cur === 'object') {
+      const candidate = cur as Record<string, unknown>
+      if (OWS_CORE_METHODS.every((m) => typeof candidate[m] === 'function')) {
+        return candidate as unknown as OWSCoreModule
+      }
+      const next = candidate.default
+      if (next && next !== cur) {
+        cur = next
+        continue
+      }
+    }
+    break
+  }
+  throw new Error(OWS_UNAVAILABLE_MESSAGE)
+}
+
+export async function createOWSFromCore(
+  loader: () => unknown = defaultOwsLoader
+): Promise<OWSCoreModule> {
+  // @open-wallet-standard/core is a CJS native addon (NAPI-RS). Going through
+  // electron-vite's `import()` rewrites the addon export shape and the
+  // destructuring inside the package's loader can yield `undefined` for every
+  // method. Resolve the package via Node's runtime `createRequire` so the
+  // original CJS exports load intact, then defensively unwrap.
+  let raw: unknown
+  try {
+    raw = loader()
+  } catch {
+    throw new Error(OWS_UNAVAILABLE_MESSAGE)
+  }
+  const mod = unwrapOwsCoreExports(raw)
   return {
     listWallets(vaultPath?: string) {
       return mod.listWallets(vaultPath)
@@ -180,4 +218,9 @@ export async function createOWSFromCore(): Promise<OWSCoreModule> {
       return mod.signTransaction(wallet, chain, txHex, passphrase, index, vaultPath)
     }
   }
+}
+
+function defaultOwsLoader(): unknown {
+  const requireFn = createRequire(import.meta.url)
+  return requireFn('@open-wallet-standard/core')
 }

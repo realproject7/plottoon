@@ -17,7 +17,7 @@ import { getDefaultRoyaltyConfig } from './services/royaltyClaim'
 import { getDefaultAgentRegistrationConfig } from './services/agentRegistration'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
-import { createOWSConfig, createOWSFromCore } from './services/owsAdapter'
+import { createOWSConfig, createOWSFromCore, OWS_UNAVAILABLE_MESSAGE } from './services/owsAdapter'
 import { getDefaultPublishConfig, createPlotlinkUploadClient } from './services/plotlinkPublish'
 import { resolveOwsVaultConfig } from './services/owsRuntimeConfig'
 import { resolveProjectFilePath } from './services/fsService'
@@ -54,9 +54,9 @@ app.whenReady().then(async () => {
   try {
     owsModule = await createOWSFromCore()
   } catch (err) {
-    console.warn('OWS native module unavailable — wallet features disabled:', err)
+    console.warn('OWS wallet module unavailable — wallet features disabled:', err)
     const unavailable = () => {
-      throw new Error('OWS native module is not available')
+      throw new Error(OWS_UNAVAILABLE_MESSAGE)
     }
     owsModule = {
       listWallets: unavailable,
