@@ -179,6 +179,24 @@ describe('unwrapOwsCoreExports', () => {
     expect(unwrapOwsCoreExports(wrapped)).toBe(inner)
   })
 
+  it('unwraps a CommonJS-record wrapping ({ module: { exports: core } })', () => {
+    const inner = makeOwsLikeRecord()
+    const wrapped = { module: { exports: inner } }
+    expect(unwrapOwsCoreExports(wrapped)).toBe(inner)
+  })
+
+  it('unwraps a bare exports-prop wrapping ({ exports: core })', () => {
+    const inner = makeOwsLikeRecord()
+    const wrapped = { exports: inner }
+    expect(unwrapOwsCoreExports(wrapped)).toBe(inner)
+  })
+
+  it('unwraps a mixed default-then-module.exports chain', () => {
+    const inner = makeOwsLikeRecord()
+    const wrapped = { default: { module: { exports: inner } } }
+    expect(unwrapOwsCoreExports(wrapped)).toBe(inner)
+  })
+
   it('throws the stable sentinel when no layer carries the OWS core methods', () => {
     expect(() => unwrapOwsCoreExports({})).toThrow(OWS_UNAVAILABLE_MESSAGE)
     expect(() => unwrapOwsCoreExports({ default: { default: {} } })).toThrow(

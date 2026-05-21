@@ -145,26 +145,44 @@ export function createOWSConfig(
   }
 }
 
+function hasOwsMethods(value: unknown): value is OWSCoreModule {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return OWS_CORE_METHODS.every((m) => typeof record[m] === 'function')
+}
+
+function unwrapStep(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  // Common namespace wrappers, in priority order:
+  //   { default: realModule }       — Vite/Rollup synthetic ESM namespace
+  //   { exports: realModule }       — some CJS-to-ESM bridges expose `exports`
+  //   { module: { exports: real } } — full CommonJS-record wrapping
+  if (record.default && record.default !== value) return record.default
+  if (record.exports && record.exports !== value) return record.exports
+  if (
+    record.module &&
+    typeof record.module === 'object' &&
+    (record.module as Record<string, unknown>).exports
+  ) {
+    return (record.module as Record<string, unknown>).exports
+  }
+  return undefined
+}
+
 export function unwrapOwsCoreExports(raw: unknown): OWSCoreModule {
   // electron-vite bundling can wrap CJS exports in one or more layers of
-  // `default` / namespace records, sometimes hiding the original native-addon
-  // functions behind chains like `{ default: { default: { listWallets, ... } } }`.
-  // Walk a small number of `default` layers until we find a layer that exposes
-  // the OWS core methods as functions.
+  // `default` / `exports` / `module.exports` / namespace records, sometimes
+  // hiding the original native-addon functions behind chains like
+  // `{ default: { default: { listWallets, ... } } }` or
+  // `{ module: { exports: { listWallets, ... } } }`. Walk a small number of
+  // such wrappers until we find a layer that exposes the OWS core methods.
   let cur: unknown = raw
   for (let depth = 0; depth < 4; depth++) {
-    if (cur && typeof cur === 'object') {
-      const candidate = cur as Record<string, unknown>
-      if (OWS_CORE_METHODS.every((m) => typeof candidate[m] === 'function')) {
-        return candidate as unknown as OWSCoreModule
-      }
-      const next = candidate.default
-      if (next && next !== cur) {
-        cur = next
-        continue
-      }
-    }
-    break
+    if (hasOwsMethods(cur)) return cur
+    const next = unwrapStep(cur)
+    if (next === undefined || next === cur) break
+    cur = next
   }
   throw new Error(OWS_UNAVAILABLE_MESSAGE)
 }
