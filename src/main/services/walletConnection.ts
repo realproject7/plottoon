@@ -12,6 +12,8 @@ export interface WalletConnectionOption {
   source: WalletSource
   address?: string
   name?: string
+  available?: boolean
+  unavailableReason?: string
 }
 
 export interface WalletConnectionResult {
@@ -106,6 +108,20 @@ export function walletMetadataIsSafe(wallet: WalletMetadata): boolean {
   const json = JSON.stringify(wallet)
   const secrets = ['private', 'mnemonic', 'seed', 'passphrase', 'secret']
   return !secrets.some((s) => json.toLowerCase().includes(s))
+}
+
+export function sanitizeWalletErrorMessage(message: string): string {
+  const secrets = ['private', 'mnemonic', 'seed', 'passphrase', 'secret']
+  const lower = message.toLowerCase()
+  if (secrets.some((s) => lower.includes(s))) {
+    return 'Wallet operation failed'
+  }
+  return message
+}
+
+export function isOwsUnavailableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('OWS native module is not available')
 }
 
 export function toPublishSignerAddress(wallet: WalletMetadata): string {

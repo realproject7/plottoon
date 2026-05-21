@@ -7,7 +7,9 @@ import type {
 import {
   getConnectionOptions,
   connectWallet,
-  walletMetadataIsSafe
+  walletMetadataIsSafe,
+  sanitizeWalletErrorMessage,
+  isOwsUnavailableError
 } from '../services/walletConnection'
 import type { WalletSigner } from '../services/walletSigning'
 
@@ -24,21 +26,44 @@ export function registerWalletConnectionHandlers(
     try {
       const options = await getConnectionOptions(config)
       return { options }
-    } catch {
-      // OWS unavailable — return only the create-new option so the UI is still usable
-      return { options: [{ type: 'create-new' as const, source: 'plottoon-writer' as const }] }
+    } catch (err) {
+      const unavailable = isOwsUnavailableError(err)
+      const reason = unavailable
+        ? 'OWS native module is not available'
+        : sanitizeWalletErrorMessage(err instanceof Error ? err.message : 'Wallet discovery failed')
+      return {
+        options: [
+          {
+            type: 'create-new' as const,
+            source: 'plottoon-writer' as const,
+            available: false,
+            unavailableReason: reason
+          }
+        ]
+      }
     }
   })
 
   ipcMain.handle('wallet:connect', async (_event, option: WalletConnectionOption) => {
-    const result = await connectWallet(option, config)
-    if (result.success && result.wallet) {
-      if (!walletMetadataIsSafe(result.wallet)) {
-        return { success: false, error: 'Wallet metadata contains unsafe content' }
+    if (option.available === false) {
+      return {
+        success: false,
+        error: option.unavailableReason ?? 'Wallet option is not available'
       }
-      state.wallet = result.wallet
     }
-    return result
+    try {
+      const result = await connectWallet(option, config)
+      if (result.success && result.wallet) {
+        if (!walletMetadataIsSafe(result.wallet)) {
+          return { success: false, error: 'Wallet metadata contains unsafe content' }
+        }
+        state.wallet = result.wallet
+      }
+      return result
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Wallet connection failed'
+      return { success: false, error: sanitizeWalletErrorMessage(message) }
+    }
   })
 
   ipcMain.handle('wallet:getConnected', () => {
