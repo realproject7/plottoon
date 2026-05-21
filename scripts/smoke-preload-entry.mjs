@@ -24,10 +24,16 @@ app.whenReady().then(async () => {
     }
   })
 
+  const pageErrors = []
+
   // Listen for console messages from renderer
-  win.webContents.on('console-message', (_event, _level, message) => {
+  win.webContents.on('console-message', (_event, level, message) => {
     if (message.includes('Unable to load preload script')) {
       process.stderr.write(message + '\n')
+    }
+    // Capture renderer errors logged to console (level 3 = error)
+    if (level === 3 && message.includes('Error invoking remote method')) {
+      pageErrors.push(message)
     }
   })
 
@@ -65,6 +71,12 @@ app.whenReady().then(async () => {
     })()`
   )
   process.stdout.write(`SMOKE:projectsHeading=${projectsHeading}\n`)
+
+  // Report page errors count so the outer runner can check
+  process.stdout.write(`SMOKE:pageErrors=${pageErrors.length}\n`)
+  for (const err of pageErrors) {
+    process.stderr.write(`Page error: ${err}\n`)
+  }
 
   app.quit()
 })

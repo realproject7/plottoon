@@ -119,6 +119,21 @@ describe('walletConnectionHandlers', () => {
     expect(state.wallet).toBeNull()
   })
 
+  it('wallet:getOptions falls back to create-new when discoverVault throws', async () => {
+    const brokenConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockRejectedValue(new Error('OWS native module is not available')),
+      createWallet: vi.fn()
+    }
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    registerWalletConnectionHandlers(brokenConfig, createSelectedWalletState(), mockSigner())
+
+    const result = await handlers['wallet:getOptions']({})
+    const typed = result as { options: { type: string; source: string }[] }
+    expect(typed.options).toHaveLength(1)
+    expect(typed.options[0].type).toBe('create-new')
+    expect(typed.options[0].source).toBe('plottoon-writer')
+  })
+
   it('rejects wallet with unsafe metadata', async () => {
     const unsafeConfig: WalletConnectionConfig = {
       discoverVault: vi.fn().mockResolvedValue([]),
