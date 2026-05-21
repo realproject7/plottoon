@@ -34,7 +34,22 @@ declare global {
   }
 }
 
-export function WalletSelector() {
+function truncateAddress(address: string): string {
+  if (address.length <= 12) return address
+  return `${address.slice(0, 6)}…${address.slice(-4)}`
+}
+
+function optionLabel(option: WalletOption): string {
+  if (option.type === 'create-new') {
+    return option.available === false ? 'Create wallet (unavailable)' : 'Create new wallet'
+  }
+  if (option.address && option.name) {
+    return `Reuse ${truncateAddress(option.address)}`
+  }
+  return 'Reuse wallet'
+}
+
+export function WalletSelector(): JSX.Element {
   const [options, setOptions] = useState<WalletOption[]>([])
   const [connected, setConnected] = useState<ConnectedWallet>({ connected: false })
   const [error, setError] = useState<string | null>(null)
@@ -72,7 +87,7 @@ export function WalletSelector() {
     }
   }, [])
 
-  const handleConnect = async (option: WalletOption) => {
+  const handleConnect = async (option: WalletOption): Promise<void> => {
     if (option.available === false) {
       setError(option.unavailableReason ?? 'Wallet option is not available')
       return
@@ -93,47 +108,56 @@ export function WalletSelector() {
     }
   }
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = async (): Promise<void> => {
     await window.plottoon.wallet.disconnect()
     await refresh()
   }
 
-  if (connected.connected) {
+  if (connected.connected && connected.address) {
     return (
-      <div className="wallet-connected">
-        <div className="wallet-info">
-          <span className="wallet-address">{connected.address}</span>
-          <span className="wallet-source">{connected.source}</span>
+      <div className="wallet-selector">
+        <div className="wallet-selector__label">Wallet</div>
+        <div className="wallet-connected">
+          <span
+            className="wallet-pill"
+            role="status"
+            aria-label={`Connected wallet ${connected.address}`}
+            title={connected.address}
+          >
+            <span className="wallet-pill__address">{truncateAddress(connected.address)}</span>
+          </span>
+          <button
+            type="button"
+            className="wallet-disconnect"
+            onClick={handleDisconnect}
+            aria-label="Disconnect wallet"
+          >
+            disconnect
+          </button>
         </div>
-        <button onClick={handleDisconnect} type="button">
-          Disconnect
-        </button>
       </div>
     )
   }
 
   return (
     <div className="wallet-selector">
-      <h3>Connect Wallet</h3>
+      <div className="wallet-selector__label">Wallet</div>
       {error && <div className="wallet-error">{error}</div>}
-      <ul className="wallet-options">
+      <ul className="wallet-selector__options">
         {options.map((option, i) => {
           const isUnavailable = option.available === false
-          const label =
-            option.type === 'create-new'
-              ? isUnavailable
-                ? 'Create new PlotToon wallet (unavailable)'
-                : 'Create new PlotToon wallet'
-              : `Reuse ${option.name} (${option.address})`
+          const label = optionLabel(option)
+          const fullAddress = option.address
           return (
-            <li key={i}>
+            <li key={i} className="wallet-selector__option">
               <button
+                type="button"
+                className="wallet-pill"
                 onClick={() => handleConnect(option)}
                 disabled={loading || isUnavailable}
-                title={isUnavailable ? option.unavailableReason : undefined}
-                type="button"
+                title={isUnavailable ? option.unavailableReason : fullAddress}
               >
-                {label}
+                <span className="wallet-pill__label">{label}</span>
               </button>
               {isUnavailable && option.unavailableReason && (
                 <span className="wallet-option-reason">{option.unavailableReason}</span>
