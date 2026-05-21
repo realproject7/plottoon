@@ -593,6 +593,12 @@
   background: transparent;
   margin-bottom: 1px;
   box-sizing: border-box;
+  /* Plot rows (no children) and other single-line rows must never overflow
+     the fixed-width cut list panel. Cut rows that contain a `.cut-row-header`
+     handle truncation per-child (see below). */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition:
     background-color 120ms ease-out,
     color 120ms ease-out;
@@ -622,9 +628,22 @@
   justify-content: space-between;
   align-items: center;
   gap: 6px;
+  /* When the row owns a header (cut rows), the flex layout takes over text
+     ellipsis on the cut ID span below — clear the row-level overflow rules
+     so they don't fight the flex sizing. */
+  min-width: 0;
+}
+
+.cut-row-header > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cut-status-tag {
+  flex-shrink: 0;
   font-size: 9px;
   padding: 1px 6px;
   border-radius: 2px;
