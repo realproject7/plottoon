@@ -139,80 +139,38 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
   )
 
   return (
-    <div
-      className="terminal-panel"
-      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
-    >
-      <div
-        className="terminal-toolbar"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-2)',
-          padding: 'var(--space-2)',
-          borderBottom: '1px solid var(--color-border)',
-          flexShrink: 0
-        }}
-      >
-        <span style={{ fontWeight: 'var(--font-weight-semibold)' as never, fontSize: 13 }}>
-          Terminal
-        </span>
-        <span style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>
-          {state.phase === 'connected' && 'Connected'}
-          {state.phase === 'ready' && state.state === 'disconnected' && 'Disconnected'}
+    <div className="terminal-panel">
+      <div className="terminal-panel__toolbar">
+        <span className="terminal-panel__title">Terminal</span>
+        <span className="terminal-panel__status">
+          {state.phase === 'connected' && 'connected'}
+          {state.phase === 'ready' && state.state === 'disconnected' && 'disconnected'}
           {state.phase === 'ready' &&
             state.state === 'exited' &&
-            `Exited (${state.exitCode ?? '?'})`}
-          {state.phase === 'init' && 'Initializing…'}
-          {state.phase === 'error' && 'Error'}
+            `exited (${state.exitCode ?? '?'})`}
+          {state.phase === 'init' && 'initializing…'}
+          {state.phase === 'error' && 'error'}
         </span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--space-1)' }}>
+        <div className="terminal-panel__actions">
           {state.phase === 'ready' && (
-            <button
-              className="btn-primary"
-              onClick={handleConnect}
-              style={{ fontSize: 12, padding: '2px 8px' }}
-            >
-              Connect
+            <button type="button" className="terminal-action" onClick={handleConnect}>
+              connect
             </button>
           )}
           {state.phase === 'connected' && (
-            <button
-              className="btn-primary"
-              onClick={handleDisconnect}
-              style={{ fontSize: 12, padding: '2px 8px' }}
-            >
-              Disconnect
+            <button type="button" className="terminal-action" onClick={handleDisconnect}>
+              disconnect
             </button>
           )}
           {(state.phase === 'ready' || state.phase === 'connected') && (
-            <button
-              className="btn-primary"
-              onClick={handleRestart}
-              style={{ fontSize: 12, padding: '2px 8px' }}
-            >
-              Restart
+            <button type="button" className="terminal-action" onClick={handleRestart}>
+              restart
             </button>
           )}
         </div>
       </div>
 
-      <pre
-        ref={outputRef}
-        style={{
-          flex: 1,
-          margin: 0,
-          padding: 'var(--space-2)',
-          backgroundColor: 'var(--color-bg-sunken)',
-          color: 'var(--color-text-primary)',
-          fontFamily: 'var(--font-mono, monospace)',
-          fontSize: 13,
-          lineHeight: 1.5,
-          overflow: 'auto',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all'
-        }}
-      >
+      <pre ref={outputRef} className="terminal-panel__output">
         {state.phase === 'connected' && state.output.join('')}
         {state.phase === 'init' && 'Initializing terminal session…\n'}
         {state.phase === 'error' && `Error: ${state.message}\n`}
@@ -221,7 +179,7 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
           `Process exited with code ${state.exitCode ?? '?'}.\n`}
         {state.phase === 'ready' &&
           state.state === 'disconnected' &&
-          'Terminal disconnected. Click Connect to start.\n'}
+          'Terminal disconnected. Click connect to start.\n'}
       </pre>
 
       {state.phase === 'connected' && (
@@ -229,16 +187,7 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
           ref={inputRef}
           onKeyDown={handleInput}
           placeholder="Type command and press Enter…"
-          style={{
-            border: 'none',
-            borderTop: '1px solid var(--color-border)',
-            padding: 'var(--space-2)',
-            fontFamily: 'var(--font-mono, monospace)',
-            fontSize: 13,
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text-primary)',
-            outline: 'none'
-          }}
+          className="terminal-panel__input"
         />
       )}
     </div>

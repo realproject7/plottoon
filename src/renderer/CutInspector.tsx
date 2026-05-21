@@ -54,33 +54,12 @@ export function CutInspector({
   exportMetas
 }: CutInspectorProps): JSX.Element {
   if (!cut) {
-    return (
-      <div
-        style={{
-          padding: 'var(--space-4)',
-          color: 'var(--color-text-muted)',
-          fontSize: 13
-        }}
-      >
-        Select a cut to inspect
-      </div>
-    )
+    return <div className="inspector__empty">Select a cut to inspect</div>
   }
 
   return (
-    <div style={{ padding: 'var(--space-3)', overflow: 'auto', height: '100%' }}>
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 'var(--font-weight-semibold)' as never,
-          color: 'var(--color-text-muted)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          marginBottom: 'var(--space-3)'
-        }}
-      >
-        Inspector
-      </div>
+    <div className="inspector">
+      <div className="inspector__section-label">Inspector</div>
 
       <Field label="Cut ID" value={cut.id} />
 

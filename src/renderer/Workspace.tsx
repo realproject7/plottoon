@@ -303,55 +303,21 @@ export function Workspace({ projectId }: Props): JSX.Element {
 
   if (!projectId) {
     return (
-      <div style={{ padding: 'var(--space-4)' }}>
-        <p style={{ color: 'var(--color-text-secondary)' }}>Open a project to start editing.</p>
+      <div className="workspace__empty">
+        <p>Open a project to start editing.</p>
       </div>
     )
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        overflow: 'hidden'
-      }}
-    >
+    <div className="workspace">
       {cwd && (
-        <div
-          data-testid="workspace-cwd"
-          style={{
-            fontSize: 12,
-            color: 'var(--color-text-muted)',
-            fontFamily: 'var(--font-mono, monospace)',
-            padding: 'var(--space-2) var(--space-3)',
-            borderBottom: '1px solid var(--color-border)',
-            flexShrink: 0
-          }}
-        >
+        <div className="workspace__cwd" data-testid="workspace-cwd" title={cwd}>
           cwd: {cwd}
         </div>
       )}
-      <div
-        style={{
-          display: 'flex',
-          flex: 1,
-          minHeight: 0,
-          overflow: 'hidden'
-        }}
-      >
-        {/* Left: Cut list navigation */}
-        <div
-          data-testid="cut-list-panel"
-          style={{
-            width: 200,
-            flexShrink: 0,
-            borderRight: '1px solid var(--color-border)',
-            background: 'var(--color-surface)',
-            overflow: 'hidden'
-          }}
-        >
+      <div className="workspace__panels">
+        <div className="workspace__panel workspace__panel--list" data-testid="cut-list-panel">
           <CutList
             projectId={projectId}
             activeCutId={activeCut?.id ?? null}
@@ -362,16 +328,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
           />
         </div>
 
-        {/* Center: Preview area */}
-        <div
-          data-testid="preview-panel"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: 'var(--color-bg)',
-            overflow: 'hidden'
-          }}
-        >
+        <div className="workspace__panel workspace__panel--preview" data-testid="preview-panel">
           <EditorCanvas
             cut={activeCut}
             projectId={projectId}
@@ -381,17 +338,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
           />
         </div>
 
-        {/* Right: Inspector */}
-        <div
-          data-testid="inspector-panel"
-          style={{
-            width: 240,
-            flexShrink: 0,
-            borderLeft: '1px solid var(--color-border)',
-            background: 'var(--color-surface)',
-            overflow: 'auto'
-          }}
-        >
+        <div className="workspace__panel workspace__panel--inspector" data-testid="inspector-panel">
           <CutInspector
             cut={activeCut}
             onStatusChange={handleStatusChange}
@@ -410,15 +357,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
         </div>
       </div>
 
-      {/* Bottom: Terminal */}
-      <div
-        data-testid="terminal-region"
-        style={{
-          height: 200,
-          flexShrink: 0,
-          borderTop: '1px solid var(--color-border)'
-        }}
-      >
+      <div className="workspace__terminal" data-testid="terminal-region">
         <TerminalPanel projectId={projectId} />
       </div>
     </div>

@@ -263,83 +263,35 @@ export function CutList({
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 'var(--font-weight-semibold)' as never,
-          color: 'var(--color-text-muted)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          padding: 'var(--space-3) var(--space-3) var(--space-1)'
-        }}
-      >
-        Plots
-      </div>
+    <div className="cut-list">
+      <div className="cut-list__section-label">Plots</div>
 
       {state.plots.length > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1,
-            padding: '0 var(--space-2) var(--space-2)',
-            flexShrink: 0
-          }}
-        >
-          {state.plots.map((plot) => (
-            <button
-              key={plot}
-              type="button"
-              onClick={() => {
-                dispatch({ type: 'select-plot', plot })
-                onPlotChanged?.(plot)
-                onSelectCut(null)
-              }}
-              style={{
-                all: 'unset',
-                cursor: 'pointer',
-                padding: 'var(--space-1) var(--space-2)',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: 12,
-                background:
-                  state.activePlot === plot ? 'var(--color-surface-raised)' : 'transparent',
-                fontWeight:
-                  state.activePlot === plot
-                    ? ('var(--font-weight-medium)' as never)
-                    : ('var(--font-weight-regular)' as never)
-              }}
-            >
-              {plot}
-            </button>
-          ))}
+        <div className="cut-list__plots">
+          {state.plots.map((plot) => {
+            const isActive = state.activePlot === plot
+            return (
+              <button
+                key={plot}
+                type="button"
+                onClick={() => {
+                  dispatch({ type: 'select-plot', plot })
+                  onPlotChanged?.(plot)
+                  onSelectCut(null)
+                }}
+                className={`cut-list__row${isActive ? ' cut-list__row--active' : ''}`}
+              >
+                {plot}
+              </button>
+            )
+          })}
         </div>
       )}
 
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 'var(--font-weight-semibold)' as never,
-          color: 'var(--color-text-muted)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          padding: 'var(--space-2) var(--space-3) var(--space-1)',
-          borderTop: '1px solid var(--color-border)'
-        }}
-      >
-        Cuts
-      </div>
+      <div className="cut-list__section-label cut-list__section-label--bordered">Cuts</div>
 
       {state.phase === 'ready' && (
-        <div
-          data-testid="cut-toolbar"
-          style={{
-            display: 'flex',
-            gap: 2,
-            padding: '0 var(--space-2) var(--space-1)',
-            flexShrink: 0
-          }}
-        >
+        <div className="cut-list__toolbar" data-testid="cut-toolbar">
           <ToolBtn label="+" title="Add cut" onClick={handleAdd} />
           <ToolBtn
             label="\u2212"
@@ -368,88 +320,36 @@ export function CutList({
         </div>
       )}
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '0 var(--space-2)' }}>
-        {state.phase === 'loading' && (
-          <div
-            style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 'var(--space-2)' }}
-          >
-            Loading...
-          </div>
-        )}
-        {state.phase === 'empty' && (
-          <div
-            style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 'var(--space-2)' }}
-          >
-            No plots found
-          </div>
-        )}
+      <div className="cut-list__scroll">
+        {state.phase === 'loading' && <div className="cut-list__hint">Loading...</div>}
+        {state.phase === 'empty' && <div className="cut-list__hint">No plots found</div>}
         {state.phase === 'error' && (
-          <div style={{ fontSize: 12, color: 'var(--color-error)', padding: 'var(--space-2)' }}>
-            {state.error}
-          </div>
+          <div className="cut-list__hint cut-list__hint--error">{state.error}</div>
         )}
         {state.phase === 'ready' && state.cuts.length === 0 && (
-          <div
-            style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 'var(--space-2)' }}
-          >
-            No cuts in this plot
-          </div>
+          <div className="cut-list__hint">No cuts in this plot</div>
         )}
-        {state.cuts.map((cut) => (
-          <button
-            key={cut.id}
-            type="button"
-            onClick={() => onSelectCut(cut)}
-            style={{
-              all: 'unset',
-              cursor: 'pointer',
-              display: 'block',
-              width: '100%',
-              padding: 'var(--space-2)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: 12,
-              background: activeCutId === cut.id ? 'var(--color-surface-raised)' : 'transparent',
-              fontWeight:
-                activeCutId === cut.id
-                  ? ('var(--font-weight-medium)' as never)
-                  : ('var(--font-weight-regular)' as never),
-              marginBottom: 1
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>{cut.id}</span>
-              {cut.status && (
-                <span
-                  data-testid={`status-${cut.id}`}
-                  style={{
-                    fontSize: 9,
-                    padding: '1px 4px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--color-surface-raised)',
-                    color: 'var(--color-text-muted)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.03em'
-                  }}
-                >
-                  {cut.status}
-                </span>
-              )}
-            </div>
-            {cut.direction && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: 'var(--color-text-muted)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {cut.direction}
+        {state.cuts.map((cut) => {
+          const isActive = activeCutId === cut.id
+          return (
+            <button
+              key={cut.id}
+              type="button"
+              onClick={() => onSelectCut(cut)}
+              className={`cut-list__row${isActive ? ' cut-list__row--active' : ''}`}
+            >
+              <div className="cut-row-header">
+                <span>{cut.id}</span>
+                {cut.status && (
+                  <span data-testid={`status-${cut.id}`} className="cut-status-tag">
+                    {cut.status}
+                  </span>
+                )}
               </div>
-            )}
-          </button>
-        ))}
+              {cut.direction && <div className="cut-row-direction">{cut.direction}</div>}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -467,25 +367,7 @@ function ToolBtn({
   disabled?: boolean
 }): JSX.Element {
   return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        all: 'unset',
-        cursor: disabled ? 'default' : 'pointer',
-        fontSize: 13,
-        width: 22,
-        height: 22,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: 'var(--radius-sm)',
-        opacity: disabled ? 0.3 : 1,
-        background: 'var(--color-surface-raised)'
-      }}
-    >
+    <button type="button" title={title} onClick={onClick} disabled={disabled} className="tool-btn">
       {label}
     </button>
   )
