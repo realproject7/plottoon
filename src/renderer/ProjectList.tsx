@@ -73,31 +73,11 @@ export function ProjectList({ onSelectProject }: ProjectListProps): JSX.Element 
   }
 
   return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--space-8)'
-        }}
-      >
+    <div className="projects-screen">
+      <div className="projects-screen__header">
         <div>
-          <h1
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 24,
-              fontWeight: 'var(--font-weight-semibold)' as never,
-              letterSpacing: '-0.02em',
-              lineHeight: 1.2,
-              marginBottom: 'var(--space-1)'
-            }}
-          >
-            Projects
-          </h1>
-          <p style={{ color: 'var(--color-text-secondary)' }}>
-            Your webtoon projects will appear here.
-          </p>
+          <h1 className="projects-screen__heading">Projects</h1>
+          <p className="projects-screen__subhead">Your webtoon projects will appear here.</p>
         </div>
         {state.projects.length > 0 && (
           <button type="button" className="btn-primary" onClick={handleCreate}>
@@ -121,37 +101,14 @@ export function ProjectList({ onSelectProject }: ProjectListProps): JSX.Element 
 }
 
 function LoadingState(): JSX.Element {
-  return (
-    <div
-      style={{
-        color: 'var(--color-text-muted)',
-        padding: 'var(--space-12) 0',
-        textAlign: 'center'
-      }}
-    >
-      Loading projects...
-    </div>
-  )
+  return <div className="loading-state">Loading projects...</div>
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }): JSX.Element {
   return (
-    <div
-      style={{
-        border: '1px solid var(--color-error)',
-        borderRadius: 'var(--radius-md)',
-        padding: 'var(--space-6)',
-        background: 'var(--color-surface)'
-      }}
-    >
-      <div
-        style={{ fontWeight: 'var(--font-weight-medium)' as never, marginBottom: 'var(--space-2)' }}
-      >
-        Something went wrong
-      </div>
-      <p style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
-        {message}
-      </p>
+    <div className="error-panel">
+      <div className="error-panel__title">Something went wrong</div>
+      <p className="error-panel__message">{message}</p>
       <button type="button" className="btn-primary" onClick={onRetry}>
         Retry
       </button>
@@ -161,34 +118,11 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 function EmptyState({ onCreate }: { onCreate: () => void }): JSX.Element {
   return (
-    <div
-      style={{
-        border: '1px solid var(--color-border)',
-        borderRadius: 'var(--radius-md)',
-        padding: 'var(--space-12) var(--space-8)',
-        textAlign: 'center',
-        background: 'var(--color-surface)'
-      }}
-    >
-      <div
-        style={{
-          fontSize: 18,
-          fontFamily: 'var(--font-display)',
-          fontWeight: 'var(--font-weight-medium)' as never,
-          marginBottom: 'var(--space-2)'
-        }}
-      >
-        No projects yet
+    <div className="empty-state">
+      <div>
+        <div className="empty-state__title">No projects yet</div>
+        <p className="empty-state__body">Create a new project to start building your webtoon.</p>
       </div>
-      <p
-        style={{
-          color: 'var(--color-text-secondary)',
-          maxWidth: '40ch',
-          margin: '0 auto var(--space-6)'
-        }}
-      >
-        Create a new project to start building your webtoon.
-      </p>
       <button type="button" className="btn-primary" onClick={onCreate}>
         New Project
       </button>
@@ -204,13 +138,7 @@ function ProjectGrid({
   onSelectProject?: (projectId: string) => void
 }): JSX.Element {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-        gap: 'var(--space-4)'
-      }}
-    >
+    <div className="project-grid">
       {projects.map((project) => (
         <ProjectCard key={project.path} project={project} onSelect={onSelectProject} />
       ))}
@@ -233,6 +161,9 @@ function ProjectCard({
     }
   }
 
+  const cardClassName = `project-card${hasError ? ' project-card--error' : ''}`
+  const projectName = project.meta?.name ?? project.path.split('/').pop() ?? 'Untitled project'
+
   return (
     <div
       role={!hasError && project.id ? 'button' : undefined}
@@ -241,30 +172,14 @@ function ProjectCard({
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') handleClick()
       }}
-      style={{
-        border: `1px solid ${hasError ? 'var(--color-error)' : 'var(--color-border)'}`,
-        borderRadius: 'var(--radius-md)',
-        padding: 'var(--space-4)',
-        background: 'var(--color-surface)',
-        cursor: hasError ? 'default' : 'pointer'
-      }}
+      className={cardClassName}
+      title={projectName}
     >
-      <div
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontWeight: 'var(--font-weight-medium)' as never,
-          marginBottom: 'var(--space-1)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap'
-        }}
-      >
-        {project.meta?.name ?? project.path.split('/').pop()}
-      </div>
+      <div className="project-card__title">{projectName}</div>
       {hasError ? (
-        <div style={{ fontSize: 12, color: 'var(--color-error)' }}>{project.error}</div>
+        <div className="project-card__error">{project.error}</div>
       ) : (
-        <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+        <div className="project-card__description">
           {project.meta?.description || 'No description'}
         </div>
       )}
