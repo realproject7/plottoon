@@ -19,6 +19,7 @@ const ROOT = resolve(__dirname, '..')
 const electronPath = resolve(ROOT, 'node_modules', '.bin', 'electron')
 
 const TIMEOUT_MS = 30_000
+const isCI = process.env.CI === 'true'
 
 function launchElectron() {
   return new Promise((resolvePromise, reject) => {
@@ -27,7 +28,14 @@ function launchElectron() {
       reject(new Error(`Smoke test timed out after ${TIMEOUT_MS}ms`))
     }, TIMEOUT_MS)
 
-    const child = spawn(electronPath, [resolve(ROOT, 'scripts', 'smoke-preload-entry.mjs')], {
+    const args = [resolve(ROOT, 'scripts', 'smoke-preload-entry.mjs')]
+
+    // On CI Linux, chrome-sandbox requires root ownership; use --no-sandbox instead
+    if (isCI) {
+      args.unshift('--no-sandbox')
+    }
+
+    const child = spawn(electronPath, args, {
       cwd: ROOT,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
       stdio: ['ignore', 'pipe', 'pipe']
@@ -43,9 +51,9 @@ function launchElectron() {
       stderr += data.toString()
     })
 
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer)
-      resolvePromise({ code, stdout, stderr })
+      resolvePromise({ code, signal, stdout, stderr })
     })
 
     child.on('error', (err) => {
@@ -57,7 +65,19 @@ function launchElectron() {
 
 async function main() {
   console.log('Smoke test: launching Electron...')
-  const { code, stdout, stderr } = await launchElectron()
+  const { code, signal, stdout, stderr } = await launchElectron()
+
+  // Check for launch failure before evaluating renderer assertions
+  if (code !== 0 && code !== null) {
+    console.error(`FAIL: Electron exited with code ${code}`)
+    if (stderr) console.error('stderr:', stderr)
+    process.exit(1)
+  }
+  if (signal) {
+    console.error(`FAIL: Electron killed by signal ${signal}`)
+    if (stderr) console.error('stderr:', stderr)
+    process.exit(1)
+  }
 
   const output = stdout + stderr
   const results = {}
@@ -66,6 +86,16 @@ async function main() {
       const [, key, value] = line.match(/^SMOKE:(\w+)=(.*)$/) || []
       if (key) results[key] = value
     }
+  }
+
+  // Require all SMOKE result keys to be present
+  const requiredKeys = ['plottoonDefined', 'projectsHeading']
+  const missingKeys = requiredKeys.filter((k) => !(k in results))
+  if (missingKeys.length > 0) {
+    console.error(`FAIL: Missing smoke results: ${missingKeys.join(', ')}`)
+    console.error('Electron may have crashed before renderer checks completed.')
+    if (stderr) console.error('stderr:', stderr)
+    process.exit(1)
   }
 
   let passed = true
