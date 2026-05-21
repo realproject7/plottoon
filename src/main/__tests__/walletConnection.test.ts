@@ -172,15 +172,27 @@ describe('sanitizeWalletErrorMessage', () => {
 })
 
 describe('isOwsUnavailableError', () => {
-  it('detects the OWS unavailable sentinel string', () => {
-    expect(isOwsUnavailableError(new Error('OWS native module is not available'))).toBe(true)
+  it('detects the canonical OWS unavailable sentinel string', () => {
+    expect(isOwsUnavailableError(new Error('OWS wallet module is unavailable'))).toBe(true)
     expect(
-      isOwsUnavailableError(new Error('outer wrap: OWS native module is not available (cause)'))
+      isOwsUnavailableError(new Error('outer wrap: OWS wallet module is unavailable (cause)'))
     ).toBe(true)
+  })
+
+  it('still detects the legacy OWS unavailable wording for backward compatibility', () => {
+    expect(isOwsUnavailableError(new Error('OWS native module is not available'))).toBe(true)
+  })
+
+  it('detects bundler-internal "is not a function" leaks against OWS method names', () => {
+    expect(isOwsUnavailableError(new Error('mod2.listWallets is not a function'))).toBe(true)
+    expect(isOwsUnavailableError(new Error('mod.createWallet is not a function'))).toBe(true)
+    expect(isOwsUnavailableError(new Error('listWallets is not a function'))).toBe(true)
+    expect(isOwsUnavailableError(new Error('signMessage is not a function'))).toBe(true)
   })
 
   it('returns false for unrelated errors', () => {
     expect(isOwsUnavailableError(new Error('vault locked'))).toBe(false)
+    expect(isOwsUnavailableError(new Error('something.unrelated is not a function'))).toBe(false)
     expect(isOwsUnavailableError(null)).toBe(false)
     expect(isOwsUnavailableError(undefined)).toBe(false)
   })

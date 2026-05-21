@@ -4,7 +4,10 @@ import {
   createOWSCreateFn,
   createOWSSignMessageFn,
   createOWSSignTransactionFn,
-  createOWSConfig
+  createOWSConfig,
+  createOWSFromCore,
+  unwrapOwsCoreExports,
+  OWS_UNAVAILABLE_MESSAGE
 } from '../services/owsAdapter'
 import type { OWSCoreModule, OWSWalletInfo, OWSVaultConfig } from '../services/owsAdapter'
 
@@ -146,6 +149,115 @@ describe('createOWSSignTransactionFn', () => {
       null,
       '/tmp/test-vault'
     )
+  })
+})
+
+describe('unwrapOwsCoreExports', () => {
+  function makeOwsLikeRecord(): Record<string, unknown> {
+    return {
+      listWallets: () => [],
+      createWallet: () => ({}),
+      signMessage: () => ({}),
+      signTransaction: () => ({})
+    }
+  }
+
+  it('returns the input directly when methods are top-level functions (plain Node CJS shape)', () => {
+    const direct = makeOwsLikeRecord()
+    expect(unwrapOwsCoreExports(direct)).toBe(direct)
+  })
+
+  it('unwraps a single-default Vite/Rollup synthetic namespace', () => {
+    const inner = makeOwsLikeRecord()
+    const wrapped = { default: inner }
+    expect(unwrapOwsCoreExports(wrapped)).toBe(inner)
+  })
+
+  it('unwraps a double-default wrapping (namespace { default: { default: core } })', () => {
+    const inner = makeOwsLikeRecord()
+    const wrapped = { default: { default: inner } }
+    expect(unwrapOwsCoreExports(wrapped)).toBe(inner)
+  })
+
+  it('unwraps a CommonJS-record wrapping ({ module: { exports: core } })', () => {
+    const inner = makeOwsLikeRecord()
+    const wrapped = { module: { exports: inner } }
+    expect(unwrapOwsCoreExports(wrapped)).toBe(inner)
+  })
+
+  it('unwraps a bare exports-prop wrapping ({ exports: core })', () => {
+    const inner = makeOwsLikeRecord()
+    const wrapped = { exports: inner }
+    expect(unwrapOwsCoreExports(wrapped)).toBe(inner)
+  })
+
+  it('unwraps a mixed default-then-module.exports chain', () => {
+    const inner = makeOwsLikeRecord()
+    const wrapped = { default: { module: { exports: inner } } }
+    expect(unwrapOwsCoreExports(wrapped)).toBe(inner)
+  })
+
+  it('throws the stable sentinel when no layer carries the OWS core methods', () => {
+    expect(() => unwrapOwsCoreExports({})).toThrow(OWS_UNAVAILABLE_MESSAGE)
+    expect(() => unwrapOwsCoreExports({ default: { default: {} } })).toThrow(
+      OWS_UNAVAILABLE_MESSAGE
+    )
+    // Bundler bug shape: methods exist as keys but values are undefined.
+    expect(() =>
+      unwrapOwsCoreExports({
+        default: { listWallets: undefined, createWallet: undefined }
+      })
+    ).toThrow(OWS_UNAVAILABLE_MESSAGE)
+  })
+
+  it('throws the stable sentinel for null / non-object input', () => {
+    expect(() => unwrapOwsCoreExports(null)).toThrow(OWS_UNAVAILABLE_MESSAGE)
+    expect(() => unwrapOwsCoreExports(undefined)).toThrow(OWS_UNAVAILABLE_MESSAGE)
+    expect(() => unwrapOwsCoreExports(42)).toThrow(OWS_UNAVAILABLE_MESSAGE)
+  })
+})
+
+describe('createOWSFromCore', () => {
+  function workingLoader() {
+    return {
+      listWallets: vi.fn().mockReturnValue([]),
+      createWallet: vi.fn().mockReturnValue({ accounts: [] }),
+      signMessage: vi.fn().mockReturnValue({ signature: '0xsig' }),
+      signTransaction: vi.fn().mockReturnValue({ signature: '0xtx' })
+    }
+  }
+
+  it('forwards calls when the loader returns the canonical CJS shape', async () => {
+    const inner = workingLoader()
+    const core = await createOWSFromCore(() => inner)
+    expect(core.listWallets('/vault')).toEqual([])
+    expect(inner.listWallets).toHaveBeenCalledWith('/vault')
+  })
+
+  it('unwraps a default-wrapped loader result (electron-vite bundle shape)', async () => {
+    const inner = workingLoader()
+    const core = await createOWSFromCore(() => ({ default: inner }))
+    core.listWallets()
+    expect(inner.listWallets).toHaveBeenCalled()
+  })
+
+  it('throws the stable sentinel when the loader throws', async () => {
+    await expect(
+      createOWSFromCore(() => {
+        throw new Error('require failed: MODULE_NOT_FOUND')
+      })
+    ).rejects.toThrow(OWS_UNAVAILABLE_MESSAGE)
+  })
+
+  it('throws the stable sentinel when the loader returns a shape missing OWS methods', async () => {
+    // Reproduces the post-bundling failure mode where method names exist but
+    // resolve to undefined — what produced the original `mod2.listWallets is
+    // not a function` page error.
+    await expect(
+      createOWSFromCore(() => ({
+        default: { listWallets: undefined, createWallet: undefined }
+      }))
+    ).rejects.toThrow(OWS_UNAVAILABLE_MESSAGE)
   })
 })
 

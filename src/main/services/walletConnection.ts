@@ -126,9 +126,27 @@ export function sanitizeWalletErrorMessage(message: string): string {
   return redactSecrets(message)
 }
 
+// Patterns that indicate OWS is unavailable. The canonical sentinel is
+// 'OWS wallet module is unavailable' (see owsAdapter.OWS_UNAVAILABLE_MESSAGE).
+// The legacy 'OWS native module is not available' string is retained for
+// backward compatibility with any catch-site or test fixture that still uses
+// the older wording.
+const OWS_UNAVAILABLE_PATTERNS = [
+  'OWS wallet module is unavailable',
+  'OWS native module is not available'
+]
+
+// Bundler-internal shapes that should be treated as "OWS unavailable" so we
+// never surface variable names like `mod2.listWallets` to the UI.
+const BUNDLER_LEAK_PATTERNS = [
+  /\bmod\d*\.\w+ is not a function\b/i,
+  /\b(?:listWallets|createWallet|signMessage|signTransaction) is not a function\b/i
+]
+
 export function isOwsUnavailableError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
-  return message.includes('OWS native module is not available')
+  if (OWS_UNAVAILABLE_PATTERNS.some((s) => message.includes(s))) return true
+  return BUNDLER_LEAK_PATTERNS.some((re) => re.test(message))
 }
 
 export function toPublishSignerAddress(wallet: WalletMetadata): string {

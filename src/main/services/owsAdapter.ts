@@ -1,4 +1,9 @@
+import { createRequire } from 'node:module'
 import type { OWSVaultEntry, OWSVaultDiscoverFn, OWSWalletCreateFn } from './walletConnection'
+
+export const OWS_UNAVAILABLE_MESSAGE = 'OWS wallet module is unavailable'
+
+const OWS_CORE_METHODS = ['listWallets', 'createWallet', 'signMessage', 'signTransaction'] as const
 
 export interface OWSAccountInfo {
   chainId: string
@@ -140,12 +145,63 @@ export function createOWSConfig(
   }
 }
 
-export async function createOWSFromCore(): Promise<OWSCoreModule> {
-  // @open-wallet-standard/core is a CJS native addon (NAPI-RS).
-  // Dynamic import of CJS wraps exports as { default: { listWallets, ... } }.
-  const imported = await import('@open-wallet-standard/core')
-  const ows = (imported as { default?: Record<string, unknown> }).default ?? imported
-  const mod = ows as unknown as OWSCoreModule
+function hasOwsMethods(value: unknown): value is OWSCoreModule {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return OWS_CORE_METHODS.every((m) => typeof record[m] === 'function')
+}
+
+function unwrapStep(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  // Common namespace wrappers, in priority order:
+  //   { default: realModule }       — Vite/Rollup synthetic ESM namespace
+  //   { exports: realModule }       — some CJS-to-ESM bridges expose `exports`
+  //   { module: { exports: real } } — full CommonJS-record wrapping
+  if (record.default && record.default !== value) return record.default
+  if (record.exports && record.exports !== value) return record.exports
+  if (
+    record.module &&
+    typeof record.module === 'object' &&
+    (record.module as Record<string, unknown>).exports
+  ) {
+    return (record.module as Record<string, unknown>).exports
+  }
+  return undefined
+}
+
+export function unwrapOwsCoreExports(raw: unknown): OWSCoreModule {
+  // electron-vite bundling can wrap CJS exports in one or more layers of
+  // `default` / `exports` / `module.exports` / namespace records, sometimes
+  // hiding the original native-addon functions behind chains like
+  // `{ default: { default: { listWallets, ... } } }` or
+  // `{ module: { exports: { listWallets, ... } } }`. Walk a small number of
+  // such wrappers until we find a layer that exposes the OWS core methods.
+  let cur: unknown = raw
+  for (let depth = 0; depth < 4; depth++) {
+    if (hasOwsMethods(cur)) return cur
+    const next = unwrapStep(cur)
+    if (next === undefined || next === cur) break
+    cur = next
+  }
+  throw new Error(OWS_UNAVAILABLE_MESSAGE)
+}
+
+export async function createOWSFromCore(
+  loader: () => unknown = defaultOwsLoader
+): Promise<OWSCoreModule> {
+  // @open-wallet-standard/core is a CJS native addon (NAPI-RS). Going through
+  // electron-vite's `import()` rewrites the addon export shape and the
+  // destructuring inside the package's loader can yield `undefined` for every
+  // method. Resolve the package via Node's runtime `createRequire` so the
+  // original CJS exports load intact, then defensively unwrap.
+  let raw: unknown
+  try {
+    raw = loader()
+  } catch {
+    throw new Error(OWS_UNAVAILABLE_MESSAGE)
+  }
+  const mod = unwrapOwsCoreExports(raw)
   return {
     listWallets(vaultPath?: string) {
       return mod.listWallets(vaultPath)
@@ -180,4 +236,9 @@ export async function createOWSFromCore(): Promise<OWSCoreModule> {
       return mod.signTransaction(wallet, chain, txHex, passphrase, index, vaultPath)
     }
   }
+}
+
+function defaultOwsLoader(): unknown {
+  const requireFn = createRequire(import.meta.url)
+  return requireFn('@open-wallet-standard/core')
 }
