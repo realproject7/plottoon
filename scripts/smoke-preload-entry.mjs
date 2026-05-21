@@ -31,6 +31,18 @@ app.whenReady().then(async () => {
     }
   })
 
+  // Fail fast if the renderer page cannot load
+  win.webContents.on('did-fail-load', (_event, code, description) => {
+    process.stderr.write(`Renderer failed to load: ${code} ${description}\n`)
+    app.exit(1)
+  })
+
+  // Fail fast on renderer crash
+  win.webContents.on('render-process-gone', (_event, details) => {
+    process.stderr.write(`Renderer process gone: ${details.reason}\n`)
+    app.exit(1)
+  })
+
   await win.loadFile(path.join(distRenderer, 'index.html'))
 
   // Wait briefly for React to mount
