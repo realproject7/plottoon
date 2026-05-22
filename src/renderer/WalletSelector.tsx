@@ -17,7 +17,7 @@ declare global {
         getOptions: () => Promise<{ options: WalletOption[] }>
         connect: (option: WalletOption) => Promise<{
           success: boolean
-          wallet?: { address: string; source: string; name: string }
+          wallet?: { address: string; source: string }
           error?: string
         }>
         getConnected: () => Promise<{ connected: boolean; address?: string; source?: string }>
