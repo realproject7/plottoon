@@ -264,4 +264,58 @@ describe('walletConnectionHandlers', () => {
     expect(typed.success).toBe(false)
     expect(typed.error).toContain('unsafe content')
   })
+
+  it('wallet:connect registers and activates the identity when a store is provided', async () => {
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newState = createSelectedWalletState()
+    const newConfig = mockConfig()
+    const identityStore = {
+      list: vi.fn().mockResolvedValue([]),
+      getActive: vi.fn().mockResolvedValue(null),
+      setActive: vi.fn(async (addr: string) => ({
+        address: addr.toLowerCase(),
+        source: 'plottoon-writer' as const,
+        owsName: 'plottoon-writer-fake',
+        registeredAt: '2026-05-22T00:00:00.000Z'
+      })),
+      clearActive: vi.fn().mockResolvedValue(undefined),
+      register: vi.fn(async (input) => ({
+        address: input.address.toLowerCase(),
+        source: input.source,
+        owsName: input.owsName,
+        label: input.label,
+        registeredAt: input.registeredAt ?? '2026-05-22T00:00:00.000Z'
+      })),
+      remove: vi.fn()
+    }
+    registerWalletConnectionHandlers(newConfig, newState, mockSigner(), identityStore)
+
+    const result = await handlers['wallet:connect'](
+      {},
+      { type: 'create-new', source: 'plottoon-writer' }
+    )
+    const typed = result as { success: boolean; wallet?: { address: string; name: string } }
+    expect(typed.success).toBe(true)
+    expect(identityStore.register).toHaveBeenCalledTimes(1)
+    expect(identityStore.setActive).toHaveBeenCalledTimes(1)
+    expect(identityStore.setActive).toHaveBeenCalledWith('0xnew-created')
+  })
+
+  it('wallet:disconnect clears the active identity in the store', async () => {
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newState = createSelectedWalletState()
+    const identityStore = {
+      list: vi.fn(),
+      getActive: vi.fn(),
+      setActive: vi.fn(),
+      clearActive: vi.fn().mockResolvedValue(undefined),
+      register: vi.fn(),
+      remove: vi.fn()
+    }
+    registerWalletConnectionHandlers(mockConfig(), newState, mockSigner(), identityStore)
+
+    await handlers['wallet:disconnect']({})
+    expect(identityStore.clearActive).toHaveBeenCalledTimes(1)
+    expect(newState.wallet).toBeNull()
+  })
 })

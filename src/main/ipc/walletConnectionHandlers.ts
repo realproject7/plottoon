@@ -13,6 +13,7 @@ import {
 } from '../services/walletConnection'
 import { OWS_UNAVAILABLE_MESSAGE } from '../services/owsAdapter'
 import type { WalletSigner } from '../services/walletSigning'
+import type { WalletIdentityStore } from '../services/walletIdentityStore'
 
 export interface SelectedWalletState {
   wallet: WalletMetadata | null
@@ -21,7 +22,8 @@ export interface SelectedWalletState {
 export function registerWalletConnectionHandlers(
   config: WalletConnectionConfig,
   state: SelectedWalletState,
-  signer: WalletSigner
+  signer: WalletSigner,
+  identityStore?: WalletIdentityStore
 ) {
   ipcMain.handle('wallet:getOptions', async () => {
     try {
@@ -59,6 +61,19 @@ export function registerWalletConnectionHandlers(
           return { success: false, error: 'Wallet metadata contains unsafe content' }
         }
         state.wallet = result.wallet
+        // Persist the connected wallet as a known identity and mark it active
+        // so the selection survives a restart. The store normalizes the
+        // address; existing identities at the same address are updated in
+        // place, preserving their original registeredAt.
+        if (identityStore) {
+          const persisted = await identityStore.register({
+            address: result.wallet.address,
+            source: result.wallet.source,
+            owsName: result.wallet.name,
+            registeredAt: result.wallet.createdAt
+          })
+          await identityStore.setActive(persisted.address)
+        }
       }
       return result
     } catch (err) {
@@ -79,8 +94,14 @@ export function registerWalletConnectionHandlers(
     }
   })
 
-  ipcMain.handle('wallet:disconnect', () => {
+  ipcMain.handle('wallet:disconnect', async () => {
     state.wallet = null
+    if (identityStore) {
+      // Disconnect clears the in-memory selection without erasing the
+      // registry of known identities — the user can re-pick one later via
+      // wallet:identity:setActive without going through OWS discovery again.
+      await identityStore.clearActive()
+    }
     return { success: true }
   })
 

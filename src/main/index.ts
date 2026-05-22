@@ -9,6 +9,11 @@ import {
   registerWalletConnectionHandlers,
   createSelectedWalletState
 } from './ipc/walletConnectionHandlers'
+import {
+  registerWalletIdentityHandlers,
+  restoreActiveWalletFromStore
+} from './ipc/walletIdentityHandlers'
+import { createWalletIdentityStore } from './services/walletIdentityStore'
 import { registerPublishHandlers } from './ipc/publishHandlers'
 import { registerDashboardHandlers } from './ipc/dashboardHandlers'
 import { registerRoyaltyHandlers } from './ipc/royaltyHandlers'
@@ -93,8 +98,16 @@ app.whenReady().then(async () => {
   })
   registerSigningHandlers(signer)
 
+  const identityStore = createWalletIdentityStore({
+    filePath: path.join(app.getPath('userData'), 'wallet-identities.json')
+  })
+  // Restore the persisted active wallet so single-wallet users don't have to
+  // reconnect after every app launch (backward compat per #218).
+  await restoreActiveWalletFromStore(identityStore, walletState)
+
   const walletConfig = createOWSConfig(owsModule, vaultConfig)
-  registerWalletConnectionHandlers(walletConfig, walletState, signer)
+  registerWalletConnectionHandlers(walletConfig, walletState, signer, identityStore)
+  registerWalletIdentityHandlers({ store: identityStore, walletState })
 
   const publishConfig = getDefaultPublishConfig()
   registerPublishHandlers({
