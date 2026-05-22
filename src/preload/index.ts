@@ -72,7 +72,7 @@ contextBridge.exposeInMainWorld('plottoon', {
       ipcRenderer.invoke('wallet:identity:setActive', { address })
   },
   publish: {
-    preflight: () => ipcRenderer.invoke('publish:preflight'),
+    preflight: (projectId?: string) => ipcRenderer.invoke('publish:preflight', projectId),
     execute: (request: unknown, confirmed: boolean) =>
       ipcRenderer.invoke('publish:execute', request, confirmed),
     onProgress: (callback: (progress: { state: string; detail?: string }) => void) => {

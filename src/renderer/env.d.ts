@@ -381,7 +381,13 @@ interface IndexRetryResult {
 }
 
 interface PlottoonPublish {
-  preflight(): Promise<PublishPreflightResult>
+  /**
+   * Pass a `projectId` when invoking from a publish flow to surface a
+   * #223 wallet-ownership mismatch in `errors` before the user reaches
+   * the confirmation step. Called with no arg, the result describes only
+   * the wallet/config/signer-mode readiness.
+   */
+  preflight(projectId?: string): Promise<PublishPreflightResult>
   execute(request: PublishRequest, confirmed: boolean): Promise<PublishExecuteResult>
   onProgress(callback: (progress: PublishProgress) => void): () => void
   retryIndex(params: IndexRetryParams): Promise<IndexRetryResult>
