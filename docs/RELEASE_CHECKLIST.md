@@ -11,6 +11,11 @@ Pre-release verification for PlotToon builds.
 - [ ] `npm run smoke` passes (typecheck + build)
 - [ ] No `TODO` or `FIXME` comments blocking release
 
+## Multi-Wallet
+
+- [ ] Two-wallet acceptance matrix in `docs/MULTI_WALLET_QA.md` passes
+- [ ] No new code path looks up the active wallet by `plotlink-writer` name prefix; always read from `walletIdentityStore.getActive()`
+
 ## Publish Flow
 
 - [ ] Publish preflight validates wallet + config + chain
