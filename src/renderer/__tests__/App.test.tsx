@@ -35,10 +35,24 @@ beforeEach(() => {
       writeAppConfig: vi.fn()
     },
     project: {
-      discover: mockDiscover,
+      // `mockDiscover` keeps its historical flat-array shape so existing
+      // test assertions don't change; the wrapper partitions into the
+      // shape the post-#220 ProjectList expects (everything owned by the
+      // single fake active wallet).
+      discover: async () => {
+        const projects = await mockDiscover()
+        return {
+          owned: projects.filter((p) => !p.error),
+          legacy: [],
+          otherWallets: [],
+          errors: projects.filter((p) => p.error),
+          activeAddress: '0xaaaa000000000000000000000000000000000001'
+        }
+      },
       readMeta: vi.fn(),
       writeMeta: vi.fn(),
       create: vi.fn(),
+      assignToActiveWallet: vi.fn(),
       setProjectsDir: vi.fn(),
       getProjectsDir: vi.fn(),
       detectClis: vi.fn()
@@ -248,6 +262,42 @@ describe('App', () => {
       expect(document.querySelector('[data-testid="preview-panel"]')).toBeTruthy()
       expect(document.querySelector('[data-testid="inspector-panel"]')).toBeTruthy()
       expect(document.querySelector('[data-testid="terminal-region"]')).toBeTruthy()
+    })
+  })
+
+  it('clears the open workspace project and returns to Projects when the active wallet changes (#220)', async () => {
+    mockDiscover.mockResolvedValue([
+      {
+        id: 'proj_1',
+        path: '/home/user/my-webtoon',
+        meta: {
+          name: 'My Webtoon',
+          version: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          description: 'A cool story'
+        },
+        error: null
+      }
+    ])
+    render(<App />)
+    await waitFor(() => screen.getByText('My Webtoon'))
+    fireEvent.click(screen.getByText('My Webtoon'))
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="cut-list-panel"]')).toBeTruthy()
+    })
+
+    // Wallet switch fires the active-changed event. App must drop the open
+    // project and navigate back to Projects so the user can't keep editing
+    // a project that may belong to the previously-active wallet.
+    window.dispatchEvent(new CustomEvent('plottoon:wallet:active-changed'))
+
+    await waitFor(() => {
+      // The workspace's cut-list-panel testid disappears once Workspace is
+      // remounted without a projectId (it now renders the empty-state copy).
+      expect(document.querySelector('[data-testid="cut-list-panel"]')).toBeNull()
+      // We landed back on the Projects view.
+      expect(screen.getByText(/Connect a wallet|webtoon projects/i)).toBeDefined()
     })
   })
 

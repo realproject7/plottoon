@@ -9,13 +9,14 @@ import {
   validateMeta,
   ProjectMetaError
 } from '../services/projectMeta'
-import { discoverProjects } from '../services/projectDiscovery'
+import { discoverProjects, partitionProjectsByWallet } from '../services/projectDiscovery'
 import { scaffoldProjectTemplate } from '../services/projectTemplate'
 import { resolveAppConfigPath } from '../services/safePaths'
 import { detectClis } from '../services/cliDetection'
 import { generateReport } from '../services/capabilityReport'
 import type { CapabilityCheck, CheckStatus } from '../services/capabilityReport'
 import { logAction, getLog } from '../services/actionLog'
+import type { WalletIdentityStore } from '../services/walletIdentityStore'
 
 const PROJECTS_DIR_KEY = 'projectsDir'
 
@@ -65,11 +66,27 @@ async function probeWriteAccess(dir: string | null): Promise<CapabilityCheck> {
   }
 }
 
-export function registerProjectHandlers(): void {
+export interface RegisterProjectHandlersOptions {
+  /**
+   * Optional — when provided, `project:discover` partitions projects by the
+   * active wallet's address, and `project:create` stamps the new project
+   * with that address. `project:assignWallet` is only registered when a
+   * store is available.
+   */
+  walletIdentityStore?: WalletIdentityStore
+}
+
+export function registerProjectHandlers(options: RegisterProjectHandlersOptions = {}): void {
+  const walletStore = options.walletIdentityStore
+
   ipcMain.handle('project:discover', async () => {
     const dir = await getProjectsDir()
-    if (!dir) return []
-    return discoverProjects(dir)
+    if (!dir) {
+      return { owned: [], legacy: [], otherWallets: [], errors: [], activeAddress: null }
+    }
+    const projects = await discoverProjects(dir)
+    const activeAddress = walletStore ? ((await walletStore.getActive())?.address ?? null) : null
+    return { ...partitionProjectsByWallet(projects, activeAddress), activeAddress }
   })
 
   ipcMain.handle('project:readMeta', async (_event, projectId: string) => {
@@ -114,16 +131,67 @@ export function registerProjectHandlers(): void {
       await setProjectsDir(projectsDir)
     }
 
+    // Resolve the active wallet so new projects are wallet-scoped from the
+    // first save. Per #220, do NOT infer from the first plotlink-writer
+    // wallet — only stamp when there's a deliberately-selected active one.
+    const activeIdentity = walletStore ? await walletStore.getActive() : null
+    if (walletStore && !activeIdentity) {
+      throw new ProjectMetaError(
+        'Cannot create a project: no active wallet selected. Connect or switch a wallet first.',
+        ''
+      )
+    }
+
     const projectPath = path.join(projectsDir, slug)
     await fs.mkdir(projectPath, { recursive: true })
 
-    const meta = createProjectMeta(trimmed, description)
+    const meta = createProjectMeta(
+      trimmed,
+      description,
+      activeIdentity
+        ? { address: activeIdentity.address, source: activeIdentity.source }
+        : undefined
+    )
     await writeProjectMeta(projectPath, meta)
     await scaffoldProjectTemplate(projectPath, trimmed)
 
     const id = registerProject(projectPath)
     logAction('project:create', `Created project "${trimmed}"`, id)
     return { id, path: projectPath, meta }
+  })
+
+  ipcMain.handle('project:assignWallet', async (_event, projectId: string) => {
+    if (!walletStore) {
+      throw new ProjectMetaError('project:assignWallet requires a wallet identity store', '')
+    }
+    const active = await walletStore.getActive()
+    if (!active) {
+      throw new ProjectMetaError('Cannot assign a project: no active wallet selected.', '')
+    }
+    const root = getProjectRoot(projectId)
+    const existing = await readProjectMeta(root)
+    // No-op when the project is already attached to the active wallet.
+    if (existing.wallet?.address === active.address) {
+      return { ok: true, meta: existing }
+    }
+    // Strict legacy-only assignment per #220: never silently move a project
+    // from one known wallet to another. A project that is already stamped
+    // must be re-stamped only via a future explicit transfer flow that the
+    // user-driven UI surfaces with confirmation.
+    if (existing.wallet) {
+      throw new ProjectMetaError(
+        'This project is already assigned to a different wallet. Switch to that wallet to access it instead of reassigning.',
+        root
+      )
+    }
+    const next = {
+      ...existing,
+      wallet: { address: active.address, source: active.source },
+      updatedAt: new Date().toISOString()
+    }
+    await writeProjectMeta(root, next)
+    logAction('project:assignWallet', `Assigned legacy project to active wallet`, projectId)
+    return { ok: true, meta: next }
   })
 
   ipcMain.handle('project:setProjectsDir', async (event) => {

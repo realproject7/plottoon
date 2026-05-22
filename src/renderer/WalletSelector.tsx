@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { WalletIdentityView } from '../shared/walletIdentity'
+import { type WalletIdentityView, WALLET_ACTIVE_CHANGED_EVENT } from '../shared/walletIdentity'
 
 interface WalletOption {
   type: 'create-new' | 'reuse-existing'
@@ -140,6 +140,10 @@ export function WalletSelector(): JSX.Element {
   const setOpen = (open: boolean): void =>
     setState((s) => ({ ...s, open, error: open ? null : s.error }))
 
+  function notifyActiveChanged(): void {
+    window.dispatchEvent(new CustomEvent(WALLET_ACTIVE_CHANGED_EVENT))
+  }
+
   const handleSwitch = async (address: string): Promise<void> => {
     setState((s) => ({ ...s, loading: true, error: null }))
     try {
@@ -153,6 +157,7 @@ export function WalletSelector(): JSX.Element {
         return
       }
       setState((s) => ({ ...s, active: result.identity, loading: false, open: false }))
+      notifyActiveChanged()
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -183,6 +188,7 @@ export function WalletSelector(): JSX.Element {
       }
       await refresh()
       setState((s) => ({ ...s, loading: false, open: false }))
+      notifyActiveChanged()
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -198,6 +204,7 @@ export function WalletSelector(): JSX.Element {
       await window.plottoon.wallet.disconnect()
       await refresh()
       setState((s) => ({ ...s, loading: false, open: false, active: null }))
+      notifyActiveChanged()
     } catch (err) {
       setState((s) => ({
         ...s,

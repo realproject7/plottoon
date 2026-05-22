@@ -52,7 +52,6 @@ function createWindow(): void {
 
 app.whenReady().then(async () => {
   registerFsHandlers()
-  registerProjectHandlers()
   registerTerminalHandlers()
 
   let owsModule: import('./services/owsAdapter').OWSCoreModule
@@ -108,6 +107,11 @@ app.whenReady().then(async () => {
   const walletConfig = createOWSConfig(owsModule, vaultConfig)
   registerWalletConnectionHandlers(walletConfig, walletState, signer, identityStore)
   registerWalletIdentityHandlers({ store: identityStore, walletState })
+
+  // Project handlers depend on the wallet identity store so `project:discover`
+  // can partition by active wallet and `project:create` can stamp ownership
+  // metadata (#220). Registered after the store is constructed.
+  registerProjectHandlers({ walletIdentityStore: identityStore })
 
   const publishConfig = getDefaultPublishConfig()
   registerPublishHandlers({
