@@ -4,13 +4,23 @@ import { OWS_UNAVAILABLE_MESSAGE } from '../services/owsAdapter'
 
 const ACTIVE = { name: 'pw-active', address: '0xaaaa000000000000000000000000000000000001' }
 
-function entry(name: string) {
+interface VaultAccount {
+  chainId: string
+  address: string
+  derivationPath: string
+}
+
+function entry(name: string, accounts: VaultAccount[] = makeMatchingAccounts(ACTIVE.address)) {
   return {
     id: `fake-id-${name}`,
     name,
-    accounts: [],
+    accounts,
     createdAt: '2026-05-22T00:00:00.000Z'
   }
+}
+
+function makeMatchingAccounts(address: string): VaultAccount[] {
+  return [{ chainId: 'eip155:8453', address, derivationPath: "m/44'/60'/0'/0/0" }]
 }
 
 describe('checkActiveWalletInVault (#235)', () => {
@@ -80,5 +90,88 @@ describe('checkActiveWalletInVault (#235)', () => {
     expect(result.error).not.toContain('/sensitive/path')
     expect(result.error).not.toContain('EACCES')
     expect(result.error).toMatch(/no longer available/i)
+  })
+})
+
+describe('checkActiveWalletInVault — address match (#240)', () => {
+  const OTHER_ADDRESS = '0xbbbb000000000000000000000000000000000002'
+
+  it('passes when the matching-name vault entry has an EVM account with the same address', () => {
+    const ows = {
+      listWallets: vi
+        .fn()
+        .mockReturnValue([entry('pw-active', makeMatchingAccounts(ACTIVE.address))])
+    }
+    const result = checkActiveWalletInVault(ows, { vaultPath: undefined }, ACTIVE)
+    expect(result.ok).toBe(true)
+  })
+
+  it('fails when the vault entry name matches but every EVM account address differs', () => {
+    // Same-name/different-address scenario: a wallet was renamed or
+    // restored from a different key. Signing would use a different
+    // private key than the metadata shown to the user.
+    const ows = {
+      listWallets: vi
+        .fn()
+        .mockReturnValue([entry('pw-active', makeMatchingAccounts(OTHER_ADDRESS))])
+    }
+    const result = checkActiveWalletInVault(ows, { vaultPath: undefined }, ACTIVE)
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/no longer available|reconnect|switch wallets/i)
+  })
+
+  it('fails when the vault entry name matches but has no EVM accounts at all', () => {
+    const ows = {
+      listWallets: vi.fn().mockReturnValue([entry('pw-active', [])])
+    }
+    const result = checkActiveWalletInVault(ows, { vaultPath: undefined }, ACTIVE)
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/no longer available/i)
+  })
+
+  it('normalizes case when matching the EVM account address against the active wallet', () => {
+    const upperAddress = ACTIVE.address.toUpperCase()
+    const ows = {
+      listWallets: vi.fn().mockReturnValue([entry('pw-active', makeMatchingAccounts(upperAddress))])
+    }
+    const result = checkActiveWalletInVault(ows, { vaultPath: undefined }, ACTIVE)
+    expect(result.ok).toBe(true)
+  })
+
+  it('passes when at least one account in the list matches (other accounts ignored)', () => {
+    const ows = {
+      listWallets: vi.fn().mockReturnValue([
+        entry('pw-active', [
+          { chainId: 'eip155:1', address: OTHER_ADDRESS, derivationPath: "m/44'/60'/0'/0/0" },
+          {
+            chainId: 'eip155:8453',
+            address: ACTIVE.address,
+            derivationPath: "m/44'/60'/0'/0/1"
+          }
+        ])
+      ])
+    }
+    const result = checkActiveWalletInVault(ows, { vaultPath: undefined }, ACTIVE)
+    expect(result.ok).toBe(true)
+  })
+
+  it('address-mismatch error never leaks the vault path, active OWS name, or wallet address', () => {
+    const ows = {
+      listWallets: vi
+        .fn()
+        .mockReturnValue([entry('pw-active', makeMatchingAccounts(OTHER_ADDRESS))])
+    }
+    const result = checkActiveWalletInVault(
+      ows,
+      { vaultPath: '/private/var/folders/x/y/plottoon/vault.json' },
+      ACTIVE
+    )
+    expect(result.ok).toBe(false)
+    expect(result.error).toBeDefined()
+    expect(result.error).not.toContain('/private/var/folders')
+    expect(result.error).not.toContain('vault.json')
+    expect(result.error).not.toContain(ACTIVE.name)
+    expect(result.error).not.toContain(ACTIVE.address)
+    expect(result.error).not.toContain(OTHER_ADDRESS)
   })
 })

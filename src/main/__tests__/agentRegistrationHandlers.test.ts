@@ -56,11 +56,19 @@ function createDeps(
       // #235: default vault contains the common test wallet names so
       // existing live-mode tests pass the freshness guard. Stale-wallet
       // regression tests override `listWallets` to return [].
+      // #240: the entry now carries an EVM account at `0xabc` (the
+      // address WALLET sets) so the new address-match check also passes.
       listWallets: vi.fn().mockReturnValue([
         {
           id: 'fake-id-pw-1',
           name: 'pw-1',
-          accounts: [],
+          accounts: [
+            {
+              chainId: 'eip155:8453',
+              address: '0xabc',
+              derivationPath: "m/44'/60'/0'/0/0"
+            }
+          ],
           createdAt: '2026-05-22T00:00:00.000Z'
         }
       ]),
@@ -424,11 +432,18 @@ describe('agent:bindingProof', () => {
       owsModule: {
         // Must include the active wallet so the #235 freshness check passes;
         // the test is about a `signMessage` failure deeper in the flow.
+        // #240: include an EVM account so the address check also passes.
         listWallets: vi.fn().mockReturnValue([
           {
             id: 'fake-id-test',
             name: WALLET.name,
-            accounts: [],
+            accounts: [
+              {
+                chainId: 'eip155:8453',
+                address: WALLET.address,
+                derivationPath: "m/44'/60'/0'/0/0"
+              }
+            ],
             createdAt: '2026-05-22T00:00:00.000Z'
           }
         ]),

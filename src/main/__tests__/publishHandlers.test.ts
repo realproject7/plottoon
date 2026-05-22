@@ -51,6 +51,10 @@ function mockSigner(isMock = true): WalletSigner {
 // the common test wallet names so existing live-mode tests still pass.
 // Stale-wallet regression tests override `listWallets` to return [] or to
 // omit the active wallet's name on purpose.
+//
+// #240: the guard now also requires an EVM account address match. Each
+// stock entry carries an account whose address equals `0xabc` — the
+// address every live-mode test in this file sets on `walletState.wallet`.
 const STOCK_VAULT_NAMES = [
   'pw-1',
   'plottoon-writer-1',
@@ -58,16 +62,18 @@ const STOCK_VAULT_NAMES = [
   'pw-fake',
   'plotlink-writer-main'
 ]
-function makeStockEntries(): Array<{
-  id: string
-  name: string
-  accounts: never[]
-  createdAt: string
-}> {
+const STOCK_TEST_ADDRESS = '0xabc'
+function makeStockEntries() {
   return STOCK_VAULT_NAMES.map((name) => ({
     id: `fake-id-${name}`,
     name,
-    accounts: [],
+    accounts: [
+      {
+        chainId: 'eip155:8453',
+        address: STOCK_TEST_ADDRESS,
+        derivationPath: "m/44'/60'/0'/0/0"
+      }
+    ],
     createdAt: '2026-05-22T00:00:00.000Z'
   }))
 }
