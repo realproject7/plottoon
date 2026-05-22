@@ -350,30 +350,159 @@ describe('royalty:claim', () => {
 })
 
 describe('royalty:claimHistory', () => {
+  // #233 — fake test wallets only; no real addresses or wallet material.
+  const WALLET_A = '0xaaaa000000000000000000000000000000000001'
+  const WALLET_B = '0xbbbb000000000000000000000000000000000002'
+
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('returns claim history', async () => {
+  function depsWithWallet(address: string): RoyaltyHandlerDeps {
+    return createDeps({
+      walletState: {
+        wallet: {
+          address,
+          source: 'plottoon-writer',
+          name: 'pw-fake',
+          createdAt: '2026-05-18T00:00:00Z'
+        }
+      }
+    })
+  }
+
+  it('returns only the active wallet’s claim records', async () => {
     const { readClaimHistory } = await import('../services/royaltyClaimStatus')
     ;(readClaimHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
       claims: [
         {
-          txHash: '0xtx1',
-          walletAddress: '0xabc',
+          txHash: '0xtxA',
+          walletAddress: WALLET_A,
           reserveToken: '0xtoken',
           gasCostWei: '1000',
           status: 'confirmed',
           error: null,
-          claimedAt: '2026-05-18T00:00:00Z'
+          claimedAt: '2026-05-22T00:00:00Z'
+        },
+        {
+          txHash: '0xtxB',
+          walletAddress: WALLET_B,
+          reserveToken: '0xtoken',
+          gasCostWei: '1000',
+          status: 'confirmed',
+          error: null,
+          claimedAt: '2026-05-22T00:30:00Z'
         }
       ]
     })
 
-    const deps = createDeps()
-    registerRoyaltyHandlers(deps)
+    registerRoyaltyHandlers(depsWithWallet(WALLET_A))
+    const handler = getHandler('royalty:claimHistory')
+    const result = (await handler()) as { claims: Array<{ txHash: string }> }
+    expect(result.claims).toHaveLength(1)
+    expect(result.claims[0].txHash).toBe('0xtxA')
+  })
+
+  it('shows wallet B only B’s records (mirror of the wallet-A case)', async () => {
+    const { readClaimHistory } = await import('../services/royaltyClaimStatus')
+    ;(readClaimHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      claims: [
+        {
+          txHash: '0xtxA',
+          walletAddress: WALLET_A,
+          reserveToken: '0xtoken',
+          gasCostWei: '1000',
+          status: 'confirmed',
+          error: null,
+          claimedAt: '2026-05-22T00:00:00Z'
+        },
+        {
+          txHash: '0xtxB',
+          walletAddress: WALLET_B,
+          reserveToken: '0xtoken',
+          gasCostWei: '1000',
+          status: 'confirmed',
+          error: null,
+          claimedAt: '2026-05-22T00:30:00Z'
+        }
+      ]
+    })
+
+    registerRoyaltyHandlers(depsWithWallet(WALLET_B))
+    const handler = getHandler('royalty:claimHistory')
+    const result = (await handler()) as { claims: Array<{ txHash: string }> }
+    expect(result.claims).toHaveLength(1)
+    expect(result.claims[0].txHash).toBe('0xtxB')
+  })
+
+  it('normalizes case when matching record addresses against the active wallet', async () => {
+    const { readClaimHistory } = await import('../services/royaltyClaimStatus')
+    ;(readClaimHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      claims: [
+        {
+          txHash: '0xtxA',
+          walletAddress: WALLET_A.toUpperCase(),
+          reserveToken: '0xtoken',
+          gasCostWei: '1000',
+          status: 'confirmed',
+          error: null,
+          claimedAt: '2026-05-22T00:00:00Z'
+        }
+      ]
+    })
+
+    registerRoyaltyHandlers(depsWithWallet(WALLET_A.toLowerCase()))
+    const handler = getHandler('royalty:claimHistory')
+    const result = (await handler()) as { claims: Array<{ txHash: string }> }
+    expect(result.claims).toHaveLength(1)
+  })
+
+  it('returns an empty list when no wallet is active', async () => {
+    const { readClaimHistory } = await import('../services/royaltyClaimStatus')
+    ;(readClaimHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      claims: [
+        {
+          txHash: '0xtxA',
+          walletAddress: WALLET_A,
+          reserveToken: '0xtoken',
+          gasCostWei: '1000',
+          status: 'confirmed',
+          error: null,
+          claimedAt: '2026-05-22T00:00:00Z'
+        }
+      ]
+    })
+
+    registerRoyaltyHandlers(createDeps())
     const handler = getHandler('royalty:claimHistory')
     const result = (await handler()) as { claims: unknown[] }
+    expect(result.claims).toEqual([])
+  })
+
+  it('keeps existing on-disk records readable (no format migration required)', async () => {
+    // The on-disk format from `royaltyClaimStatus` already includes
+    // `walletAddress` on each record (added when the file was first
+    // written by `royalty:claim`). #233 is purely an output-filter at
+    // the handler — no migration, no rewrite of `royalty-claims.json`.
+    const { readClaimHistory } = await import('../services/royaltyClaimStatus')
+    ;(readClaimHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      claims: [
+        {
+          txHash: '0xLegacyTx',
+          walletAddress: WALLET_A,
+          reserveToken: '0xtoken',
+          gasCostWei: '1000',
+          status: 'confirmed',
+          error: null,
+          claimedAt: '2026-05-22T00:00:00Z'
+        }
+      ]
+    })
+
+    registerRoyaltyHandlers(depsWithWallet(WALLET_A))
+    const handler = getHandler('royalty:claimHistory')
+    const result = (await handler()) as { claims: Array<{ txHash: string }> }
     expect(result.claims).toHaveLength(1)
+    expect(result.claims[0].txHash).toBe('0xLegacyTx')
   })
 })
