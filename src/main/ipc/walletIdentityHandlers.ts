@@ -2,13 +2,19 @@
  * IPC handlers for the wallet identity registry. Surface area is intentionally
  * minimal: list known identities, read the active one, switch active.
  *
- * Each handler narrows what crosses the IPC boundary to plain `WalletIdentity`
- * records (address / source / owsName / label / registeredAt) — never any
- * vault path, passphrase, or private key.
+ * Every value that crosses the IPC boundary is projected through
+ * `toWalletIdentityView` first, so the renderer only ever sees
+ * `address / source / label?`. The internal `owsName` + `registeredAt` stay
+ * in the main process and are resolved against the store when needed for
+ * signing.
  */
 
 import { ipcMain } from 'electron'
-import type { WalletIdentity } from '../../shared/walletIdentity'
+import {
+  type WalletIdentity,
+  type WalletIdentityView,
+  toWalletIdentityView
+} from '../../shared/walletIdentity'
 import type { WalletIdentityStore } from '../services/walletIdentityStore'
 import type { SelectedWalletState } from './walletConnectionHandlers'
 
@@ -41,32 +47,46 @@ export function registerWalletIdentityHandlers(
 ): void {
   const { store, walletState } = options
 
-  ipcMain.handle('wallet:identity:list', async () => {
-    const identities = await store.list()
-    return { identities }
-  })
+  ipcMain.handle(
+    'wallet:identity:list',
+    async (): Promise<{ identities: WalletIdentityView[] }> => {
+      const identities = await store.list()
+      return { identities: identities.map(toWalletIdentityView) }
+    }
+  )
 
-  ipcMain.handle('wallet:identity:getActive', async () => {
-    const identity = await store.getActive()
-    return { identity }
-  })
+  ipcMain.handle(
+    'wallet:identity:getActive',
+    async (): Promise<{ identity: WalletIdentityView | null }> => {
+      const identity = await store.getActive()
+      return { identity: identity ? toWalletIdentityView(identity) : null }
+    }
+  )
 
-  ipcMain.handle('wallet:identity:setActive', async (_event, payload: unknown) => {
-    if (!payload || typeof payload !== 'object') {
-      return { identity: null, error: 'setActive requires an { address } payload' }
+  ipcMain.handle(
+    'wallet:identity:setActive',
+    async (
+      _event,
+      payload: unknown
+    ): Promise<{ identity: WalletIdentityView | null; error?: string }> => {
+      if (!payload || typeof payload !== 'object') {
+        return { identity: null, error: 'setActive requires an { address } payload' }
+      }
+      const { address } = payload as { address?: unknown }
+      if (typeof address !== 'string' || address.length === 0) {
+        return { identity: null, error: 'setActive requires a string address' }
+      }
+      const identity = await store.setActive(address)
+      if (!identity) {
+        return { identity: null, error: 'Unknown wallet address' }
+      }
+      // Mirror the internal record (including owsName) into the in-memory
+      // state used by publish / royalty / signing — those flows live in the
+      // main process so they're allowed to see owsName.
+      walletState.wallet = identityToWalletMetadata(identity)
+      return { identity: toWalletIdentityView(identity) }
     }
-    const { address } = payload as { address?: unknown }
-    if (typeof address !== 'string' || address.length === 0) {
-      return { identity: null, error: 'setActive requires a string address' }
-    }
-    const identity = await store.setActive(address)
-    if (!identity) {
-      return { identity: null, error: 'Unknown wallet address' }
-    }
-    // Mirror into the in-memory state used by publish/royalty/signing.
-    walletState.wallet = identityToWalletMetadata(identity)
-    return { identity }
-  })
+  )
 }
 
 /**

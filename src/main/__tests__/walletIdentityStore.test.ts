@@ -9,6 +9,7 @@ import {
 import {
   normalizeWalletAddress,
   isWalletIdentityShape,
+  toWalletIdentityView,
   type WalletIdentity
 } from '../../shared/walletIdentity'
 
@@ -211,5 +212,31 @@ describe('isWalletIdentityShape', () => {
     expect(isWalletIdentityShape({ ...good, source: 'random' })).toBe(false)
     expect(isWalletIdentityShape({ ...good, address: '' })).toBe(false)
     expect(isWalletIdentityShape({ ...good, owsName: 123 })).toBe(false)
+  })
+})
+
+describe('toWalletIdentityView', () => {
+  const internal: WalletIdentity = {
+    address: '0xabc',
+    source: 'plottoon-writer',
+    owsName: 'plottoon-writer-test',
+    label: 'Main',
+    registeredAt: '2026-05-22T00:00:00.000Z'
+  }
+
+  it('drops owsName and registeredAt before crossing the IPC boundary', () => {
+    const view = toWalletIdentityView(internal)
+    expect(view).toEqual({
+      address: '0xabc',
+      source: 'plottoon-writer',
+      label: 'Main'
+    })
+    expect((view as Record<string, unknown>).owsName).toBeUndefined()
+    expect((view as Record<string, unknown>).registeredAt).toBeUndefined()
+  })
+
+  it('omits label when the internal identity has none', () => {
+    const view = toWalletIdentityView({ ...internal, label: undefined })
+    expect('label' in view).toBe(false)
   })
 })

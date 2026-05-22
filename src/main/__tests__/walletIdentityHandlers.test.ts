@@ -5,7 +5,7 @@ import {
 } from '../ipc/walletIdentityHandlers'
 import type { WalletIdentityStore } from '../services/walletIdentityStore'
 import type { SelectedWalletState } from '../ipc/walletConnectionHandlers'
-import type { WalletIdentity } from '../../shared/walletIdentity'
+import type { WalletIdentity, WalletIdentityView } from '../../shared/walletIdentity'
 
 const handlers: Record<string, (...args: unknown[]) => unknown> = {}
 
@@ -55,31 +55,46 @@ describe('walletIdentityHandlers', () => {
     Object.keys(handlers).forEach((k) => delete handlers[k])
   })
 
-  it('wallet:identity:list returns every registered identity', async () => {
+  it('wallet:identity:list returns the renderer-safe view of every identity', async () => {
     const store = mockStore()
     const state = freshState()
     registerWalletIdentityHandlers({ store, walletState: state })
 
     const result = (await handlers['wallet:identity:list']({})) as {
-      identities: WalletIdentity[]
+      identities: WalletIdentityView[]
     }
     expect(result.identities).toHaveLength(2)
-    expect(result.identities[0].owsName).toBe(FAKE_A.owsName)
-    expect(result.identities[1].owsName).toBe(FAKE_B.owsName)
+    expect(result.identities[0]).toEqual({
+      address: FAKE_A.address,
+      source: FAKE_A.source
+    })
+    expect(result.identities[1]).toEqual({
+      address: FAKE_B.address,
+      source: FAKE_B.source,
+      label: FAKE_B.label
+    })
+    // The view must not carry the internal OWS name or registeredAt.
+    for (const view of result.identities) {
+      expect((view as Record<string, unknown>).owsName).toBeUndefined()
+      expect((view as Record<string, unknown>).registeredAt).toBeUndefined()
+    }
   })
 
-  it('wallet:identity:getActive returns the active identity', async () => {
+  it('wallet:identity:getActive returns the renderer-safe view of the active identity', async () => {
     const store = mockStore()
     const state = freshState()
     registerWalletIdentityHandlers({ store, walletState: state })
 
     const result = (await handlers['wallet:identity:getActive']({})) as {
-      identity: WalletIdentity | null
+      identity: WalletIdentityView | null
     }
     expect(result.identity?.address).toBe(FAKE_A.address)
+    expect(result.identity?.source).toBe(FAKE_A.source)
+    expect((result.identity as Record<string, unknown> | null)?.owsName).toBeUndefined()
+    expect((result.identity as Record<string, unknown> | null)?.registeredAt).toBeUndefined()
   })
 
-  it('wallet:identity:setActive switches active and mirrors into walletState.wallet', async () => {
+  it('wallet:identity:setActive returns the view and mirrors owsName into walletState.wallet', async () => {
     const store = mockStore()
     const state = freshState()
     registerWalletIdentityHandlers({ store, walletState: state })
@@ -88,12 +103,20 @@ describe('walletIdentityHandlers', () => {
       {},
       { address: FAKE_B.address }
     )) as {
-      identity: WalletIdentity | null
+      identity: WalletIdentityView | null
       error?: string
     }
-    expect(result.identity?.owsName).toBe(FAKE_B.owsName)
+    expect(result.identity).toEqual({
+      address: FAKE_B.address,
+      source: FAKE_B.source,
+      label: FAKE_B.label
+    })
+    expect((result.identity as Record<string, unknown> | null)?.owsName).toBeUndefined()
+    expect((result.identity as Record<string, unknown> | null)?.registeredAt).toBeUndefined()
     expect(result.error).toBeUndefined()
-    // State mirror must carry the OWS name for signing — not just the address.
+    // The OWS name still flows into the in-memory main-process state used by
+    // publish / royalty / signing — that mirror is what wires the active
+    // identity into signing flows.
     expect(state.wallet?.name).toBe(FAKE_B.owsName)
     expect(state.wallet?.address).toBe(FAKE_B.address)
     expect(state.wallet?.source).toBe(FAKE_B.source)
@@ -148,19 +171,36 @@ describe('walletIdentityHandlers', () => {
     expect(result3.error).toContain('string address')
   })
 
-  it('handlers never expose private-material fields', async () => {
+  it('handlers never expose internal or private-material fields across IPC', async () => {
     const store = mockStore()
     const state = freshState()
     registerWalletIdentityHandlers({ store, walletState: state })
 
-    const list = (await handlers['wallet:identity:list']({})) as { identities: WalletIdentity[] }
-    const json = JSON.stringify(list)
-    expect(json).not.toMatch(/privateKey|mnemonic|passphrase|vaultPath/i)
-
-    const active = (await handlers['wallet:identity:getActive']({})) as {
-      identity: WalletIdentity | null
+    const list = (await handlers['wallet:identity:list']({})) as {
+      identities: WalletIdentityView[]
     }
-    expect(JSON.stringify(active)).not.toMatch(/privateKey|mnemonic|passphrase|vaultPath/i)
+    const active = (await handlers['wallet:identity:getActive']({})) as {
+      identity: WalletIdentityView | null
+    }
+    const setActive = (await handlers['wallet:identity:setActive'](
+      {},
+      { address: FAKE_B.address }
+    )) as { identity: WalletIdentityView | null; error?: string }
+
+    // No private material in any IPC response. The OWS name and the internal
+    // registeredAt timestamp must stay in the main process — they are not
+    // part of the renderer-facing view.
+    for (const payload of [list, active, setActive]) {
+      const json = JSON.stringify(payload)
+      expect(json).not.toMatch(/privateKey|mnemonic|seed|passphrase|secret|vaultPath/i)
+      expect(json).not.toMatch(/owsName/i)
+      expect(json).not.toMatch(/registeredAt/i)
+      // The fake wallets in this test use distinctive `plottoon-writer-fake-a`
+      // / `plotlink-writer-fake-b` OWS names. If projection regresses, the
+      // raw OWS name will show up in the IPC JSON.
+      expect(json).not.toContain('plottoon-writer-fake-a')
+      expect(json).not.toContain('plotlink-writer-fake-b')
+    }
   })
 })
 
