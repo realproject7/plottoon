@@ -155,6 +155,50 @@ describe('checkActiveWalletInVault — address match (#240)', () => {
     expect(result.ok).toBe(true)
   })
 
+  it('#240 RE1 — fails when the address matches but the account is on a non-EVM chain', () => {
+    // CAIP-2 identifies the chain family. A non-EVM chain like Solana
+    // could in principle carry the same address string in a vault, but
+    // signing would dispatch to a chain family the user never intended.
+    // The guard must only accept `eip155:*` accounts.
+    const ows = {
+      listWallets: vi.fn().mockReturnValue([
+        entry('pw-active', [
+          {
+            chainId: 'solana:mainnet',
+            address: ACTIVE.address,
+            derivationPath: "m/44'/501'/0'/0'"
+          }
+        ])
+      ])
+    }
+    const result = checkActiveWalletInVault(ows, { vaultPath: undefined }, ACTIVE)
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/no longer available/i)
+  })
+
+  it('#240 RE1 — passes when a non-EVM account is present alongside a matching EVM account', () => {
+    // The non-EVM account exists in the same wallet entry, but as long
+    // as ONE eip155 account matches the active address, freshness is OK.
+    const ows = {
+      listWallets: vi.fn().mockReturnValue([
+        entry('pw-active', [
+          {
+            chainId: 'solana:mainnet',
+            address: ACTIVE.address,
+            derivationPath: "m/44'/501'/0'/0'"
+          },
+          {
+            chainId: 'eip155:8453',
+            address: ACTIVE.address,
+            derivationPath: "m/44'/60'/0'/0/0"
+          }
+        ])
+      ])
+    }
+    const result = checkActiveWalletInVault(ows, { vaultPath: undefined }, ACTIVE)
+    expect(result.ok).toBe(true)
+  })
+
   it('address-mismatch error never leaks the vault path, active OWS name, or wallet address', () => {
     const ows = {
       listWallets: vi
