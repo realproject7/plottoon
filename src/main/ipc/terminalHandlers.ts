@@ -3,26 +3,46 @@ import { getProjectRoot } from '../services/projectRegistry'
 import {
   createSession,
   getSession,
-  findSessionByProject,
+  findSessionByProjectAndWallet,
   connectSession,
   writeToSession,
   disconnectSession,
   restartSession,
   destroySession
 } from '../services/terminalSession'
+import type { WalletIdentityStore } from '../services/walletIdentityStore'
 
-export function registerTerminalHandlers(): void {
-  ipcMain.handle('terminal:create', (_event, projectId: string) => {
+export interface RegisterTerminalHandlersOptions {
+  /**
+   * When provided, `terminal:create` and `terminal:findByProject` resolve
+   * the active wallet from the store and key sessions by the
+   * (projectId, walletAddress) pair. A null active wallet falls through to
+   * the legacy null-wallet path, which still supports existing one-wallet
+   * sessions (#221 migration).
+   */
+  walletIdentityStore?: WalletIdentityStore
+}
+
+export function registerTerminalHandlers(options: RegisterTerminalHandlersOptions = {}): void {
+  const walletStore = options.walletIdentityStore
+
+  async function activeWalletAddress(): Promise<string | null> {
+    if (!walletStore) return null
+    const active = await walletStore.getActive()
+    return active?.address ?? null
+  }
+
+  ipcMain.handle('terminal:create', async (_event, projectId: string) => {
     const cwd = getProjectRoot(projectId)
-    return createSession(projectId, cwd)
+    return createSession(projectId, cwd, await activeWalletAddress())
   })
 
   ipcMain.handle('terminal:getSession', (_event, sessionId: string) => {
     return getSession(sessionId)
   })
 
-  ipcMain.handle('terminal:findByProject', (_event, projectId: string) => {
-    return findSessionByProject(projectId)
+  ipcMain.handle('terminal:findByProject', async (_event, projectId: string) => {
+    return findSessionByProjectAndWallet(projectId, await activeWalletAddress())
   })
 
   ipcMain.handle('terminal:connect', (event, sessionId: string) => {

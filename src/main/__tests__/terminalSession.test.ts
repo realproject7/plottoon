@@ -29,7 +29,7 @@ afterEach(async () => {
 
 describe('createSession', () => {
   it('creates a session with correct metadata', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     expect(session.id).toMatch(/^term_\d+$/)
     expect(session.projectId).toBe('proj_1')
     expect(session.cwd).toBe(tmpDir)
@@ -39,19 +39,19 @@ describe('createSession', () => {
   })
 
   it('returns existing connected session for same project', async () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     connectSession(
       session.id,
       () => {},
       () => {}
     )
-    const second = createSession('proj_1', tmpDir)
+    const second = createSession('proj_1', tmpDir, null)
     expect(second.id).toBe(session.id)
     disconnectSession(session.id)
   })
 
   it('creates new session if existing is exited', async () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     connectSession(
       session.id,
       () => {},
@@ -59,7 +59,7 @@ describe('createSession', () => {
     )
     disconnectSession(session.id)
     destroySession(session.id)
-    const second = createSession('proj_1', tmpDir)
+    const second = createSession('proj_1', tmpDir, null)
     expect(second.id).not.toBe(session.id)
   })
 })
@@ -70,7 +70,7 @@ describe('getSession / findSessionByProject', () => {
   })
 
   it('getSession returns the session', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     expect(getSession(session.id)).toEqual(session)
   })
 
@@ -79,7 +79,7 @@ describe('getSession / findSessionByProject', () => {
   })
 
   it('findSessionByProject returns the active session', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     expect(findSessionByProject('proj_1')?.id).toBe(session.id)
   })
 })
@@ -90,15 +90,15 @@ describe('listSessions', () => {
   })
 
   it('returns all sessions', () => {
-    createSession('proj_1', tmpDir)
-    createSession('proj_2', tmpDir)
+    createSession('proj_1', tmpDir, null)
+    createSession('proj_2', tmpDir, null)
     expect(listSessions()).toHaveLength(2)
   })
 })
 
 describe('connectSession / disconnectSession', () => {
   it('connects and transitions to connected state', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     const ok = connectSession(
       session.id,
       () => {},
@@ -120,7 +120,7 @@ describe('connectSession / disconnectSession', () => {
   })
 
   it('returns false if already connected', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     connectSession(
       session.id,
       () => {},
@@ -137,7 +137,7 @@ describe('connectSession / disconnectSession', () => {
   })
 
   it('disconnectSession transitions to disconnected', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     connectSession(
       session.id,
       () => {},
@@ -151,12 +151,12 @@ describe('connectSession / disconnectSession', () => {
 
 describe('writeToSession', () => {
   it('returns false for disconnected session', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     expect(writeToSession(session.id, 'test')).toBe(false)
   })
 
   it('returns true for connected session', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     connectSession(
       session.id,
       () => {},
@@ -169,7 +169,7 @@ describe('writeToSession', () => {
 
 describe('restartSession', () => {
   it('restarts a disconnected session', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     const ok = restartSession(
       session.id,
       () => {},
@@ -181,7 +181,7 @@ describe('restartSession', () => {
   })
 
   it('restarts a connected session', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     connectSession(
       session.id,
       () => {},
@@ -210,13 +210,13 @@ describe('restartSession', () => {
 
 describe('destroySession', () => {
   it('removes the session', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     expect(destroySession(session.id)).toBe(true)
     expect(getSession(session.id)).toBeNull()
   })
 
   it('kills connected process', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     connectSession(
       session.id,
       () => {},
@@ -233,7 +233,7 @@ describe('destroySession', () => {
 
 describe('session metadata persists across navigation', () => {
   it('session survives after creation and can be found again', () => {
-    const session = createSession('proj_1', tmpDir)
+    const session = createSession('proj_1', tmpDir, null)
     const found = findSessionByProject('proj_1')
     expect(found?.id).toBe(session.id)
     expect(found?.cwd).toBe(tmpDir)
