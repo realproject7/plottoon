@@ -74,6 +74,16 @@ export function registerWalletConnectionHandlers(
           })
           await identityStore.setActive(persisted.address)
         }
+        // #234: project the connected wallet to non-signing metadata only.
+        // `result.wallet.name` is the OWS internal selector and must stay
+        // in the main process for signing — never echoed to the renderer.
+        return {
+          success: true,
+          wallet: {
+            address: result.wallet.address,
+            source: result.wallet.source
+          }
+        }
       }
       return result
     } catch (err) {
@@ -86,11 +96,14 @@ export function registerWalletConnectionHandlers(
     if (!state.wallet) {
       return { connected: false }
     }
+    // #234: never project the OWS internal name through this IPC. The
+    // renderer only needs non-signing metadata (address + source); the
+    // main process still keeps `state.wallet.name` for publish, royalty,
+    // and agent registration signing.
     return {
       connected: true,
       address: state.wallet.address,
-      source: state.wallet.source,
-      name: state.wallet.name
+      source: state.wallet.source
     }
   })
 

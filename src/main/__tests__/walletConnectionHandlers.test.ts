@@ -103,6 +103,57 @@ describe('walletConnectionHandlers', () => {
     expect(typed.source).toBe('plotlink-writer')
   })
 
+  it('#234 — wallet:getConnected does NOT expose the OWS internal name/id', async () => {
+    await handlers['wallet:connect'](
+      {},
+      {
+        type: 'reuse-existing',
+        source: 'plotlink-writer',
+        address: '0xaaaa000000000000000000000000000000000001',
+        // OWS internal selector. Must never leave the main process.
+        name: 'plotlink-writer-internal-selector'
+      }
+    )
+
+    const response = (await handlers['wallet:getConnected']({})) as Record<string, unknown>
+
+    // Renderer-facing keys are only the non-signing metadata.
+    expect(Object.keys(response).sort()).toEqual(['address', 'connected', 'source'])
+    // Specifically, the OWS internal name/id never crosses the boundary.
+    expect(response).not.toHaveProperty('name')
+    expect(response).not.toHaveProperty('owsName')
+    const serialized = JSON.stringify(response)
+    expect(serialized).not.toContain('plotlink-writer-internal-selector')
+
+    // Main process still has the selector — it's needed for signing flows
+    // (publish, royalty, agent registration).
+    expect(state.wallet?.name).toBe('plotlink-writer-internal-selector')
+  })
+
+  it('#234 — wallet:connect does NOT echo the OWS internal name/id back to the renderer', async () => {
+    const connectResult = (await handlers['wallet:connect'](
+      {},
+      {
+        type: 'reuse-existing',
+        source: 'plottoon-writer',
+        address: '0xbbbb000000000000000000000000000000000002',
+        name: 'plottoon-writer-internal-selector'
+      }
+    )) as { success: boolean; wallet?: Record<string, unknown> }
+
+    expect(connectResult.success).toBe(true)
+    expect(connectResult.wallet).toBeDefined()
+    // The returned wallet payload exposes only non-signing metadata.
+    expect(Object.keys(connectResult.wallet!).sort()).toEqual(['address', 'source'])
+    expect(connectResult.wallet).not.toHaveProperty('name')
+    expect(connectResult.wallet).not.toHaveProperty('owsName')
+    const serialized = JSON.stringify(connectResult)
+    expect(serialized).not.toContain('plottoon-writer-internal-selector')
+
+    // But the main process kept the selector internally so signing still works.
+    expect(state.wallet?.name).toBe('plottoon-writer-internal-selector')
+  })
+
   it('registers wallet:disconnect handler', async () => {
     await handlers['wallet:connect'](
       {},
