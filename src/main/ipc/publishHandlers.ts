@@ -409,18 +409,18 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
         meta?: { contentType?: string; isNsfw?: string; genre?: string; language?: string }
       }
     ): Promise<{ success: boolean; error?: string }> => {
-      // #223: recovery/repair state must not cross-contaminate wallets.
-      // Reject a retryIndex call when the active wallet does not own the
-      // project. Skipped in mock mode so the existing mock-path tests
-      // still pass without touching a wallet identity store.
-      if (!deps.signer.isMockMode()) {
-        const ownershipError = await checkProjectWalletOwnership(
-          params.projectId,
-          deps.walletState.wallet?.address ?? null
-        )
-        if (ownershipError) {
-          return { success: false, error: ownershipError }
-        }
+      // #223 RE1 finding: recovery/repair state must not cross-contaminate
+      // wallets — and it must not cross-contaminate in MOCK mode either,
+      // because mock mode is the default runtime path and `retryIndex`
+      // mutates the local `.publish-status.json` regardless of whether
+      // anything is sent on-chain. Wallet B must not be able to flip
+      // wallet A's plot from `published-not-indexed` back to `published`.
+      const retryOwnershipError = await checkProjectWalletOwnership(
+        params.projectId,
+        deps.walletState.wallet?.address ?? null
+      )
+      if (retryOwnershipError) {
+        return { success: false, error: retryOwnershipError }
       }
 
       const plotDir = await deps.resolvePlotDir(params.projectId, params.plotSlug)
@@ -468,15 +468,16 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
       _event,
       params: { projectId: string; plotSlug: string; reason: string }
     ): Promise<{ success: boolean; error?: string }> => {
-      // #223: protect recovery-path mutation from a cross-wallet caller.
-      if (!deps.signer.isMockMode()) {
-        const ownershipError = await checkProjectWalletOwnership(
-          params.projectId,
-          deps.walletState.wallet?.address ?? null
-        )
-        if (ownershipError) {
-          return { success: false, error: ownershipError }
-        }
+      // #223 RE1 finding: protect recovery-path mutation from a cross-
+      // wallet caller in BOTH mock and live modes — markNotIndexed flips
+      // `.publish-status.json` from `published` to `published-not-indexed`,
+      // and that state must remain wallet-scoped regardless of signer.
+      const markOwnershipError = await checkProjectWalletOwnership(
+        params.projectId,
+        deps.walletState.wallet?.address ?? null
+      )
+      if (markOwnershipError) {
+        return { success: false, error: markOwnershipError }
       }
 
       const plotDir = await deps.resolvePlotDir(params.projectId, params.plotSlug)

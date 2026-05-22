@@ -567,10 +567,34 @@ describe('publish:execute', () => {
   })
 })
 
+// #223: recovery handlers (retryIndex / markNotIndexed) now enforce project
+// wallet ownership in both mock and live modes. Tests here pre-register a
+// stamped fixture project owned by `RECOVERY_TEST_WALLET` and configure
+// `walletState.wallet` to match, so the ownership guard passes for the
+// happy path. Explicit mismatch coverage lives in publishWalletBinding.
+const RECOVERY_TEST_WALLET = '0xabc'
+let recoveryProjectId: string
+
+function recoveryDeps(overrides?: Partial<PublishHandlerDeps>): PublishHandlerDeps {
+  return createDeps({
+    walletState: {
+      wallet: {
+        address: RECOVERY_TEST_WALLET,
+        source: 'plottoon-writer',
+        name: 'pw-recovery-test',
+        createdAt: '2026-05-22T00:00:00.000Z'
+      }
+    },
+    ...overrides
+  })
+}
+
 describe('publish:retryIndex', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    clearRegistry()
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plottoon-pubhandler-'))
+    recoveryProjectId = await registerStampedProject(RECOVERY_TEST_WALLET)
   })
 
   async function writeNotIndexedStatus(txHash = '0xtx123') {
@@ -609,13 +633,13 @@ describe('publish:retryIndex', () => {
       ok: true,
       json: () => Promise.resolve({ success: true })
     })
-    const deps = createDeps({ fetchFn: mockFetchFn })
+    const deps = recoveryDeps({ fetchFn: mockFetchFn })
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
     const result = (await handler(
       {},
-      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+      { projectId: recoveryProjectId, plotSlug: 'ep1', fallbackContent: '# Episode 1' }
     )) as {
       success: boolean
     }
@@ -644,13 +668,13 @@ describe('publish:retryIndex', () => {
       'utf-8'
     )
 
-    const deps = createDeps()
+    const deps = recoveryDeps()
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
     const result = (await handler(
       {},
-      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+      { projectId: recoveryProjectId, plotSlug: 'ep1', fallbackContent: '# Episode 1' }
     )) as {
       success: boolean
       error: string
@@ -670,13 +694,13 @@ describe('publish:retryIndex', () => {
       'utf-8'
     )
 
-    const deps = createDeps()
+    const deps = recoveryDeps()
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
     const result = (await handler(
       {},
-      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+      { projectId: recoveryProjectId, plotSlug: 'ep1', fallbackContent: '# Episode 1' }
     )) as {
       success: boolean
       error: string
@@ -688,7 +712,7 @@ describe('publish:retryIndex', () => {
   it('updates indexError on retry failure', async () => {
     await writeNotIndexedStatus()
     const mockFetchFn = vi.fn().mockRejectedValue(new Error('Network error'))
-    const deps = createDeps({
+    const deps = recoveryDeps({
       fetchFn: mockFetchFn,
       config: { ...mockConfig(), indexRetries: 0 }
     })
@@ -697,7 +721,7 @@ describe('publish:retryIndex', () => {
     const handler = getHandler('publish:retryIndex')
     const result = (await handler(
       {},
-      { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+      { projectId: recoveryProjectId, plotSlug: 'ep1', fallbackContent: '# Episode 1' }
     )) as {
       success: boolean
       error: string
@@ -726,11 +750,14 @@ describe('publish:retryIndex', () => {
       ok: true,
       json: () => Promise.resolve({ success: true })
     })
-    const deps = createDeps({ fetchFn: mockFetchFn })
+    const deps = recoveryDeps({ fetchFn: mockFetchFn })
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
-    await handler({}, { projectId: 'p1', plotSlug: 'ep1', fallbackContent: '# Episode 1' })
+    await handler(
+      {},
+      { projectId: recoveryProjectId, plotSlug: 'ep1', fallbackContent: '# Episode 1' }
+    )
 
     expect(mockFetchFn).toHaveBeenCalledWith(
       'https://plotlink.example/api/index/plot',
@@ -740,11 +767,11 @@ describe('publish:retryIndex', () => {
 
   it('blocks retry when fallbackContent is missing', async () => {
     await writeNotIndexedStatus()
-    const deps = createDeps()
+    const deps = recoveryDeps()
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:retryIndex')
-    const result = (await handler({}, { projectId: 'p1', plotSlug: 'ep1' })) as {
+    const result = (await handler({}, { projectId: recoveryProjectId, plotSlug: 'ep1' })) as {
       success: boolean
       error: string
     }
@@ -788,13 +815,13 @@ describe('publish:markNotIndexed', () => {
       'utf-8'
     )
 
-    const deps = createDeps()
+    const deps = recoveryDeps()
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:markNotIndexed')
     const result = (await handler(
       {},
-      { projectId: 'p1', plotSlug: 'ep1', reason: 'Bad metadata on PlotLink' }
+      { projectId: recoveryProjectId, plotSlug: 'ep1', reason: 'Bad metadata on PlotLink' }
     )) as { success: boolean }
     expect(result.success).toBe(true)
 
@@ -824,11 +851,14 @@ describe('publish:markNotIndexed', () => {
       'utf-8'
     )
 
-    const deps = createDeps()
+    const deps = recoveryDeps()
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:markNotIndexed')
-    const result = (await handler({}, { projectId: 'p1', plotSlug: 'ep1', reason: 'test' })) as {
+    const result = (await handler(
+      {},
+      { projectId: recoveryProjectId, plotSlug: 'ep1', reason: 'test' }
+    )) as {
       success: boolean
       error: string
     }

@@ -76,7 +76,7 @@ function mockIpfs(): IpfsClient {
 
 let tmpDir: string
 
-function createDeps(activeWalletAddress: string | null): PublishHandlerDeps {
+function createDeps(activeWalletAddress: string | null, mockMode = false): PublishHandlerDeps {
   return {
     walletState: {
       wallet: activeWalletAddress
@@ -88,7 +88,7 @@ function createDeps(activeWalletAddress: string | null): PublishHandlerDeps {
           }
         : null
     },
-    signer: mockSigner(false),
+    signer: mockSigner(mockMode),
     owsModule: mockOws(),
     vaultConfig: { chain: 'eip155:8453' },
     config: mockConfig(),
@@ -289,6 +289,22 @@ describe('recovery wallet ownership (#223)', () => {
     expect(result.error).toMatch(/different wallet/i)
   })
 
+  it('publish:retryIndex refuses in MOCK mode too — recovery state cannot bleed even with no live signer (RE1)', async () => {
+    // RE1 #223 finding: mock signer mode is the default runtime; if the
+    // guard were live-only, a wallet B caller could flip wallet A's
+    // .publish-status.json from `published-not-indexed` to `published` in
+    // mock mode. The check now runs unconditionally.
+    registerPublishHandlers(createDeps(WALLET_B, /* mockMode */ true))
+    const projectId = await registerStampedProject(WALLET_A)
+    const handler = getHandler('publish:retryIndex')
+    const result = (await handler({}, { projectId, plotSlug: 'ep-1' })) as {
+      success: boolean
+      error?: string
+    }
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/different wallet/i)
+  })
+
   it('publish:markNotIndexed refuses when the active wallet is not the project owner', async () => {
     registerPublishHandlers(createDeps(WALLET_B))
     const projectId = await registerStampedProject(WALLET_A)
@@ -301,6 +317,18 @@ describe('recovery wallet ownership (#223)', () => {
         reason: 'manual'
       }
     )) as { success: boolean; error?: string }
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/different wallet/i)
+  })
+
+  it('publish:markNotIndexed refuses in MOCK mode too (RE1 #223)', async () => {
+    registerPublishHandlers(createDeps(WALLET_B, /* mockMode */ true))
+    const projectId = await registerStampedProject(WALLET_A)
+    const handler = getHandler('publish:markNotIndexed')
+    const result = (await handler({}, { projectId, plotSlug: 'ep-1', reason: 'manual' })) as {
+      success: boolean
+      error?: string
+    }
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/different wallet/i)
   })
