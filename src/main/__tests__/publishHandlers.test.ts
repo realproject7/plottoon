@@ -46,9 +46,35 @@ function mockSigner(isMock = true): WalletSigner {
   } as unknown as WalletSigner
 }
 
+// #235: the freshness guard calls `owsModule.listWallets` and refuses to
+// sign if the active wallet's name isn't present. The default mock returns
+// the common test wallet names so existing live-mode tests still pass.
+// Stale-wallet regression tests override `listWallets` to return [] or to
+// omit the active wallet's name on purpose.
+const STOCK_VAULT_NAMES = [
+  'pw-1',
+  'plottoon-writer-1',
+  'pw-recovery-test',
+  'pw-fake',
+  'plotlink-writer-main'
+]
+function makeStockEntries(): Array<{
+  id: string
+  name: string
+  accounts: never[]
+  createdAt: string
+}> {
+  return STOCK_VAULT_NAMES.map((name) => ({
+    id: `fake-id-${name}`,
+    name,
+    accounts: [],
+    createdAt: '2026-05-22T00:00:00.000Z'
+  }))
+}
+
 function mockOws(): OWSCoreModule {
   return {
-    listWallets: vi.fn().mockReturnValue([]),
+    listWallets: vi.fn().mockReturnValue(makeStockEntries()),
     createWallet: vi.fn(),
     signMessage: vi.fn().mockReturnValue({ signature: '0xsig' }),
     signTransaction: vi.fn().mockReturnValue({ signature: '0xtxsig' })

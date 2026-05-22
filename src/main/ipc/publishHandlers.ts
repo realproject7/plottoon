@@ -4,6 +4,7 @@ import type { WalletSigner } from '../services/walletSigning'
 import { readProjectMeta } from '../services/projectMeta'
 import { getProjectRoot } from '../services/projectRegistry'
 import { normalizeWalletAddress } from '../../shared/walletIdentity'
+import { checkActiveWalletInVault } from '../services/walletVaultCheck'
 import type {
   PlotlinkPublishDeps,
   PublishFullResult,
@@ -202,6 +203,18 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
         }
         errors.push(...validatePublishConfig(deps.config))
         errors.push(...validatePublishChain(deps.vaultConfig.chain))
+        // #235 stale-wallet guard. A persisted active identity may have been
+        // deleted/renamed in the OWS vault since the last app launch. Catch
+        // it at preflight so the renderer can disable the Confirm button
+        // before any signer is built.
+        if (deps.walletState.wallet) {
+          const fresh = checkActiveWalletInVault(
+            deps.owsModule,
+            deps.vaultConfig,
+            deps.walletState.wallet
+          )
+          if (!fresh.ok && fresh.error) errors.push(fresh.error)
+        }
       }
 
       // #223 wallet-binding: when the renderer supplies a projectId,
@@ -259,6 +272,16 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
       ]
       if (configErrors.length > 0) {
         return { success: false, error: configErrors.join('; ') }
+      }
+
+      // #235 stale-wallet guard. Runs *before* `createOWSViemSigner` so
+      // we never construct a signer for a missing OWS wallet name/id.
+      // Preflight already does this check; we re-run here because the
+      // renderer can skip preflight or the vault state may have changed
+      // between preflight and Confirm.
+      const fresh = checkActiveWalletInVault(deps.owsModule, deps.vaultConfig, wallet)
+      if (!fresh.ok) {
+        return { success: false, error: fresh.error ?? 'Active wallet is unavailable' }
       }
 
       // #223 wallet-binding: refuse to publish a project owned by a

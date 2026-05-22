@@ -48,7 +48,25 @@ function mockSigner(isMock = false): WalletSigner {
 
 function mockOws(): OWSCoreModule {
   return {
-    listWallets: vi.fn().mockReturnValue([]),
+    // #235 default vault contains both fake wallets so the freshness
+    // guard passes for the happy path. Mismatch tests in this file
+    // don't depend on the guard — they short-circuit on project
+    // ownership (#223). The mid-flight wallet switch test uses
+    // `pw-fake-b` as wallet B's name so it also has to be present.
+    listWallets: vi.fn().mockReturnValue([
+      {
+        id: 'fake-id-a',
+        name: 'pw-fake',
+        accounts: [],
+        createdAt: '2026-05-22T00:00:00.000Z'
+      },
+      {
+        id: 'fake-id-b',
+        name: 'pw-fake-b',
+        accounts: [],
+        createdAt: '2026-05-22T00:00:00.000Z'
+      }
+    ]),
     createWallet: vi.fn(),
     signMessage: vi.fn().mockReturnValue({ signature: '0xsig' }),
     signTransaction: vi.fn().mockReturnValue({ signature: '0xtxsig' })

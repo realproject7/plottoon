@@ -11,6 +11,7 @@ import {
 } from '../services/agentRegistration'
 import { findCachedAgent, upsertAgentCache } from '../services/agentRegistrationCache'
 import { detectClis } from '../services/cliDetection'
+import { checkActiveWalletInVault } from '../services/walletVaultCheck'
 import type {
   AgentRegistrationStatus,
   AgentRegistrationResult,
@@ -146,6 +147,12 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
         return { success: false, error: configErrors.join('; ') }
       }
 
+      // #235 stale-wallet guard before live agent registration signing.
+      const fresh = checkActiveWalletInVault(deps.owsModule, deps.vaultConfig, wallet)
+      if (!fresh.ok) {
+        return { success: false, error: fresh.error ?? 'Active wallet is unavailable' }
+      }
+
       try {
         const result = await executeAgentRegistration(agentURI, {
           config: deps.registrationConfig,
@@ -189,6 +196,16 @@ export function registerAgentRegistrationHandlers(deps: AgentRegistrationHandler
 
       if (!humanWallet || !/^0x[0-9a-fA-F]{40}$/.test(humanWallet)) {
         return { error: 'Invalid human wallet address' }
+      }
+
+      // #235 stale-wallet guard before signing the owner-binding proof.
+      // signOwnerBinding goes straight to `owsModule.signMessage` with
+      // `wallet.name`; if the wallet was deleted/renamed in the vault,
+      // we surface the user-actionable error rather than the underlying
+      // OWS failure.
+      const fresh = checkActiveWalletInVault(deps.owsModule, deps.vaultConfig, wallet)
+      if (!fresh.ok) {
+        return { error: fresh.error ?? 'Active wallet is unavailable' }
       }
 
       try {
