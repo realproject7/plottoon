@@ -5,7 +5,6 @@ interface WalletOption {
   type: 'create-new' | 'reuse-existing'
   source: string
   address?: string
-  name?: string
   available?: boolean
   unavailableReason?: string
 }
@@ -296,7 +295,7 @@ export function WalletSelector(): JSX.Element {
               const isUnavailable = option.available === false
               return (
                 <button
-                  key={`${option.type}-${option.address ?? option.name ?? i}`}
+                  key={`${option.type}-${option.address ?? i}`}
                   type="button"
                   role="menuitem"
                   className="wallet-switcher__action"

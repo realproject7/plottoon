@@ -18,6 +18,33 @@ export interface WalletConnectionOption {
   unavailableReason?: string
 }
 
+/**
+ * Renderer-facing projection of `WalletConnectionOption`. The OWS internal
+ * name is stripped — it is a signing selector and must stay in the main
+ * process per the #218/#234/#239 boundary. The renderer identifies a
+ * reuse-existing option by `address`; the main process re-resolves the
+ * OWS name from the vault at connect time.
+ */
+export interface WalletConnectionOptionView {
+  type: 'create-new' | 'reuse-existing'
+  source: WalletSource
+  address?: string
+  available?: boolean
+  unavailableReason?: string
+}
+
+export function toWalletConnectionOptionView(
+  option: WalletConnectionOption
+): WalletConnectionOptionView {
+  return {
+    type: option.type,
+    source: option.source,
+    address: option.address,
+    available: option.available,
+    unavailableReason: option.unavailableReason
+  }
+}
+
 export interface WalletConnectionResult {
   success: boolean
   wallet?: WalletMetadata
@@ -71,6 +98,31 @@ export async function getConnectionOptions(
 
   const existing = await discoverExistingWallets(config)
   return [createOption, ...existing]
+}
+
+/**
+ * #239: connect-time resolver. The renderer no longer carries the OWS
+ * internal name for a reuse-existing option — it sends back only the
+ * address. The main process re-resolves the full option (including
+ * `name`) here by re-discovering the vault and matching on address.
+ *
+ * #239 RE1 finding: the resolver MUST search in the same filtered set
+ * `wallet:getOptions` exposes — writer-prefix names only. Otherwise a
+ * renderer could bypass the option list and connect to an arbitrary
+ * unrelated OWS wallet by address, stamped as a writer source. We
+ * delegate to `discoverExistingWallets` so the prefix filter + source
+ * mapping run exactly once and are guaranteed identical to discovery.
+ */
+export async function resolveReuseExistingOption(
+  view: WalletConnectionOptionView,
+  config: WalletConnectionConfig
+): Promise<WalletConnectionOption | null> {
+  if (view.type !== 'reuse-existing') return null
+  if (!view.address) return null
+  const wantedAddress = view.address.toLowerCase()
+  const recognized = await discoverExistingWallets(config)
+  const match = recognized.find((opt) => (opt.address ?? '').toLowerCase() === wantedAddress)
+  return match ?? null
 }
 
 export async function connectWallet(
