@@ -8,6 +8,7 @@ import {
   type RoyaltyClaimConfig
 } from '../services/royaltyClaim'
 import { appendClaimRecord, readClaimHistory } from '../services/royaltyClaimStatus'
+import { normalizeWalletAddress } from '../../shared/walletIdentity'
 import type {
   RoyaltyInfo,
   RoyaltyClaimResult,
@@ -175,6 +176,18 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
   )
 
   ipcMain.handle('royalty:claimHistory', async () => {
-    return readClaimHistory()
+    // #233: scope royalty claim history to the active wallet so wallet B
+    // never sees wallet A's claim records. Address comparison is
+    // case-normalized; with no active wallet, return an empty list.
+    const activeAddress = deps.walletState.wallet?.address
+      ? normalizeWalletAddress(deps.walletState.wallet.address)
+      : null
+    if (!activeAddress) return { claims: [] }
+    const history = await readClaimHistory()
+    return {
+      claims: history.claims.filter(
+        (record) => normalizeWalletAddress(record.walletAddress) === activeAddress
+      )
+    }
   })
 }
