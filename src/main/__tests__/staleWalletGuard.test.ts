@@ -73,7 +73,16 @@ function freshOws() {
       {
         id: 'fake-id',
         name: ACTIVE_NAME,
-        accounts: [],
+        // #240: include the EVM account so the new address-match check
+        // also passes; the existing tests assert the freshness guard
+        // shouldn't fire for a wallet that's still in the vault.
+        accounts: [
+          {
+            chainId: 'eip155:8453',
+            address: ACTIVE_ADDRESS,
+            derivationPath: "m/44'/60'/0'/0/0"
+          }
+        ],
         createdAt: '2026-05-22T00:00:00.000Z'
       }
     ]),
@@ -203,6 +212,43 @@ describe('#235 stale-wallet guard — publish', () => {
     const handler = getHandler('publish:preflight')
     const result = (await handler({}, projectId)) as PublishPreflightResult
     expect(result.ready).toBe(true)
+  })
+
+  it('#240 — publish:preflight refuses when the matching-name vault entry holds a DIFFERENT EVM address', async () => {
+    // Vault has an entry with the correct name but its EVM account
+    // address is different from the active wallet's address. Signing
+    // would use a different key than the metadata shown to the user —
+    // the freshness guard must reject this case as stale.
+    const wrongAddressOws = {
+      listWallets: vi.fn().mockReturnValue([
+        {
+          id: 'fake-id',
+          name: ACTIVE_NAME,
+          accounts: [
+            {
+              chainId: 'eip155:8453',
+              // A different address than ACTIVE_ADDRESS.
+              address: '0xffff000000000000000000000000000000000099',
+              derivationPath: "m/44'/60'/0'/0/0"
+            }
+          ],
+          createdAt: '2026-05-22T00:00:00.000Z'
+        }
+      ]),
+      createWallet: vi.fn(),
+      signMessage: vi.fn(),
+      signTransaction: vi.fn()
+    }
+    registerPublishHandlers(publishDeps(wrongAddressOws))
+    const projectId = await registerStampedProject()
+    const handler = getHandler('publish:preflight')
+    const result = (await handler({}, projectId)) as PublishPreflightResult
+    expect(result.ready).toBe(false)
+    expect(result.errors.join(' ')).toMatch(/no longer available/i)
+    // Error must not leak the differing address or the OWS name.
+    expect(result.errors.join(' ')).not.toContain(ACTIVE_NAME)
+    expect(result.errors.join(' ')).not.toContain(ACTIVE_ADDRESS)
+    expect(result.errors.join(' ')).not.toContain('0xffff000000000000000000000000000000000099')
   })
 })
 

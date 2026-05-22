@@ -46,12 +46,23 @@ function mockConfig(): RoyaltyClaimConfig {
 // #235: the freshness guard calls `owsModule.listWallets`. Default mock
 // returns the common test wallet names so existing live-mode tests pass.
 // Stale-wallet regression tests override `listWallets` to return [].
+//
+// #240: the guard now also requires an EVM account address match. Each
+// stock entry carries an account at `0xabc` — the address every live-mode
+// test in this file sets on `walletState.wallet`.
 const STOCK_ROYALTY_VAULT_NAMES = ['pw-1', 'pw-fake', 'plottoon-writer-1']
+const STOCK_ROYALTY_ADDRESS = '0xabc'
 function makeStockRoyaltyEntries() {
   return STOCK_ROYALTY_VAULT_NAMES.map((name) => ({
     id: `fake-id-${name}`,
     name,
-    accounts: [],
+    accounts: [
+      {
+        chainId: 'eip155:8453',
+        address: STOCK_ROYALTY_ADDRESS,
+        derivationPath: "m/44'/60'/0'/0/0"
+      }
+    ],
     createdAt: '2026-05-22T00:00:00.000Z'
   }))
 }

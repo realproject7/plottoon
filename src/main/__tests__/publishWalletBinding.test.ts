@@ -53,17 +53,30 @@ function mockOws(): OWSCoreModule {
     // don't depend on the guard — they short-circuit on project
     // ownership (#223). The mid-flight wallet switch test uses
     // `pw-fake-b` as wallet B's name so it also has to be present.
+    // #240: this file's `createDeps()` builds the wallet with a fixed
+    // `name: 'pw-fake'` regardless of which test wallet is active, so
+    // the `pw-fake` vault entry below carries accounts for BOTH
+    // WALLET_A and WALLET_B. Real-world wallets have unique names per
+    // address; this is a test-fixture convenience that lets the
+    // freshness guard pass for either address so the suite can focus
+    // on ownership-mismatch behavior (which is the point of these
+    // tests).
     listWallets: vi.fn().mockReturnValue([
       {
         id: 'fake-id-a',
         name: 'pw-fake',
-        accounts: [],
+        accounts: [
+          { chainId: 'eip155:8453', address: WALLET_A, derivationPath: "m/44'/60'/0'/0/0" },
+          { chainId: 'eip155:8453', address: WALLET_B, derivationPath: "m/44'/60'/0'/0/1" }
+        ],
         createdAt: '2026-05-22T00:00:00.000Z'
       },
       {
         id: 'fake-id-b',
         name: 'pw-fake-b',
-        accounts: [],
+        accounts: [
+          { chainId: 'eip155:8453', address: WALLET_B, derivationPath: "m/44'/60'/0'/0/0" }
+        ],
         createdAt: '2026-05-22T00:00:00.000Z'
       }
     ]),

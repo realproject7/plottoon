@@ -1,5 +1,6 @@
 import type { OWSCoreModule, OWSVaultConfig } from './owsAdapter'
 import { OWS_UNAVAILABLE_MESSAGE } from './owsAdapter'
+import { normalizeWalletAddress } from '../../shared/walletIdentity'
 
 /**
  * Result of a pre-signing vault freshness check.
@@ -54,9 +55,33 @@ export function checkActiveWalletInVault(
     return { ok: false, error: STALE_WALLET_USER_MESSAGE }
   }
 
-  const matches = entries.some(
-    (entry) => entry.name === activeWallet.name && entry.id !== undefined
-  )
+  // #240: require BOTH a name match AND an EVM account whose normalized
+  // address equals the active wallet's address. A same-name/different-
+  // address vault entry would otherwise pass freshness — and signing would
+  // use a different key than the metadata shown to the user. The error
+  // is the same generic stale message either way so we don't leak
+  // whether the failure is "name missing" vs "address mismatch" vs
+  // "wrong chain family".
+  //
+  // #240 RE1: the account must specifically be EVM. OWS uses CAIP-2
+  // identifiers, so we check `chainId.startsWith('eip155:')` (same
+  // convention as `owsAdapter`). A same-name vault entry that happened
+  // to carry a non-EVM account with the same address string (e.g.
+  // `chainId: 'solana:mainnet'`) would otherwise pass and signing
+  // would dispatch to a chain family the user never intended.
+  const wantedAddress = normalizeWalletAddress(activeWallet.address)
+  const matches = entries.some((entry) => {
+    if (entry.name !== activeWallet.name) return false
+    if (entry.id === undefined) return false
+    const accounts = Array.isArray(entry.accounts) ? entry.accounts : []
+    return accounts.some(
+      (account) =>
+        typeof account?.chainId === 'string' &&
+        account.chainId.startsWith('eip155:') &&
+        typeof account?.address === 'string' &&
+        normalizeWalletAddress(account.address) === wantedAddress
+    )
+  })
   if (!matches) {
     return { ok: false, error: STALE_WALLET_USER_MESSAGE }
   }
