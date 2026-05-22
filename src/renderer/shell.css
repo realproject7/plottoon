@@ -288,6 +288,215 @@
 }
 
 /*
+ * Wallet switcher — trigger pill + anchored popover. The popover opens
+ * above the trigger because the sidebar wallet block sits at the bottom of
+ * the sidebar; positioning is sidebar-local (relative parent on
+ * `.wallet-switcher`) and the popover floats with `bottom: 100%`.
+ */
+.wallet-switcher {
+  position: relative;
+}
+
+.wallet-switcher__trigger {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--accent);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.wallet-switcher__trigger:hover {
+  background: var(--accent-bg);
+}
+
+.wallet-switcher__trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.wallet-switcher__trigger--inactive {
+  color: var(--muted);
+}
+
+.wallet-switcher__trigger-address {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: -0.01em;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet-switcher__trigger-chevron {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  opacity: 0.7;
+}
+
+.wallet-switcher__popover {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  box-shadow: 0 6px 20px oklch(0% 0 0 / 0.12);
+  padding: 4px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Sidebar is narrow; cap popover height and scroll long identity lists. */
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.wallet-switcher__section-label {
+  font-size: 9px;
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  padding: 6px 8px 2px;
+}
+
+.wallet-switcher__item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.wallet-switcher__item:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.wallet-switcher__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.wallet-switcher__item--active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.wallet-switcher__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wallet-switcher__item-address {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: -0.01em;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet-switcher__item-source {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.wallet-switcher__item--active .wallet-switcher__item-source {
+  color: var(--accent);
+}
+
+.wallet-switcher__item-check {
+  flex-shrink: 0;
+  width: 12px;
+  font-size: 11px;
+  color: var(--accent);
+  text-align: center;
+}
+
+.wallet-switcher__divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+
+.wallet-switcher__action {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+
+.wallet-switcher__action:hover:not(:disabled) {
+  background: var(--accent-bg);
+}
+
+.wallet-switcher__action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.wallet-switcher__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  color: var(--muted);
+}
+
+.wallet-switcher__action--danger {
+  color: var(--muted);
+}
+
+.wallet-switcher__action--danger:hover:not(:disabled) {
+  color: var(--danger);
+  background: oklch(50% 0.18 25 / 0.08);
+}
+
+.wallet-switcher__empty {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+/*
  * Projects screen — PlotLink StoryCard/StoryGrid-inspired layout.
  * Surface panels instead of wireframe; left accent strip in place of the
  * full-bleed gradient fallbacks PlotLink uses on story cards.

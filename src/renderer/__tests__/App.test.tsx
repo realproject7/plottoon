@@ -134,7 +134,10 @@ beforeEach(() => {
       connect: vi.fn().mockResolvedValue({ success: true }),
       getConnected: vi.fn().mockResolvedValue({ connected: false }),
       disconnect: vi.fn().mockResolvedValue({ success: true }),
-      getSignerMode: vi.fn().mockResolvedValue({ mode: 'mock' })
+      getSignerMode: vi.fn().mockResolvedValue({ mode: 'mock' }),
+      listIdentities: vi.fn().mockResolvedValue({ identities: [] }),
+      getActiveIdentity: vi.fn().mockResolvedValue({ identity: null }),
+      setActiveIdentity: vi.fn().mockResolvedValue({ identity: null })
     },
     dashboard: {
       getData: vi.fn().mockResolvedValue({
