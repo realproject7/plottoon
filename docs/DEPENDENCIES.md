@@ -34,6 +34,23 @@ Used during development and CI only. Not shipped to end users.
 | eslint-plugin-react-hooks | 7.x     | MIT        | React hooks lint rules |
 | @eslint/js                | 10.x    | MIT        | ESLint core rules      |
 
+## Vendored Fonts
+
+Webfont binaries committed under `src/renderer/assets/fonts/` and bundled into the renderer at build time. No runtime network fetch.
+
+| File                     | Family     | Subset / Variant             | License                         | Source                         |
+| ------------------------ | ---------- | ---------------------------- | ------------------------------- | ------------------------------ |
+| `Newsreader-latin.woff2` | Newsreader | Latin, variable axis 400–700 | SIL Open Font License 1.1 (OFL) | Google Fonts (Production Type) |
+
+The OFL license text is stored verbatim alongside the font at `src/renderer/assets/fonts/OFL.txt`. Per OFL §2 the license and copyright notice must accompany any redistribution; the OFL.txt file satisfies that requirement.
+
+Adding a new vendored font:
+
+1. Drop the file under `src/renderer/assets/fonts/`.
+2. Save the upstream license text next to it (`OFL.txt`, `LICENSE`, etc.).
+3. Add a row to the table above.
+4. Declare an `@font-face` rule in `src/renderer/tokens.css` using a relative `url('./assets/fonts/...')` reference so Vite picks it up.
+
 ## Planned Runtime Dependencies
 
 Dependencies expected in upcoming issues. Actual versions will be recorded when added.
