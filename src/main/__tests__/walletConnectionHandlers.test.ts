@@ -241,6 +241,45 @@ describe('walletConnectionHandlers', () => {
     expect(newState.wallet).toBeNull()
   })
 
+  it('#239 RE1 — wallet:connect refuses an unrecognized vault entry (non-writer prefix) even when address matches', async () => {
+    // The vault contains a `personal-wallet` at the same address the
+    // renderer requests. `wallet:getOptions` wouldn't list it because
+    // `discoverExistingWallets` filters to writer-prefix names; the
+    // resolver must enforce the same boundary or a renderer could
+    // bypass the option list to connect an unrelated OWS wallet.
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newState = createSelectedWalletState()
+    const newConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([
+        {
+          name: 'personal-wallet',
+          address: '0xdddd000000000000000000000000000000000005'
+        }
+      ]),
+      createWallet: vi.fn()
+    }
+    registerWalletConnectionHandlers(newConfig, newState, mockSigner())
+
+    const result = (await handlers['wallet:connect'](
+      {},
+      {
+        type: 'reuse-existing',
+        source: 'plottoon-writer',
+        address: '0xdddd000000000000000000000000000000000005'
+      }
+    )) as { success: boolean; error?: string }
+
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/no longer available|not found|unavailable/i)
+    expect(newState.wallet).toBeNull()
+    // Confirm that `getOptions` similarly hides the unrecognized entry
+    // (same boundary, both paths).
+    const options = (await handlers['wallet:getOptions']({})) as {
+      options: Array<{ type: string }>
+    }
+    expect(options.options.filter((o) => o.type === 'reuse-existing')).toHaveLength(0)
+  })
+
   it('#239 — wallet:connect ignores a renderer-forged `name` field if one is sent', async () => {
     Object.keys(handlers).forEach((k) => delete handlers[k])
     const newState = createSelectedWalletState()

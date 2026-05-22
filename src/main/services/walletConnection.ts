@@ -105,6 +105,13 @@ export async function getConnectionOptions(
  * internal name for a reuse-existing option — it sends back only the
  * address. The main process re-resolves the full option (including
  * `name`) here by re-discovering the vault and matching on address.
+ *
+ * #239 RE1 finding: the resolver MUST search in the same filtered set
+ * `wallet:getOptions` exposes — writer-prefix names only. Otherwise a
+ * renderer could bypass the option list and connect to an arbitrary
+ * unrelated OWS wallet by address, stamped as a writer source. We
+ * delegate to `discoverExistingWallets` so the prefix filter + source
+ * mapping run exactly once and are guaranteed identical to discovery.
  */
 export async function resolveReuseExistingOption(
   view: WalletConnectionOptionView,
@@ -113,20 +120,9 @@ export async function resolveReuseExistingOption(
   if (view.type !== 'reuse-existing') return null
   if (!view.address) return null
   const wantedAddress = view.address.toLowerCase()
-  const entries = await config.discoverVault()
-  const match = entries.find((e) => e.address.toLowerCase() === wantedAddress)
-  if (!match) return null
-  // Re-derive `source` from the resolved name so the renderer can't
-  // forge a different source label.
-  const source: WalletSource = match.name.startsWith(PLOTLINK_WALLET_PREFIX)
-    ? 'plotlink-writer'
-    : 'plottoon-writer'
-  return {
-    type: 'reuse-existing',
-    source,
-    address: match.address,
-    name: match.name
-  }
+  const recognized = await discoverExistingWallets(config)
+  const match = recognized.find((opt) => (opt.address ?? '').toLowerCase() === wantedAddress)
+  return match ?? null
 }
 
 export async function connectWallet(
