@@ -52,7 +52,6 @@ function createWindow(): void {
 
 app.whenReady().then(async () => {
   registerFsHandlers()
-  registerTerminalHandlers()
 
   let owsModule: import('./services/owsAdapter').OWSCoreModule
   try {
@@ -112,6 +111,12 @@ app.whenReady().then(async () => {
   // can partition by active wallet and `project:create` can stamp ownership
   // metadata (#220). Registered after the store is constructed.
   registerProjectHandlers({ walletIdentityStore: identityStore })
+
+  // Terminal sessions are keyed by (projectId, activeWalletAddress) so
+  // wallet A and wallet B don't reattach to each other's running shell
+  // (#221). Registered after the wallet identity store for the same reason
+  // as project handlers above.
+  registerTerminalHandlers({ walletIdentityStore: identityStore })
 
   const publishConfig = getDefaultPublishConfig()
   registerPublishHandlers({

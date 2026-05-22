@@ -1,12 +1,20 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { platform } from 'node:os'
 import { buildAgentEnv } from './agentEnv'
+import { normalizeWalletAddress } from '../../shared/walletIdentity'
 
 export type SessionState = 'connected' | 'disconnected' | 'exited'
 
 export interface SessionMeta {
   id: string
   projectId: string
+  /**
+   * Lowercased EVM address of the wallet that owns this session, or null
+   * for a legacy session that predates #221 wallet-keying. A legacy session
+   * is migrated to the first non-null wallet that asks for it (see
+   * `findSessionByProjectAndWallet`).
+   */
+  walletAddress: string | null
   cwd: string
   state: SessionState
   createdAt: string
@@ -24,16 +32,63 @@ function defaultShell(): string {
   return process.env.SHELL || '/bin/sh'
 }
 
-export function createSession(projectId: string, cwd: string): SessionMeta {
-  const existing = findSessionByProject(projectId)
+function normalizeOrNull(address: string | null | undefined): string | null {
+  return address ? normalizeWalletAddress(address) : null
+}
+
+/**
+ * Look up a non-exited session for `projectId` that matches `walletAddress`.
+ * If `walletAddress` is non-null and an unmigrated legacy session
+ * (`walletAddress === null`) exists for the same project, the first lookup
+ * claims it by stamping the wallet address in place. This is the migration
+ * path required by #221: existing one-wallet users keep their session.
+ */
+export function findSessionByProjectAndWallet(
+  projectId: string,
+  walletAddress: string | null
+): SessionMeta | null {
+  const key = normalizeOrNull(walletAddress)
+  // Exact-match pass first: a session that already owns the (project, wallet)
+  // pair wins over any legacy session, so a wallet that already migrated its
+  // own session never accidentally claims another.
+  for (const meta of sessions.values()) {
+    if (meta.state === 'exited') continue
+    if (meta.projectId !== projectId) continue
+    if (meta.walletAddress === key) return meta
+  }
+  // Legacy migration pass: only for a non-null caller. A null caller has no
+  // wallet to claim with, so it must not silently take over a legacy session.
+  if (key !== null) {
+    for (const meta of sessions.values()) {
+      if (meta.state === 'exited') continue
+      if (meta.projectId !== projectId) continue
+      if (meta.walletAddress === null) {
+        const migrated: SessionMeta = { ...meta, walletAddress: key }
+        sessions.set(meta.id, migrated)
+        return migrated
+      }
+    }
+  }
+  return null
+}
+
+export function createSession(
+  projectId: string,
+  cwd: string,
+  walletAddress: string | null
+): SessionMeta {
+  const key = normalizeOrNull(walletAddress)
+  const existing = findSessionByProjectAndWallet(projectId, key)
   if (existing && existing.state === 'connected') {
     return existing
   }
+  if (existing) return existing
 
   const id = `term_${nextId++}`
   const meta: SessionMeta = {
     id,
     projectId,
+    walletAddress: key,
     cwd,
     state: 'disconnected',
     createdAt: new Date().toISOString(),
@@ -48,6 +103,12 @@ export function getSession(id: string): SessionMeta | null {
   return sessions.get(id) ?? null
 }
 
+/**
+ * @deprecated Project-only lookup that ignores wallet scope. Retained for
+ * tests that pre-date #221 wallet-keyed sessions. New callers must use
+ * `findSessionByProjectAndWallet` so wallet A and wallet B never reattach
+ * to each other's terminal.
+ */
 export function findSessionByProject(projectId: string): SessionMeta | null {
   for (const meta of sessions.values()) {
     if (meta.projectId === projectId && meta.state !== 'exited') {
