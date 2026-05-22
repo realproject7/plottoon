@@ -35,10 +35,23 @@ function mockResult(overrides?: Partial<PublishResultRecord>): PublishResultReco
   }
 }
 
-async function createProject(name: string): Promise<{ id: string; root: string }> {
+/**
+ * Default test wallet used by the dashboard suite. Real wallets never appear
+ * in any of these fixtures. `createProject` stamps every test project with
+ * this wallet so the wallet-scoped dashboard from #222 includes them.
+ */
+const DEFAULT_TEST_WALLET = '0xaaaa000000000000000000000000000000000001'
+
+async function createProject(
+  name: string,
+  walletAddress: string = DEFAULT_TEST_WALLET
+): Promise<{ id: string; root: string }> {
   const root = path.join(tmpDir, name)
   await fs.mkdir(root, { recursive: true })
-  await writeProjectMeta(root, createProjectMeta(name))
+  await writeProjectMeta(
+    root,
+    createProjectMeta(name, undefined, { address: walletAddress, source: 'plottoon-writer' })
+  )
   const id = registerProject(root)
   return { id, root }
 }
@@ -73,8 +86,16 @@ async function createPlot(
 }
 
 function baseDeps(overrides?: Partial<DashboardDeps>): DashboardDeps {
+  // Default to the test wallet so projects created via `createProject` are
+  // visible on the dashboard. Tests that need a no-wallet or different-wallet
+  // path override `getWallet` explicitly.
   return {
-    getWallet: () => null,
+    getWallet: () => ({
+      address: DEFAULT_TEST_WALLET,
+      source: 'plottoon-writer',
+      name: 'plottoon-writer-test',
+      createdAt: '2026-05-22T00:00:00.000Z'
+    }),
     ...overrides
   }
 }
@@ -216,7 +237,7 @@ describe('buildDashboardData — storyline grouping', () => {
 
 describe('buildDashboardData — wallet', () => {
   it('returns disconnected wallet when none connected', async () => {
-    const data = await buildDashboardData(baseDeps())
+    const data = await buildDashboardData(baseDeps({ getWallet: () => null }))
 
     expect(data.wallet.connected).toBe(false)
     expect(data.wallet.address).toBeNull()
@@ -380,5 +401,94 @@ describe('buildDashboardData — graceful degradation', () => {
 
     expect(data.generatedAt).toBeTruthy()
     expect(new Date(data.generatedAt).getTime()).toBeGreaterThan(0)
+  })
+})
+
+describe('buildDashboardData — wallet scoping (#222)', () => {
+  const WALLET_B = '0xbbbb000000000000000000000000000000000002'
+
+  function depsForWallet(address: string | null): DashboardDeps {
+    return baseDeps({
+      getWallet:
+        address === null
+          ? () => null
+          : () => ({
+              address,
+              source: 'plottoon-writer',
+              name: 'plottoon-writer-fake',
+              createdAt: '2026-05-22T00:00:00.000Z'
+            })
+    })
+  }
+
+  it('only counts and surfaces projects whose meta.wallet matches the active wallet', async () => {
+    const projA = await createProject('wallet-a-story', DEFAULT_TEST_WALLET)
+    await createPlot(projA.root, 'episode-1', 'A1', 2)
+    const projB = await createProject('wallet-b-story', WALLET_B)
+    await createPlot(projB.root, 'episode-1', 'B1', 4)
+
+    const fromA = await buildDashboardData(depsForWallet(DEFAULT_TEST_WALLET))
+    expect(fromA.counts.totalProjects).toBe(1)
+    expect(fromA.counts.totalPlots).toBe(1)
+    expect(fromA.localGroups.map((g) => g.projectName)).toEqual(['wallet-a-story'])
+
+    const fromB = await buildDashboardData(depsForWallet(WALLET_B))
+    expect(fromB.counts.totalProjects).toBe(1)
+    expect(fromB.counts.totalPlots).toBe(1)
+    expect(fromB.localGroups.map((g) => g.projectName)).toEqual(['wallet-b-story'])
+  })
+
+  it('hides legacy (unstamped) projects from the active wallet’s dashboard', async () => {
+    const legacyRoot = path.join(tmpDir, 'legacy-story')
+    await fs.mkdir(legacyRoot, { recursive: true })
+    await writeProjectMeta(legacyRoot, createProjectMeta('Legacy Story'))
+    registerProject(legacyRoot)
+    await createPlot(legacyRoot, 'ep1', 'L1', 3)
+
+    const data = await buildDashboardData(depsForWallet(DEFAULT_TEST_WALLET))
+    expect(data.counts.totalProjects).toBe(0)
+    expect(data.counts.totalPlots).toBe(0)
+  })
+
+  it('returns empty counts when there is no active wallet', async () => {
+    const proj = await createProject('wallet-a-story', DEFAULT_TEST_WALLET)
+    await createPlot(proj.root, 'episode-1', 'A1', 2)
+
+    const data = await buildDashboardData(depsForWallet(null))
+    expect(data.counts.totalProjects).toBe(0)
+    expect(data.counts.totalPlots).toBe(0)
+    expect(data.wallet.connected).toBe(false)
+  })
+
+  it('normalizes wallet address case when matching against stamped projects', async () => {
+    await createProject('mixed-case-story', DEFAULT_TEST_WALLET.toUpperCase())
+    const data = await buildDashboardData(depsForWallet(DEFAULT_TEST_WALLET))
+    expect(data.counts.totalProjects).toBe(1)
+  })
+
+  it('only queries balance/royalty for the active wallet', async () => {
+    const balances: string[] = []
+    const royaltyAddresses: string[] = []
+    const deps: DashboardDeps = baseDeps({
+      getWallet: () => ({
+        address: DEFAULT_TEST_WALLET,
+        source: 'plottoon-writer',
+        name: 'plottoon-writer-fake',
+        createdAt: '2026-05-22T00:00:00.000Z'
+      }),
+      fetchBalance: async (addr) => {
+        balances.push(addr)
+        return '1000000000000000000'
+      },
+      fetchRoyalty: async (addr) => {
+        royaltyAddresses.push(addr)
+        return { earnedWei: '1', claimedWei: '0', unclaimedWei: '1' }
+      }
+    })
+    const data = await buildDashboardData(deps)
+    expect(balances).toEqual([DEFAULT_TEST_WALLET])
+    expect(royaltyAddresses).toEqual([DEFAULT_TEST_WALLET])
+    expect(data.wallet.balanceWei).toBe('1000000000000000000')
+    expect(data.royalty.unclaimedWei).toBe('1')
   })
 })

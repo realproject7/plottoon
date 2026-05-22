@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { WALLET_ACTIVE_CHANGED_EVENT } from '../shared/walletIdentity'
 
 type LoadState = 'loading' | 'loaded' | 'error'
 
@@ -156,9 +157,11 @@ function WalletCard({ wallet }: { wallet: DashboardWalletSummary }) {
 
 function RoyaltyClaimCard({
   walletConnected,
+  walletAddress,
   dashboardRoyalty
 }: {
   walletConnected: boolean
+  walletAddress: string | null
   dashboardRoyalty: DashboardRoyaltySummary
 }) {
   const [royaltyInfo, setRoyaltyInfo] = useState<RoyaltyInfoResult | null>(null)
@@ -168,7 +171,7 @@ function RoyaltyClaimCard({
   const [claimHistory, setClaimHistory] = useState<RoyaltyClaimRecord[]>([])
 
   useEffect(() => {
-    if (!walletConnected) return
+    if (!walletConnected || !walletAddress) return
     let cancelled = false
     window.plottoon.royalty.getInfo().then(
       (result) => {
@@ -185,7 +188,7 @@ function RoyaltyClaimCard({
     return () => {
       cancelled = true
     }
-  }, [walletConnected])
+  }, [walletConnected, walletAddress])
 
   const info = royaltyInfo?.info
   const hasUnclaimed = info && BigInt(info.unclaimedWei) > BigInt(0)
@@ -256,8 +259,16 @@ function RoyaltyClaimCard({
         </button>
       )}
       {confirmOpen && !claiming && (
-        <div style={{ marginTop: 'var(--space-2)', fontSize: 12 }}>
-          <span>Claim {formatWei(info!.unclaimedWei)} to your wallet?</span>
+        <div style={{ marginTop: 'var(--space-2)', fontSize: 12 }} data-testid="royalty-confirm">
+          <div>Claim {formatWei(info!.unclaimedWei)} to your wallet?</div>
+          {walletAddress && (
+            <div
+              style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 2 }}
+              data-testid="royalty-confirm-wallet"
+            >
+              as {truncateAddress(walletAddress)}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
             <button type="button" className="btn-primary" onClick={handleClaim}>
               Confirm Claim
@@ -392,6 +403,16 @@ export function Dashboard() {
     }
   }, [])
 
+  // Wallet-scope (#222): a wallet switch must redraw the dashboard so
+  // wallet A's projects, balance, and royalty disappear immediately.
+  useEffect(() => {
+    function onActiveChanged(): void {
+      void load()
+    }
+    window.addEventListener(WALLET_ACTIVE_CHANGED_EVENT, onActiveChanged)
+    return () => window.removeEventListener(WALLET_ACTIVE_CHANGED_EVENT, onActiveChanged)
+  }, [load])
+
   if (loadState === 'loading') {
     return <div className="loading-state">Loading dashboard…</div>
   }
@@ -445,7 +466,19 @@ export function Dashboard() {
             </div>
           </div>
         )}
-        <RoyaltyClaimCard walletConnected={data.wallet.connected} dashboardRoyalty={data.royalty} />
+        {/*
+         * key={data.wallet.address ?? '-'} forces React to unmount and
+         * remount RoyaltyClaimCard whenever the active wallet changes. That
+         * resets every piece of per-wallet local state (royaltyInfo,
+         * claimHistory, confirmOpen, claimResult) without a manual setState
+         * inside an effect — closes the #222 RE1 stale-state finding.
+         */}
+        <RoyaltyClaimCard
+          key={data.wallet.address ?? '-'}
+          walletConnected={data.wallet.connected}
+          walletAddress={data.wallet.address}
+          dashboardRoyalty={data.royalty}
+        />
       </div>
 
       {isEmpty && (

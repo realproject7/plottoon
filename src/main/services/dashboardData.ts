@@ -8,6 +8,7 @@ import {
 } from './publishStatus'
 import { readCutsFile } from './cutsSchema'
 import type { WalletMetadata } from './walletConnection'
+import { normalizeWalletAddress } from '../../shared/walletIdentity'
 
 export interface PlotDashboardEntry {
   projectId: string
@@ -248,17 +249,35 @@ function computeCounts(entries: PlotDashboardEntry[], projectCount: number): Das
 }
 
 export async function buildDashboardData(deps: DashboardDeps): Promise<DashboardData> {
-  const projects = listProjects()
+  const wallet = deps.getWallet()
+  // Dashboard is wallet-scoped (#222). With no active wallet, the renderer
+  // shows a "no wallet" empty state; we still return the wallet/price/royalty
+  // snapshot so the screen renders cleanly. Project / plot counts read as
+  // zero because the active wallet has no owned projects.
+  const activeAddress = wallet ? normalizeWalletAddress(wallet.address) : null
+
+  const allProjects = listProjects()
+  const ownedProjects: Array<{ id: string; root: string; name: string }> = []
   const allEntries: PlotDashboardEntry[] = []
 
-  for (const project of projects) {
+  for (const project of allProjects) {
     let projectName = project.id
+    let projectMeta: ProjectMeta | null = null
     try {
-      const meta: ProjectMeta = await readProjectMeta(project.root)
-      projectName = meta.name
+      projectMeta = await readProjectMeta(project.root)
+      projectName = projectMeta.name
     } catch {
       // use project id as fallback name
     }
+
+    // Wallet-scope filter: a project is visible on the dashboard only when
+    // its `meta.wallet.address` matches the active wallet. Projects with no
+    // wallet stamp (legacy) and projects owned by other wallets are both
+    // excluded — they show up in their own buckets on the Projects screen
+    // (per #220) but must not pollute the active wallet's dashboard stats.
+    const projectAddress = projectMeta?.wallet?.address ?? null
+    if (!activeAddress || projectAddress !== activeAddress) continue
+    ownedProjects.push({ id: project.id, root: project.root, name: projectName })
 
     let plotSlugs: string[] = []
     try {
@@ -279,9 +298,8 @@ export async function buildDashboardData(deps: DashboardDeps): Promise<Dashboard
   }
 
   const { storylines, localGroups } = groupByStoryline(allEntries)
-  const counts = computeCounts(allEntries, projects.length)
+  const counts = computeCounts(allEntries, ownedProjects.length)
 
-  const wallet = deps.getWallet()
   const walletSummary: WalletSummary = {
     address: wallet?.address ?? null,
     source: wallet?.source ?? null,
