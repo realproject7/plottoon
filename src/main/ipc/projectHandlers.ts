@@ -170,8 +170,19 @@ export function registerProjectHandlers(options: RegisterProjectHandlersOptions 
     }
     const root = getProjectRoot(projectId)
     const existing = await readProjectMeta(root)
+    // No-op when the project is already attached to the active wallet.
     if (existing.wallet?.address === active.address) {
       return { ok: true, meta: existing }
+    }
+    // Strict legacy-only assignment per #220: never silently move a project
+    // from one known wallet to another. A project that is already stamped
+    // must be re-stamped only via a future explicit transfer flow that the
+    // user-driven UI surfaces with confirmation.
+    if (existing.wallet) {
+      throw new ProjectMetaError(
+        'This project is already assigned to a different wallet. Switch to that wallet to access it instead of reassigning.',
+        root
+      )
     }
     const next = {
       ...existing,
@@ -179,7 +190,7 @@ export function registerProjectHandlers(options: RegisterProjectHandlersOptions 
       updatedAt: new Date().toISOString()
     }
     await writeProjectMeta(root, next)
-    logAction('project:assignWallet', `Assigned project to active wallet`, projectId)
+    logAction('project:assignWallet', `Assigned legacy project to active wallet`, projectId)
     return { ok: true, meta: next }
   })
 
