@@ -169,6 +169,31 @@ describe('ProjectList — wallet scoping', () => {
     expect(screen.getByText('No active wallet')).toBeDefined()
   })
 
+  // #243: a first-run user has connected a wallet but has not yet picked a
+  // projects folder. The Projects screen must treat the wallet as active and
+  // offer the New Project path — not show "No active wallet".
+  it('shows the active-wallet empty state (not "No active wallet") when activeAddress is set but no projects exist', async () => {
+    const create = vi.fn()
+    installProjectApi(
+      async () =>
+        makePartition({
+          activeAddress: WALLET_A
+        }),
+      { create }
+    )
+    render(<ProjectList />)
+
+    await waitFor(() => {
+      expect(screen.getByText('No projects yet')).toBeDefined()
+    })
+    // The active-wallet empty state offers the New Project flow.
+    const newProjectBtn = screen.getByText('New Project')
+    expect(newProjectBtn).toBeDefined()
+    // And the misleading "No active wallet" state must NOT render.
+    expect(screen.queryByTestId('no-active-wallet-state')).toBeNull()
+    expect(screen.queryByText('No active wallet')).toBeNull()
+  })
+
   it('renders nothing related to OWS internal names anywhere in the DOM', async () => {
     const { container } = (() => {
       installProjectApi(async () =>

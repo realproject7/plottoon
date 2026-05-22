@@ -80,12 +80,15 @@ export function registerProjectHandlers(options: RegisterProjectHandlersOptions 
   const walletStore = options.walletIdentityStore
 
   ipcMain.handle('project:discover', async () => {
+    // Resolve the active wallet first so a first-run user with a selected
+    // wallet but no projects directory still sees the active-wallet empty
+    // state (and the New Project path) instead of "No active wallet".
+    const activeAddress = walletStore ? ((await walletStore.getActive())?.address ?? null) : null
     const dir = await getProjectsDir()
     if (!dir) {
-      return { owned: [], legacy: [], otherWallets: [], errors: [], activeAddress: null }
+      return { owned: [], legacy: [], otherWallets: [], errors: [], activeAddress }
     }
     const projects = await discoverProjects(dir)
-    const activeAddress = walletStore ? ((await walletStore.getActive())?.address ?? null) : null
     return { ...partitionProjectsByWallet(projects, activeAddress), activeAddress }
   })
 
