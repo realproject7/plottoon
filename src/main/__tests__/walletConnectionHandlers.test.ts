@@ -17,9 +17,26 @@ vi.mock('electron', () => ({
   }
 }))
 
+// #239: the wallet:connect handler re-resolves the OWS internal name from
+// the vault by address — the renderer no longer sends a name. The default
+// vault mock includes every address used by tests in this file so the
+// resolver finds a match. Tests that need an empty vault or a specific
+// missing-address scenario override `discoverVault`.
 function mockConfig(): WalletConnectionConfig {
   return {
-    discoverVault: vi.fn().mockResolvedValue([{ name: 'plotlink-writer-main', address: '0xabc' }]),
+    discoverVault: vi.fn().mockResolvedValue([
+      { name: 'plotlink-writer-main', address: '0xabc' },
+      { name: 'plotlink-writer-1', address: '0xfoo' },
+      { name: 'plotlink-writer-1', address: '0xbar' },
+      {
+        name: 'plotlink-writer-internal-selector',
+        address: '0xaaaa000000000000000000000000000000000001'
+      },
+      {
+        name: 'plottoon-writer-internal-selector',
+        address: '0xbbbb000000000000000000000000000000000002'
+      }
+    ]),
     createWallet: vi.fn().mockResolvedValue({ address: '0xnew-created' })
   }
 }
@@ -46,10 +63,11 @@ describe('walletConnectionHandlers', () => {
 
   it('registers wallet:getOptions handler', async () => {
     const result = await handlers['wallet:getOptions']({})
-    const typed = result as { options: unknown[] }
-    expect(typed.options).toHaveLength(2)
-    expect((typed.options[0] as { type: string }).type).toBe('create-new')
-    expect((typed.options[1] as { type: string }).type).toBe('reuse-existing')
+    const typed = result as { options: Array<{ type: string }> }
+    // 1 create-new + 5 reuse-existing entries from the default mock vault.
+    expect(typed.options).toHaveLength(6)
+    expect(typed.options[0].type).toBe('create-new')
+    expect(typed.options.slice(1).every((o) => o.type === 'reuse-existing')).toBe(true)
   })
 
   it('registers wallet:connect handler for create-new', async () => {
@@ -128,6 +146,131 @@ describe('walletConnectionHandlers', () => {
     // Main process still has the selector — it's needed for signing flows
     // (publish, royalty, agent registration).
     expect(state.wallet?.name).toBe('plotlink-writer-internal-selector')
+  })
+
+  it('#239 — wallet:getOptions does NOT serialize OWS internal names in reuse-existing options', async () => {
+    // Distinctive selector strings the renderer must never see.
+    const distinctiveConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([
+        {
+          name: 'plotlink-writer-distinctive-selector-A',
+          address: '0xaaaa000000000000000000000000000000000001'
+        },
+        {
+          name: 'plottoon-writer-distinctive-selector-B',
+          address: '0xbbbb000000000000000000000000000000000002'
+        }
+      ]),
+      createWallet: vi.fn()
+    }
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    registerWalletConnectionHandlers(distinctiveConfig, createSelectedWalletState(), mockSigner())
+
+    const result = (await handlers['wallet:getOptions']({})) as {
+      options: Array<Record<string, unknown>>
+    }
+
+    // Each reuse-existing option's keys must be exactly the renderer-safe
+    // view shape — no `name` or `owsName` allowed.
+    const reuse = result.options.filter((o) => o.type === 'reuse-existing')
+    expect(reuse).toHaveLength(2)
+    for (const opt of reuse) {
+      expect(opt).not.toHaveProperty('name')
+      expect(opt).not.toHaveProperty('owsName')
+      // Required identifier the renderer uses to call back: address.
+      expect(opt.address).toBeDefined()
+      expect(opt.source).toBeDefined()
+    }
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain('plotlink-writer-distinctive-selector-A')
+    expect(serialized).not.toContain('plottoon-writer-distinctive-selector-B')
+  })
+
+  it('#239 — wallet:connect resolves the OWS name in main, even when renderer omits it', async () => {
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newState = createSelectedWalletState()
+    const newConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([
+        {
+          name: 'plotlink-writer-resolved',
+          address: '0xcccc000000000000000000000000000000000003'
+        }
+      ]),
+      createWallet: vi.fn()
+    }
+    registerWalletConnectionHandlers(newConfig, newState, mockSigner())
+
+    // Renderer sends only the address — no `name` field at all.
+    const result = (await handlers['wallet:connect'](
+      {},
+      {
+        type: 'reuse-existing',
+        source: 'plotlink-writer',
+        address: '0xcccc000000000000000000000000000000000003'
+      }
+    )) as { success: boolean; wallet?: Record<string, unknown> }
+
+    expect(result.success).toBe(true)
+    // Renderer-facing response is still the #234 projection (no name).
+    expect(Object.keys(result.wallet!).sort()).toEqual(['address', 'source'])
+    // Main-process state, however, has the resolved OWS name available
+    // for downstream signing flows.
+    expect(newState.wallet?.name).toBe('plotlink-writer-resolved')
+  })
+
+  it('#239 — wallet:connect refuses when the renderer-supplied address is not in the vault', async () => {
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newState = createSelectedWalletState()
+    const emptyConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([]),
+      createWallet: vi.fn()
+    }
+    registerWalletConnectionHandlers(emptyConfig, newState, mockSigner())
+
+    const result = (await handlers['wallet:connect'](
+      {},
+      {
+        type: 'reuse-existing',
+        source: 'plotlink-writer',
+        address: '0xdead000000000000000000000000000000000000'
+      }
+    )) as { success: boolean; error?: string }
+
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/no longer available|not found/i)
+    expect(newState.wallet).toBeNull()
+  })
+
+  it('#239 — wallet:connect ignores a renderer-forged `name` field if one is sent', async () => {
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newState = createSelectedWalletState()
+    const newConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([
+        {
+          name: 'plotlink-writer-real-vault-name',
+          address: '0xeeee000000000000000000000000000000000004'
+        }
+      ]),
+      createWallet: vi.fn()
+    }
+    registerWalletConnectionHandlers(newConfig, newState, mockSigner())
+
+    // A malicious renderer could try to inject a different OWS name as a
+    // signing selector. The main process must IGNORE that field and use
+    // the real vault entry's name.
+    await handlers['wallet:connect'](
+      {},
+      {
+        type: 'reuse-existing',
+        source: 'plotlink-writer',
+        address: '0xeeee000000000000000000000000000000000004',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        name: 'plotlink-writer-forged-attacker-controlled' as any
+      }
+    )
+
+    expect(newState.wallet?.name).toBe('plotlink-writer-real-vault-name')
+    expect(newState.wallet?.name).not.toBe('plotlink-writer-forged-attacker-controlled')
   })
 
   it('#234 — wallet:connect does NOT echo the OWS internal name/id back to the renderer', async () => {
@@ -287,28 +430,26 @@ describe('walletConnectionHandlers', () => {
   })
 
   it('rejects wallet with unsafe metadata', async () => {
+    // #239: the renderer no longer sends `name` — the unsafe name now has
+    // to come from the vault itself. Simulate a vault entry whose OWS
+    // name contains a banned substring; `walletMetadataIsSafe` rejects
+    // the resolved metadata after `resolveReuseExistingOption`.
     const unsafeConfig: WalletConnectionConfig = {
-      discoverVault: vi.fn().mockResolvedValue([]),
+      discoverVault: vi
+        .fn()
+        .mockResolvedValue([{ name: 'plotlink-writer-private-key-leak', address: '0xbad' }]),
       createWallet: vi.fn().mockResolvedValue({ address: '0xbad' })
     }
     Object.keys(handlers).forEach((k) => delete handlers[k])
     const unsafeState = createSelectedWalletState()
     registerWalletConnectionHandlers(unsafeConfig, unsafeState, mockSigner())
 
-    // Monkeypatch to return unsafe name
-    ;(unsafeConfig.createWallet as ReturnType<typeof vi.fn>).mockResolvedValue({
-      address: '0xbad'
-    })
-
-    // The name generated by connectWallet uses Date.now, so it's safe
-    // But let's test reuse-existing with unsafe name
     const result = await handlers['wallet:connect'](
       {},
       {
         type: 'reuse-existing',
         source: 'plotlink-writer',
-        address: '0xbad',
-        name: 'private-key-leak'
+        address: '0xbad'
       }
     )
     const typed = result as { success: boolean; error?: string }

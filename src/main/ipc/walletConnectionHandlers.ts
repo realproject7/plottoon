@@ -2,11 +2,14 @@ import { ipcMain } from 'electron'
 import type {
   WalletConnectionConfig,
   WalletConnectionOption,
+  WalletConnectionOptionView,
   WalletMetadata
 } from '../services/walletConnection'
 import {
   getConnectionOptions,
   connectWallet,
+  resolveReuseExistingOption,
+  toWalletConnectionOptionView,
   walletMetadataIsSafe,
   sanitizeWalletErrorMessage,
   isOwsUnavailableError
@@ -28,7 +31,11 @@ export function registerWalletConnectionHandlers(
   ipcMain.handle('wallet:getOptions', async () => {
     try {
       const options = await getConnectionOptions(config)
-      return { options }
+      // #239: strip OWS internal names before serializing to the renderer.
+      // Reuse-existing options keep `address` as their renderer-side
+      // identifier; the main process re-resolves the OWS name from the
+      // vault at connect time.
+      return { options: options.map(toWalletConnectionOptionView) }
     } catch (err) {
       const unavailable = isOwsUnavailableError(err)
       const reason = unavailable
@@ -42,17 +49,33 @@ export function registerWalletConnectionHandlers(
             available: false,
             unavailableReason: reason
           }
-        ]
+        ] satisfies WalletConnectionOptionView[]
       }
     }
   })
 
-  ipcMain.handle('wallet:connect', async (_event, option: WalletConnectionOption) => {
-    if (option.available === false) {
+  ipcMain.handle('wallet:connect', async (_event, optionView: WalletConnectionOptionView) => {
+    if (optionView.available === false) {
       return {
         success: false,
-        error: option.unavailableReason ?? 'Wallet option is not available'
+        error: optionView.unavailableReason ?? 'Wallet option is not available'
       }
+    }
+    // #239: the renderer no longer sends the OWS internal name. For a
+    // reuse-existing option we re-discover the vault and match by address;
+    // for create-new the internal `connectWallet` mints a fresh name.
+    let option: WalletConnectionOption
+    if (optionView.type === 'create-new') {
+      option = {
+        type: 'create-new',
+        source: optionView.source
+      }
+    } else {
+      const resolved = await resolveReuseExistingOption(optionView, config).catch(() => null)
+      if (!resolved) {
+        return { success: false, error: 'Wallet option is no longer available' }
+      }
+      option = resolved
     }
     try {
       const result = await connectWallet(option, config)
