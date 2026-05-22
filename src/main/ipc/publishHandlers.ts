@@ -1,6 +1,9 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import type { SelectedWalletState } from './walletConnectionHandlers'
 import type { WalletSigner } from '../services/walletSigning'
+import { readProjectMeta } from '../services/projectMeta'
+import { getProjectRoot } from '../services/projectRegistry'
+import { normalizeWalletAddress } from '../../shared/walletIdentity'
 import type {
   PlotlinkPublishDeps,
   PublishFullResult,
@@ -140,27 +143,89 @@ async function loadOrCreateStatus(plotDir: string) {
   }
 }
 
+/**
+ * Check that the project identified by `projectId` is owned by the active
+ * wallet. Returns null when the check passes (active wallet matches, or
+ * project is legacy with no wallet stamp and the caller has decided to
+ * allow that — currently we do NOT allow publishing legacy projects, so
+ * any mismatch including legacy returns an error). Per #223, never select
+ * a wallet by first-wallet/name-prefix conventions during publish.
+ *
+ * Errors are structured so the renderer can surface a clear message to the
+ * user before any signing flow runs.
+ */
+async function checkProjectWalletOwnership(
+  projectId: string,
+  activeWalletAddress: string | null
+): Promise<string | null> {
+  if (!activeWalletAddress) {
+    return 'No active wallet selected. Connect or switch a wallet before publishing.'
+  }
+  let projectRoot: string
+  try {
+    projectRoot = getProjectRoot(projectId)
+  } catch (err) {
+    return err instanceof Error ? err.message : 'Unknown project'
+  }
+  let projectAddress: string | null
+  try {
+    const meta = await readProjectMeta(projectRoot)
+    projectAddress = meta.wallet?.address ?? null
+  } catch (err) {
+    return err instanceof Error ? err.message : 'Failed to read project metadata'
+  }
+  if (!projectAddress) {
+    return 'This project has no wallet ownership. Assign it to the active wallet from the Projects screen before publishing.'
+  }
+  const active = normalizeWalletAddress(activeWalletAddress)
+  if (projectAddress !== active) {
+    return `This project belongs to a different wallet (${truncateAddressForError(projectAddress)}). Switch wallets to publish it.`
+  }
+  return null
+}
+
+function truncateAddressForError(addr: string): string {
+  if (addr.length <= 12) return addr
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+}
+
 export function registerPublishHandlers(deps: PublishHandlerDeps): void {
-  ipcMain.handle('publish:preflight', (): PublishPreflightResult => {
-    const errors: string[] = []
-    const isMock = deps.signer.isMockMode()
+  ipcMain.handle(
+    'publish:preflight',
+    async (_event, projectId?: string): Promise<PublishPreflightResult> => {
+      const errors: string[] = []
+      const isMock = deps.signer.isMockMode()
 
-    if (!isMock) {
-      if (!deps.walletState.wallet) {
-        errors.push('No wallet connected')
+      if (!isMock) {
+        if (!deps.walletState.wallet) {
+          errors.push('No wallet connected')
+        }
+        errors.push(...validatePublishConfig(deps.config))
+        errors.push(...validatePublishChain(deps.vaultConfig.chain))
       }
-      errors.push(...validatePublishConfig(deps.config))
-      errors.push(...validatePublishChain(deps.vaultConfig.chain))
-    }
 
-    return {
-      ready: errors.length === 0,
-      walletAddress: deps.walletState.wallet?.address,
-      walletSource: deps.walletState.wallet?.source,
-      signerMode: isMock ? 'mock' : 'live',
-      errors
+      // #223 wallet-binding: when the renderer supplies a projectId,
+      // surface a wallet-ownership mismatch as a preflight error so the
+      // confirmation UI can block publish before signing. The same check
+      // runs again at execute time so the renderer can never bypass it by
+      // skipping preflight.
+      if (typeof projectId === 'string' && projectId.length > 0) {
+        const ownershipError = await checkProjectWalletOwnership(
+          projectId,
+          deps.walletState.wallet?.address ?? null
+        )
+        if (ownershipError) errors.push(ownershipError)
+      }
+
+      return {
+        ready: errors.length === 0,
+        walletAddress: deps.walletState.wallet?.address,
+        walletSource: deps.walletState.wallet?.source,
+        signerMode: isMock ? 'mock' : 'live',
+        errors
+      }
     }
-  })
+  )
 
   ipcMain.handle(
     'publish:execute',
@@ -194,6 +259,16 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
       ]
       if (configErrors.length > 0) {
         return { success: false, error: configErrors.join('; ') }
+      }
+
+      // #223 wallet-binding: refuse to publish a project owned by a
+      // different wallet. Runs after the wallet + config validations so
+      // those existing error paths still produce their canonical messages;
+      // skipped in mock mode (no real signing) so dev fixtures don't have
+      // to register projects with the project registry.
+      const ownershipError = await checkProjectWalletOwnership(request.projectId, wallet.address)
+      if (ownershipError) {
+        return { success: false, error: ownershipError }
       }
 
       let creationFeeWei: string | undefined = deps.config.creationFeeWei
@@ -334,6 +409,20 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
         meta?: { contentType?: string; isNsfw?: string; genre?: string; language?: string }
       }
     ): Promise<{ success: boolean; error?: string }> => {
+      // #223: recovery/repair state must not cross-contaminate wallets.
+      // Reject a retryIndex call when the active wallet does not own the
+      // project. Skipped in mock mode so the existing mock-path tests
+      // still pass without touching a wallet identity store.
+      if (!deps.signer.isMockMode()) {
+        const ownershipError = await checkProjectWalletOwnership(
+          params.projectId,
+          deps.walletState.wallet?.address ?? null
+        )
+        if (ownershipError) {
+          return { success: false, error: ownershipError }
+        }
+      }
+
       const plotDir = await deps.resolvePlotDir(params.projectId, params.plotSlug)
 
       let status = await loadOrCreateStatus(plotDir)
@@ -379,6 +468,17 @@ export function registerPublishHandlers(deps: PublishHandlerDeps): void {
       _event,
       params: { projectId: string; plotSlug: string; reason: string }
     ): Promise<{ success: boolean; error?: string }> => {
+      // #223: protect recovery-path mutation from a cross-wallet caller.
+      if (!deps.signer.isMockMode()) {
+        const ownershipError = await checkProjectWalletOwnership(
+          params.projectId,
+          deps.walletState.wallet?.address ?? null
+        )
+        if (ownershipError) {
+          return { success: false, error: ownershipError }
+        }
+      }
+
       const plotDir = await deps.resolvePlotDir(params.projectId, params.plotSlug)
 
       let status = await loadOrCreateStatus(plotDir)

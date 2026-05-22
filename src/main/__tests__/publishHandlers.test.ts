@@ -4,6 +4,8 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import { registerPublishHandlers, type PublishHandlerDeps } from '../ipc/publishHandlers'
+import { registerProject, clearRegistry } from '../services/projectRegistry'
+import { writeProjectMeta, createProjectMeta } from '../services/projectMeta'
 import type { WalletSigner } from '../services/walletSigning'
 import type { OWSCoreModule } from '../services/owsAdapter'
 import type { PublishConfig, IpfsClient } from '../services/plotlinkPublish'
@@ -107,37 +109,58 @@ const mockRequest = {
   plotSlug: 'episode-1'
 }
 
+/**
+ * Register a fake project on disk with `meta.wallet.address` set so the
+ * #223 ownership guard passes for the active wallet's address. Tests that
+ * run a live-mode publish path must call this before invoking the handler.
+ *
+ * Pass a different `walletAddress` to set up an intentional mismatch
+ * scenario.
+ */
+async function registerStampedProject(walletAddress: string): Promise<string> {
+  const projectRoot = path.join(tmpDir, 'project')
+  await fs.mkdir(projectRoot, { recursive: true })
+  await writeProjectMeta(
+    projectRoot,
+    createProjectMeta('Stamped Test Project', undefined, {
+      address: walletAddress,
+      source: 'plottoon-writer'
+    })
+  )
+  return registerProject(projectRoot)
+}
+
 describe('publish:preflight', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plottoon-pubhandler-'))
   })
 
-  it('returns ready in mock mode even without wallet', () => {
+  it('returns ready in mock mode even without wallet', async () => {
     const deps = createDeps()
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:preflight')
-    const result = handler() as PublishPreflightResult
+    const result = (await handler()) as PublishPreflightResult
 
     expect(result.ready).toBe(true)
     expect(result.signerMode).toBe('mock')
     expect(result.errors).toEqual([])
   })
 
-  it('returns errors in live mode without wallet', () => {
+  it('returns errors in live mode without wallet', async () => {
     const deps = createDeps({ signer: mockSigner(false) })
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:preflight')
-    const result = handler() as PublishPreflightResult
+    const result = (await handler()) as PublishPreflightResult
 
     expect(result.ready).toBe(false)
     expect(result.signerMode).toBe('live')
     expect(result.errors).toContain('No wallet connected')
   })
 
-  it('returns errors in live mode with zero StoryFactory address', () => {
+  it('returns errors in live mode with zero StoryFactory address', async () => {
     const config = mockConfig()
     config.storyFactoryAddress = '0x0000000000000000000000000000000000000000'
     const deps = createDeps({
@@ -155,13 +178,13 @@ describe('publish:preflight', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:preflight')
-    const result = handler() as PublishPreflightResult
+    const result = (await handler()) as PublishPreflightResult
 
     expect(result.ready).toBe(false)
     expect(result.errors).toContain('PLOTLINK_STORY_FACTORY_ADDRESS is required for live publish')
   })
 
-  it('returns errors in live mode with missing PlotLink base URL', () => {
+  it('returns errors in live mode with missing PlotLink base URL', async () => {
     const config = mockConfig()
     config.plotlinkBaseUrl = ''
     const deps = createDeps({
@@ -179,13 +202,13 @@ describe('publish:preflight', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:preflight')
-    const result = handler() as PublishPreflightResult
+    const result = (await handler()) as PublishPreflightResult
 
     expect(result.ready).toBe(false)
     expect(result.errors).toContain('PLOTLINK_BASE_URL is required for live publish')
   })
 
-  it('returns ready in live mode with wallet and config', () => {
+  it('returns ready in live mode with wallet and config', async () => {
     const deps = createDeps({
       signer: mockSigner(false),
       walletState: {
@@ -200,14 +223,14 @@ describe('publish:preflight', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:preflight')
-    const result = handler() as PublishPreflightResult
+    const result = (await handler()) as PublishPreflightResult
 
     expect(result.ready).toBe(true)
     expect(result.walletAddress).toBe('0xabc')
     expect(result.walletSource).toBe('plottoon-writer')
   })
 
-  it('returns missing RPC URL error', () => {
+  it('returns missing RPC URL error', async () => {
     const config = mockConfig()
     config.rpcUrl = ''
     const deps = createDeps({
@@ -225,13 +248,13 @@ describe('publish:preflight', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:preflight')
-    const result = handler() as PublishPreflightResult
+    const result = (await handler()) as PublishPreflightResult
 
     expect(result.ready).toBe(false)
     expect(result.errors).toContain('BASE_RPC_URL is required for live publish')
   })
 
-  it('rejects non-Base chain in live mode', () => {
+  it('rejects non-Base chain in live mode', async () => {
     const deps = createDeps({
       signer: mockSigner(false),
       walletState: {
@@ -247,7 +270,7 @@ describe('publish:preflight', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:preflight')
-    const result = handler() as PublishPreflightResult
+    const result = (await handler()) as PublishPreflightResult
 
     expect(result.ready).toBe(false)
     expect(result.errors.some((e: string) => e.includes('eip155:8453'))).toBe(true)
@@ -257,6 +280,7 @@ describe('publish:preflight', () => {
 describe('publish:execute', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    clearRegistry()
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plottoon-pubhandler-'))
   })
 
@@ -359,6 +383,7 @@ describe('publish:execute', () => {
   })
 
   it('returns error for create-storyline when fee fetch fails', async () => {
+    const projectId = await registerStampedProject('0xabc')
     const config = mockConfig()
     config.creationFeeWei = undefined
     const deps = createDeps({
@@ -376,13 +401,14 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
+    const result = (await handler({}, { ...mockRequest, projectId }, true)) as PublishExecuteResult
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('Failed to fetch creation fee')
   })
 
   it('passes fetched creation fee to realPublish when config fee is undefined', async () => {
+    const projectId = await registerStampedProject('0xabc')
     const { realPublish: realPublishMock, fetchCreationFee: fetchCreationFeeMock } =
       await import('../services/plotlinkPublish')
     ;(fetchCreationFeeMock as ReturnType<typeof vi.fn>).mockResolvedValue('777000000000000')
@@ -415,7 +441,7 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
+    const result = (await handler({}, { ...mockRequest, projectId }, true)) as PublishExecuteResult
 
     expect(result.success).toBe(true)
     expect(fetchCreationFeeMock).toHaveBeenCalledWith(config)
@@ -424,6 +450,7 @@ describe('publish:execute', () => {
   })
 
   it('persists published result to status file', async () => {
+    const projectId = await registerStampedProject('0xabc')
     const { realPublish: realPublishMock } = await import('../services/plotlinkPublish')
     ;(realPublishMock as ReturnType<typeof vi.fn>).mockResolvedValue({
       txHash: '0xrealtx',
@@ -451,7 +478,7 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
+    const result = (await handler({}, { ...mockRequest, projectId }, true)) as PublishExecuteResult
 
     expect(result.success).toBe(true)
     expect(result.result!.txHash).toBe('0xrealtx')
@@ -466,6 +493,7 @@ describe('publish:execute', () => {
   })
 
   it('persists published-not-indexed when tx succeeds but index fails', async () => {
+    const projectId = await registerStampedProject('0xabc')
     const { realPublish: realPublishMock } = await import('../services/plotlinkPublish')
     ;(realPublishMock as ReturnType<typeof vi.fn>).mockResolvedValue({
       txHash: '0xrealtx',
@@ -494,7 +522,7 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
+    const result = (await handler({}, { ...mockRequest, projectId }, true)) as PublishExecuteResult
 
     expect(result.success).toBe(true)
     expect(result.result!.indexed).toBe(false)
@@ -507,6 +535,7 @@ describe('publish:execute', () => {
   })
 
   it('persists failed state when realPublish throws', async () => {
+    const projectId = await registerStampedProject('0xabc')
     const { realPublish: realPublishMock } = await import('../services/plotlinkPublish')
     ;(realPublishMock as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('RPC connection refused')
@@ -526,7 +555,7 @@ describe('publish:execute', () => {
     registerPublishHandlers(deps)
 
     const handler = getHandler('publish:execute')
-    const result = (await handler({}, mockRequest, true)) as PublishExecuteResult
+    const result = (await handler({}, { ...mockRequest, projectId }, true)) as PublishExecuteResult
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('RPC connection refused')
