@@ -35,10 +35,24 @@ beforeEach(() => {
       writeAppConfig: vi.fn()
     },
     project: {
-      discover: mockDiscover,
+      // `mockDiscover` keeps its historical flat-array shape so existing
+      // test assertions don't change; the wrapper partitions into the
+      // shape the post-#220 ProjectList expects (everything owned by the
+      // single fake active wallet).
+      discover: async () => {
+        const projects = await mockDiscover()
+        return {
+          owned: projects.filter((p) => !p.error),
+          legacy: [],
+          otherWallets: [],
+          errors: projects.filter((p) => p.error),
+          activeAddress: '0xaaaa000000000000000000000000000000000001'
+        }
+      },
       readMeta: vi.fn(),
       writeMeta: vi.fn(),
       create: vi.fn(),
+      assignToActiveWallet: vi.fn(),
       setProjectsDir: vi.fn(),
       getProjectsDir: vi.fn(),
       detectClis: vi.fn()

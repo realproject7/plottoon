@@ -91,3 +91,11 @@ export function isWalletIdentityShape(value: unknown): value is WalletIdentity {
   }
   return true
 }
+
+/**
+ * DOM custom event dispatched by the wallet switcher after a successful
+ * active-wallet change (switch / connect / disconnect). Renderer-local
+ * convention so wallet-scoped surfaces (e.g. ProjectList) can refresh
+ * reactively without prop drilling through the app shell.
+ */
+export const WALLET_ACTIVE_CHANGED_EVENT = 'plottoon:wallet:active-changed'

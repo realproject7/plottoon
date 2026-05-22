@@ -121,6 +121,8 @@ contextBridge.exposeInMainWorld('plottoon', {
       ipcRenderer.invoke('project:writeMeta', projectId, meta),
     create: (name: string, description?: string) =>
       ipcRenderer.invoke('project:create', name, description),
+    assignToActiveWallet: (projectId: string) =>
+      ipcRenderer.invoke('project:assignWallet', projectId),
     setProjectsDir: () => ipcRenderer.invoke('project:setProjectsDir'),
     getProjectsDir: () => ipcRenderer.invoke('project:getProjectsDir'),
     detectClis: () => ipcRenderer.invoke('project:detectClis')

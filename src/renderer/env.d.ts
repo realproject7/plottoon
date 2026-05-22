@@ -1,11 +1,17 @@
 /// <reference types="vite/client" />
 
+interface ProjectWalletOwnership {
+  address: string
+  source: 'plottoon-writer' | 'plotlink-writer'
+}
+
 interface ProjectMeta {
   name: string
   version: number
   createdAt: string
   updatedAt: string
   description?: string
+  wallet?: ProjectWalletOwnership
 }
 
 interface DiscoveredProject {
@@ -13,6 +19,14 @@ interface DiscoveredProject {
   path: string
   meta: ProjectMeta | null
   error: string | null
+}
+
+interface PartitionedDiscovery {
+  owned: DiscoveredProject[]
+  legacy: DiscoveredProject[]
+  otherWallets: DiscoveredProject[]
+  errors: DiscoveredProject[]
+  activeAddress: string | null
 }
 
 interface CreatedProject {
@@ -64,10 +78,11 @@ interface CapabilityReport {
 }
 
 interface PlottoonProject {
-  discover(): Promise<DiscoveredProject[]>
+  discover(): Promise<PartitionedDiscovery>
   readMeta(projectId: string): Promise<ProjectMeta>
   writeMeta(projectId: string, meta: ProjectMeta): Promise<void>
   create(name: string, description?: string): Promise<CreatedProject | null>
+  assignToActiveWallet(projectId: string): Promise<{ ok: boolean; meta: ProjectMeta }>
   setProjectsDir(): Promise<string | null>
   getProjectsDir(): Promise<string | null>
   detectClis(): Promise<CapabilityReport>
