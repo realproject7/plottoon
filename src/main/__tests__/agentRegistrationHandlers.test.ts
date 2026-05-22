@@ -53,7 +53,17 @@ function createDeps(
   return {
     walletState: { wallet: null },
     owsModule: {
-      listWallets: vi.fn().mockReturnValue([]),
+      // #235: default vault contains the common test wallet names so
+      // existing live-mode tests pass the freshness guard. Stale-wallet
+      // regression tests override `listWallets` to return [].
+      listWallets: vi.fn().mockReturnValue([
+        {
+          id: 'fake-id-pw-1',
+          name: 'pw-1',
+          accounts: [],
+          createdAt: '2026-05-22T00:00:00.000Z'
+        }
+      ]),
       createWallet: vi.fn(),
       signMessage: vi.fn().mockReturnValue({ signature: '0xsig' }),
       signTransaction: vi.fn().mockReturnValue({ signature: '0xtxsig' })
@@ -412,7 +422,16 @@ describe('agent:bindingProof', () => {
     const deps = createDeps({
       walletState: { wallet: WALLET },
       owsModule: {
-        listWallets: vi.fn(),
+        // Must include the active wallet so the #235 freshness check passes;
+        // the test is about a `signMessage` failure deeper in the flow.
+        listWallets: vi.fn().mockReturnValue([
+          {
+            id: 'fake-id-test',
+            name: WALLET.name,
+            accounts: [],
+            createdAt: '2026-05-22T00:00:00.000Z'
+          }
+        ]),
         createWallet: vi.fn(),
         signMessage: vi.fn().mockImplementation(() => {
           throw new Error('HSM locked')

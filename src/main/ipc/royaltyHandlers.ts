@@ -9,6 +9,7 @@ import {
 } from '../services/royaltyClaim'
 import { appendClaimRecord, readClaimHistory } from '../services/royaltyClaimStatus'
 import { normalizeWalletAddress } from '../../shared/walletIdentity'
+import { checkActiveWalletInVault } from '../services/walletVaultCheck'
 import type {
   RoyaltyInfo,
   RoyaltyClaimResult,
@@ -97,6 +98,13 @@ export function registerRoyaltyHandlers(deps: RoyaltyHandlerDeps): void {
       }
 
       if (deps.signerMode !== 'mock') {
+        // #235 stale-wallet guard. Run before the claim-amount RPC so a
+        // wallet that's gone from the vault fails fast with a user-
+        // actionable message, not with a downstream signing error.
+        const fresh = checkActiveWalletInVault(deps.owsModule, deps.vaultConfig, wallet)
+        if (!fresh.ok) {
+          return { success: false, error: fresh.error ?? 'Active wallet is unavailable' }
+        }
         try {
           const info = await readRoyaltyInfo(wallet.address, reserveToken, {
             config: deps.royaltyConfig
