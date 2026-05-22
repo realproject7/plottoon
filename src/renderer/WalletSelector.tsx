@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import type { WalletIdentityView } from '../shared/walletIdentity'
 
 interface WalletOption {
   type: 'create-new' | 'reuse-existing'
@@ -29,6 +30,11 @@ declare global {
         getConnected: () => Promise<ConnectedWallet>
         disconnect: () => Promise<{ success: boolean }>
         getSignerMode: () => Promise<{ mode: string }>
+        listIdentities: () => Promise<{ identities: WalletIdentityView[] }>
+        getActiveIdentity: () => Promise<{ identity: WalletIdentityView | null }>
+        setActiveIdentity: (
+          address: string
+        ) => Promise<{ identity: WalletIdentityView | null; error?: string }>
       }
     }
   }
