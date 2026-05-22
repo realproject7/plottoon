@@ -171,7 +171,7 @@ function RoyaltyClaimCard({
   const [claimHistory, setClaimHistory] = useState<RoyaltyClaimRecord[]>([])
 
   useEffect(() => {
-    if (!walletConnected) return
+    if (!walletConnected || !walletAddress) return
     let cancelled = false
     window.plottoon.royalty.getInfo().then(
       (result) => {
@@ -188,7 +188,7 @@ function RoyaltyClaimCard({
     return () => {
       cancelled = true
     }
-  }, [walletConnected])
+  }, [walletConnected, walletAddress])
 
   const info = royaltyInfo?.info
   const hasUnclaimed = info && BigInt(info.unclaimedWei) > BigInt(0)
@@ -466,7 +466,15 @@ export function Dashboard() {
             </div>
           </div>
         )}
+        {/*
+         * key={data.wallet.address ?? '-'} forces React to unmount and
+         * remount RoyaltyClaimCard whenever the active wallet changes. That
+         * resets every piece of per-wallet local state (royaltyInfo,
+         * claimHistory, confirmOpen, claimResult) without a manual setState
+         * inside an effect — closes the #222 RE1 stale-state finding.
+         */}
         <RoyaltyClaimCard
+          key={data.wallet.address ?? '-'}
           walletConnected={data.wallet.connected}
           walletAddress={data.wallet.address}
           dashboardRoyalty={data.royalty}

@@ -115,6 +115,72 @@ describe('Dashboard wallet scoping (#222)', () => {
     expect(screen.queryByText(/0xaaaa/)).toBeNull()
   })
 
+  it('clears wallet A royalty info, confirm dialog, and claim history when switching to wallet B (#222 RE1 finding)', async () => {
+    getDataMock
+      .mockResolvedValueOnce(
+        makeDashboardData({
+          walletAddress: WALLET_A,
+          earnedWei: '2000000000000000',
+          unclaimedWei: '1000000000000000'
+        })
+      )
+      .mockResolvedValueOnce(
+        makeDashboardData({
+          walletAddress: WALLET_B,
+          earnedWei: '0',
+          unclaimedWei: '0'
+        })
+      )
+    royaltyInfoMock
+      .mockResolvedValueOnce({
+        info: {
+          earnedWei: '2000000000000000',
+          claimedWei: '0',
+          unclaimedWei: '1000000000000000'
+        },
+        error: null
+      })
+      .mockResolvedValueOnce({ info: null, error: null })
+    royaltyHistoryMock
+      .mockResolvedValueOnce({
+        claims: [
+          {
+            txHash: '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+            walletAddress: WALLET_A,
+            reserveToken: '0x0',
+            gasCostWei: '0',
+            status: 'confirmed' as const,
+            error: null,
+            claimedAt: '2026-05-22T00:30:00.000Z'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ claims: [] })
+
+    render(<Dashboard />)
+    // Wallet A: claim button visible because unclaimedWei > 0; history row present.
+    const claimBtn = await screen.findByRole('button', { name: 'Claim Royalties' })
+    expect(claimBtn).toBeDefined()
+    // Open the confirmation to seed local component state.
+    fireEvent.click(claimBtn)
+    await screen.findByTestId('royalty-confirm')
+    await waitFor(() => expect(screen.getByText(/0xdeadbe/)).toBeDefined())
+
+    // Switch to wallet B — RE1 finding: the previous code would leave the
+    // wallet A info / history / confirmation in component state because the
+    // effect was keyed on `walletConnected` which stays true across switches.
+    window.dispatchEvent(new CustomEvent(WALLET_ACTIVE_CHANGED_EVENT))
+
+    await waitFor(() => {
+      // Wallet A's claim button must disappear (wallet B has no unclaimed).
+      expect(screen.queryByRole('button', { name: 'Claim Royalties' })).toBeNull()
+      // The open confirmation must close.
+      expect(screen.queryByTestId('royalty-confirm')).toBeNull()
+      // Wallet A's claim history row must not be visible under wallet B.
+      expect(screen.queryByText(/0xdeadbe/)).toBeNull()
+    })
+  })
+
   it('shows the active wallet address as context inside the royalty claim confirmation', async () => {
     getDataMock.mockResolvedValue(
       makeDashboardData({
