@@ -816,11 +816,19 @@ export function Dashboard({ onSelectProject }: DashboardProps = {}) {
   const load = useCallback(async () => {
     setLoadState('loading')
     setErrorMsg(null)
+    // #251 RE1: clear the activity-feed claim history BEFORE the new
+    // dashboard payload renders. Otherwise wallet B's dashboard data can
+    // surface (via setData/setLoadState below) while the claim-history
+    // IPC is still inflight, briefly showing wallet A's stale claims in
+    // the activity list. Activity is required to be active-wallet
+    // scoped and to clear stale data on switch — pinning the empty
+    // state first guarantees no cross-wallet bleed.
+    setActivityClaims([])
     try {
       const result = await window.plottoon.dashboard.getData()
       setData(result)
       setLoadState('loaded')
-      // #251: refresh wallet-scoped activity claims on the same load tick.
+      // Refresh wallet-scoped activity claims on the same load tick.
       // Errors here are intentionally swallowed — activity is a secondary
       // surface; a fetch failure must not break the rest of the dashboard.
       try {

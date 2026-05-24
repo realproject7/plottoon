@@ -1268,6 +1268,86 @@ describe('#251 Activity feed — local publishes + royalty claims, time-sorted',
     expect(publishEntry.textContent).toContain('Older Episode')
   })
 
+  // #251 RE1: previously, wallet B's dashboard could render while the
+  // claim-history IPC for wallet B was still inflight, briefly leaving
+  // wallet A's claim entry visible in the activity feed. `load()` now
+  // clears `activityClaims` BEFORE setting the new dashboard payload,
+  // so the activity list shows the empty state during the swap and
+  // never the previous wallet's history.
+  it('clears wallet A activity claims before wallet B dashboard data renders (no cross-wallet bleed)', async () => {
+    // First load — wallet A with a confirmed claim entry in activity.
+    const walletA = {
+      ...emptyDashboard(),
+      wallet: connectedWallet()
+    }
+    const walletAClaim = {
+      claims: [
+        {
+          txHash: '0xclaim-wallet-a-aaaaaaaaaaaaaaaaaaaa',
+          walletAddress: FAKE_WALLET_A,
+          reserveToken: '0x0',
+          gasCostWei: '1',
+          status: 'confirmed' as const,
+          error: null,
+          claimedAt: '2026-05-24T01:00:00Z'
+        }
+      ]
+    }
+    const WALLET_B = '0xbbbb000000000000000000000000000000000002'
+    const walletB = {
+      ...emptyDashboard(),
+      wallet: connectedWallet({ address: WALLET_B })
+    }
+
+    mockGetData.mockResolvedValueOnce(walletA).mockResolvedValueOnce(walletB)
+    ;(window.plottoon.royalty.getClaimHistory as ReturnType<typeof vi.fn>)
+      // Initial mount — RoyaltyClaimCard + Dashboard activity feed each call once.
+      .mockResolvedValueOnce(walletAClaim)
+      .mockResolvedValueOnce(walletAClaim)
+      // Wallet-switch reload — keep wallet B's claim-history IPC pending
+      // so we can assert the activity list is already clear *before* it
+      // resolves. After we assert, we resolve it manually.
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ claims: RoyaltyClaimRecord[] }>((resolve) => {
+            deferredResolve = () => resolve({ claims: [] })
+          })
+      )
+      .mockResolvedValueOnce({ claims: [] })
+
+    let deferredResolve: (() => void) | null = null
+    render(<Dashboard />)
+    // Wallet A: claim is visible in the activity feed.
+    await waitFor(() => {
+      expect(screen.getByTestId('activity-claim-0').textContent).toContain('Royalty claimed')
+    })
+
+    // Switch wallets — Dashboard re-fires `load()`. setData/setLoadState
+    // for wallet B will resolve, then the claim-history IPC for wallet B
+    // is gated on `deferredResolve` so we can observe the post-swap /
+    // pre-claims-resolved state.
+    window.dispatchEvent(new CustomEvent(WALLET_ACTIVE_CHANGED_EVENT_FOR_TESTS))
+
+    // Wait for the dashboard payload to be wallet B's.
+    await waitFor(() => {
+      expect(screen.getByTestId('active-wallet-context').textContent).toMatch(/0xbbbb/)
+    })
+
+    // Critical assertion: wallet A's claim must NOT be visible in the
+    // activity feed even though the claim-history IPC for wallet B is
+    // still pending. The activity list should be in its empty state.
+    expect(screen.queryByText(/Royalty claimed/)).toBeNull()
+    expect(screen.queryByTestId('activity-claim-0')).toBeNull()
+    expect(screen.getByTestId('activity-empty')).toBeDefined()
+
+    // Now let the wallet B claim-history IPC resolve (empty for B).
+    deferredResolve?.()
+    await waitFor(() => {
+      // Activity stays empty for wallet B; wallet A's entry never reappears.
+      expect(screen.getByTestId('activity-empty')).toBeDefined()
+    })
+  })
+
   it('surfaces a failed royalty claim as a distinct activity entry with the error text', async () => {
     ;(window.plottoon.royalty.getClaimHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
       claims: [
