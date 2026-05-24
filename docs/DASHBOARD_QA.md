@@ -24,10 +24,10 @@ Each check from #252 mapped to the code path / test that demonstrates compliance
 
 ### 1. No new PlotLink API endpoint is required or called for Dashboard profile/story data
 
-- Dashboard royalty fetch in `src/main/index.ts:163-174` calls `readRoyaltyInfo(walletAddress, plotTokenAddress, { config: dashboardRoyaltyConfig })` — direct Base RPC via viem `readContract`. No `${plotlinkBaseUrl}/api/...` HTTP call anywhere in the Dashboard path.
-- `grep -rn "api/royalty\|plotlink.*royalty"` returns only historical comments in `src/main/index.ts:159` and the regression test in `dashboardData.test.ts:804` — both deliberately mention the removed endpoint to pin the constraint.
-- ERC-20 balances (`fetchUsdcBalance`, `fetchPlotBalance` at `src/main/index.ts:142-156`) go through `readErc20Balance` → viem `readContract` on Base RPC.
-- ETH balance uses viem `getBalance` directly (`src/main/index.ts:117-129`).
+- Dashboard royalty fetch in `src/main/index.ts` `registerDashboardHandlers` block (`fetchRoyalty:` callback) calls `readRoyaltyInfo(walletAddress, plotTokenAddress, { config: dashboardRoyaltyConfig })` — direct Base RPC via viem `readContract`. No `${plotlinkBaseUrl}/api/...` HTTP call anywhere in the Dashboard path.
+- `grep -rn "api/royalty\|plotlink.*royalty" src/` returns only historical comments in `src/main/index.ts` and the regression test in `dashboardData.test.ts` (the test that asserts `globalThis.fetch` is never called) — both deliberately mention the removed endpoint to pin the constraint.
+- ERC-20 balances (`fetchUsdcBalance`, `fetchPlotBalance` in `registerDashboardHandlers`) go through `readErc20Balance` → viem `readContract` on Base RPC.
+- ETH balance uses viem `getBalance` directly (`fetchBalance:` callback in `registerDashboardHandlers`).
 - ETH/USD and PLOT/USD prices use CoinGecko public endpoints — not PlotLink.
 
 **Regression pin:** `dashboardData.test.ts` "#249 buildDashboardData — no PlotLink HTTP for royalty" spies on `globalThis.fetch` and asserts it is never invoked for a direct-RPC `fetchRoyalty`.
@@ -38,9 +38,9 @@ Each check from #252 mapped to the code path / test that demonstrates compliance
 
 ### 3. Active wallet switch redraws all Dashboard sections and clears stale data
 
-- `Dashboard.tsx:733-741` — `useEffect` listens for `WALLET_ACTIVE_CHANGED_EVENT` and re-fires `load()`.
-- `Dashboard.tsx:813-840` (the rebuilt `load()`) — clears `activityClaims` BEFORE awaiting `getData`, so wallet B's payload can't render with wallet A's claims still in state (#251 RE1 fix in commit a4ca707).
-- `RoyaltyClaimCard` is keyed by `data.wallet.address` (`Dashboard.tsx:814`) so React unmounts + remounts on switch — closes the #222 RE1 stale-state finding.
+- In `Dashboard.tsx`, the `useEffect` that listens for `WALLET_ACTIVE_CHANGED_EVENT` calls `load()`. (Search `WALLET_ACTIVE_CHANGED_EVENT`.)
+- The rebuilt `load()` callback clears `activityClaims` BEFORE awaiting `dashboard.getData()`, so wallet B's payload can't render with wallet A's claims still in state (#251 RE1 fix in commit a4ca707). The inline comment marker is `#251 RE1`.
+- `RoyaltyClaimCard` is keyed by `data.wallet.address` (search `key={data.wallet.address`) so React unmounts + remounts on switch — closes the #222 RE1 stale-state finding.
 
 **Regression pins:**
 
@@ -50,7 +50,7 @@ Each check from #252 mapped to the code path / test that demonstrates compliance
 
 ### 4. No-active-wallet state is clear and does not show old stats
 
-- Header subtitle reads "No wallet connected — pick one in the sidebar to see your stats." (`Dashboard.tsx:778`).
+- Header subtitle reads "No wallet connected — pick one in the sidebar to see your stats." (search the literal copy in `Dashboard.tsx`).
 - `WalletCard` renders "Not connected" placeholder; `RoyaltyClaimCard` returns null when `!walletConnected`.
 - Project / plot counts read as zero because `dashboardData.ts` filters owned projects by active wallet address.
 
@@ -59,13 +59,13 @@ Each check from #252 mapped to the code path / test that demonstrates compliance
 ### 5. Already-connected PlotLink and PlotToon OWS wallets both render correctly
 
 - `WalletCard` renders `sourceLabel(source)` ("plotlink" or "plottoon") under the truncated address.
-- `dashboardData.ts:30` (`WalletSummary.source: string | null`) carries the source from `walletState.wallet` via `getWallet()`; both source types (`plotlink-writer` and `plottoon-writer`) are accepted.
+- `WalletSummary.source: string | null` in `dashboardData.ts` carries the source from `walletState.wallet` via `getWallet()`; both source types (`plotlink-writer` and `plottoon-writer`) are accepted.
 
 **Regression pin:** `Dashboard.test.tsx` "shows wallet info when connected" + the source label is asserted by `getAllByText(/plottoon/i)`.
 
 ### 6. ETH, USDC, and PLOT balances render with graceful fallback errors
 
-- `WalletBalanceRow` (`Dashboard.tsx:343-380`) renders three states per token: error → `dash-card__danger` row; null wei → `—` placeholder; populated wei → `formatToken(wei, decimals, suffix)` with correct decimals per token (ETH 18, USDC 6, PLOT 18).
+- `WalletBalanceRow` in `Dashboard.tsx` renders three states per token: error → `dash-card__danger` row; null wei → `—` placeholder; populated wei → `formatToken(wei, decimals, suffix)` with correct decimals per token (ETH 18, USDC 6, PLOT 18).
 - The error of one token never hides the other rows.
 
 **Regression pins** (in `Dashboard.test.tsx` under "#250 Wallet card"):
@@ -88,7 +88,7 @@ Each check from #252 mapped to the code path / test that demonstrates compliance
 
 ### 8. Local production renders draft, ready, published, not-indexed, failed, and empty states
 
-- `LocalGroupCard` shows plots that have no `storylineId` (drafts, ready, failed) grouped by project (`Dashboard.tsx:243-275`).
+- `LocalGroupCard` (in `Dashboard.tsx`) shows plots that have no `storylineId` (drafts, ready, failed) grouped by project.
 - Storyline cards surface published + published-not-indexed via `PlotStateBadge`.
 - Stat row shows Failed + Not Indexed cards when their counts are non-zero.
 - Empty state when no storyline + no local groups.
@@ -140,7 +140,7 @@ Each check from #252 mapped to the code path / test that demonstrates compliance
 
 Audited `src/main/__tests__/` and `src/renderer/__tests__/`:
 
-- **EVM addresses**: 148 occurrences across all test files. After deduplication, the unique set is fake patterns (`0xaaaa…`, `0xbbbb…`, `0xcccc…`, `0xdddd…`, `0xeeee…`, `0xdead…`, `0xc0ffee…`, repeating-hex patterns like `0xabcdef…`) plus three deployed-contract constants on Base mainnet (`0x4F567DACBF9D15A6acBe4A47FC2Ade0719Fb63C4` PLOT token, `0x833589fcd6edb6e08f4c7c32d4f71b54bda02913` USDC, `0xc5a076cad94176c2996B32d8466Be1cE757FAa27` MCV2 bond, `0x9D2AE1E99D0A6300bfcCF41A82260374e38744Cf` Story Factory, `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` ERC-8004 registry) and the zero address `0x0000…`. The contract addresses are publicly published, not wallets.
+- **EVM addresses**: 148 occurrences across all test files. After deduplication, the unique set is fake patterns (`0xaaaa…`, `0xbbbb…`, `0xcccc…`, `0xdddd…`, `0xeeee…`, `0xdead…`, `0xc0ffee…`, repeating-hex patterns like `0xabcdef…`) plus **five** deployed-contract constants on Base mainnet (`0x4F567DACBF9D15A6acBe4A47FC2Ade0719Fb63C4` PLOT token, `0x833589fcd6edb6e08f4c7c32d4f71b54bda02913` USDC, `0xc5a076cad94176c2996B32d8466Be1cE757FAa27` MCV2 bond, `0x9D2AE1E99D0A6300bfcCF41A82260374e38744Cf` Story Factory, `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` ERC-8004 registry) and the zero address `0x0000…`. The contract addresses are publicly published, not wallets.
 - **Local paths**: every `/private/var/folders/...` string is a deliberately-fake "looks-like-macOS-tmp" pattern used to assert leak-proof behavior — the tests INJECT them so they can assert they never appear in error messages or report payloads. `agentEnv.test.ts` uses `/home/testuser` (literal "testuser"). No real user paths anywhere.
 - **Wallet secrets**: `walletIdentityStore.test.ts` and `walletIdentityHandlers.test.ts` assert serialized JSON does NOT match `/privateKey|mnemonic|seed|passphrase|secret|vaultPath/i`.
 - **OWS internal names**: distinctive strings like `plottoon-writer-distinctive-internal-selector` are deliberately seeded to assert they never appear in renderer-facing payloads (the #234 / #239 / #240 / #253 RE1 boundary tests).
@@ -198,14 +198,14 @@ Per the #248 spec, every parity row marked **Gap A–F** was closed by #249 + #2
 
 ## Sensitive-data audit summary
 
-| Surface                      | Result                                                                                                                                        | Evidence                                                                |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Public addresses in fixtures | Fake patterns + deployed contracts only                                                                                                       | Section 12 above                                                        |
-| Local file paths in fixtures | Only `/home/testuser` literal + deliberately fake `/private/var/folders/SENSITIVE/…` injection paths used to assert leak-proof error handling | Section 12 above                                                        |
-| OWS internal names           | Only distinctive-string strings deliberately seeded to assert non-leakage (#234 / #239 / #240 / #253 RE1)                                     | `grep -rn "distinctive-selector\|distinctive-registry-selector"`        |
-| Wallet secrets               | Existing `isWalletIdentityShape` rejects banned keys; serialized-JSON assertions in identity-store + identity-handler tests                   | `walletIdentityStore.test.ts:185`, `walletIdentityHandlers.test.ts:195` |
-| Unpublished story text       | Only short stub strings (`My Comic`, `Episode 1`, `Draft Comic`)                                                                              | manual review of `Dashboard.test.tsx`                                   |
+| Surface                      | Result                                                                                                                                        | Evidence                                                                          |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------- | ---------- |
+| Public addresses in fixtures | Fake patterns + deployed contracts only                                                                                                       | Section 12 above                                                                  |
+| Local file paths in fixtures | Only `/home/testuser` literal + deliberately fake `/private/var/folders/SENSITIVE/…` injection paths used to assert leak-proof error handling | Section 12 above                                                                  |
+| OWS internal names           | Only distinctive-string strings deliberately seeded to assert non-leakage (#234 / #239 / #240 / #253 RE1)                                     | `grep -rn "distinctive-selector\|distinctive-registry-selector"`                  |
+| Wallet secrets               | Existing `isWalletIdentityShape` rejects banned keys; serialized-JSON assertions in identity-store + identity-handler tests                   | `walletIdentityStore.test.ts` + `walletIdentityHandlers.test.ts` (grep `vaultPath | privateKey | mnemonic`) |
+| Unpublished story text       | Only short stub strings (`My Comic`, `Episode 1`, `Draft Comic`)                                                                              | manual review of `Dashboard.test.tsx`                                             |
 
 ## Sign-off
 
-Parent EPIC #247 can be marked complete once #252 lands. All ten Dashboard parity acceptance criteria pass against the rebuilt UI; the renderer + main-process implementations match the #248 spec; the only deferred items are the three carried gaps above (none blocking).
+Parent EPIC #247 can be marked complete once #252 lands. All eleven required checks enumerated in #252 pass against the rebuilt UI (the audit above adds two extra sections — activity feed (#10) and retry-index (#11) — covering the implementations from #251 beyond the issue's verbatim list). The renderer + main-process implementations match the #248 spec; the only deferred items are the four carried items above (royalty-ABI on-chain cross-check, PLOT/USD HUNT-derivation fallback, recovery-attempt history in the activity feed, on-device screenshot evidence) — none blocking.
