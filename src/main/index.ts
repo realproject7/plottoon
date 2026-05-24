@@ -29,6 +29,7 @@ import { createWalletSigner } from './services/walletSigning'
 import { createOWSConfig, createOWSFromCore, OWS_UNAVAILABLE_MESSAGE } from './services/owsAdapter'
 import { getDefaultPublishConfig, createPlotlinkUploadClient } from './services/plotlinkPublish'
 import { readErc20Balance, USDC_BASE_MAINNET } from './services/erc20Balance'
+import { getPlotUsdPrice } from './services/plotPrice'
 import { resolveOwsVaultConfig } from './services/owsRuntimeConfig'
 import { resolveProjectFilePath } from './services/fsService'
 import { keccak256, toBytes } from 'viem'
@@ -205,22 +206,23 @@ app.whenReady().then(async () => {
         if (typeof usd !== 'number') throw new Error('Unexpected price response format')
         return usd
       },
-      // #249: best-effort PLOT/USD via the same CoinGecko shape, looked up
-      // by the PLOT token's Base address. Returns 0 on failure (the
-      // dashboard hides the PnL row when this is unavailable) — never
-      // raise: the rest of the Dashboard must always render.
+      // #264: best-effort PLOT/USD via the plotlink-ows-style fallback
+      // chain (GeckoTerminal → CoinGecko). The previous wiring only hit
+      // CoinGecko's `token_price/base`, which currently returns an empty
+      // object for the PLOT contract, leaving P&L permanently
+      // unavailable in normal local usage. `getPlotUsdPrice` returns
+      // `null` when every source is exhausted; the Dashboard data
+      // layer treats null as "unavailable" so the rest of the report
+      // still renders.
       fetchPlotPrice: async () => {
         const tokenAddr = (
           dashboardRoyaltyConfig.plotTokenAddress || PLOT_TOKEN_BASE_MAINNET
         ).toLowerCase()
-        const response = await fetch(
-          `https://api.coingecko.com/api/v3/simple/token_price/base?contract_addresses=${tokenAddr}&vs_currencies=usd`
-        )
-        if (!response.ok) throw new Error(`PLOT price API returned ${response.status}`)
-        const json = (await response.json()) as Record<string, { usd?: number }>
-        const usd = json[tokenAddr]?.usd
-        if (typeof usd !== 'number') throw new Error('Unexpected PLOT price response format')
-        return usd
+        const price = await getPlotUsdPrice(false, { tokenAddress: tokenAddr })
+        if (price === null) {
+          throw new Error('PLOT/USD price unavailable from all configured sources')
+        }
+        return price
       },
       fetchRoyalty: async (walletAddress: string) => {
         const info = await readRoyaltyInfo(
