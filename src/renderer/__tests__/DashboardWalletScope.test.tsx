@@ -23,7 +23,8 @@ function makeDashboardData(input: DashboardSnapshotInput = {}): DashboardData {
       publishedPlots: 0,
       pendingPlots: 0,
       notIndexedPlots: 0,
-      failedPlots: 0
+      failedPlots: 0,
+      totalPublishCostWei: '0'
     },
     storylines: [],
     localGroups: (input.storylineProjects ?? []).map((name) => ({
@@ -37,15 +38,20 @@ function makeDashboardData(input: DashboardSnapshotInput = {}): DashboardData {
       source: address ? 'plottoon-writer' : null,
       connected: address !== null,
       balanceWei: address ? '1000000000000000000' : null,
-      balanceError: null
+      balanceError: null,
+      usdcBalanceWei: null,
+      usdcBalanceError: null,
+      plotBalanceWei: null,
+      plotBalanceError: null
     },
-    tokenPrice: { ethUsd: null, error: null },
+    tokenPrice: { ethUsd: null, plotUsd: null, error: null },
     royalty: {
       earnedWei: input.earnedWei ?? null,
       claimedWei: '0',
       unclaimedWei: input.unclaimedWei ?? null,
       error: null
     },
+    pnl: { totalGasUsd: null, totalRoyaltyUsd: null, netUsd: null },
     generatedAt: '2026-05-22T01:00:00.000Z'
   }
 }
@@ -107,12 +113,15 @@ describe('Dashboard wallet scoping (#222)', () => {
       .mockResolvedValueOnce(makeDashboardData({ walletAddress: WALLET_B }))
 
     render(<Dashboard />)
-    await waitFor(() => expect(screen.getByText(/0xaaaa/)).toBeDefined())
+    // After #250 the address shows up in BOTH the header context and the
+    // wallet card body — assert all renders go to wallet A first, then all
+    // flip to wallet B, with no residual A anywhere.
+    await waitFor(() => expect(screen.getAllByText(/0xaaaa/).length).toBeGreaterThan(0))
 
     window.dispatchEvent(new CustomEvent(WALLET_ACTIVE_CHANGED_EVENT))
 
-    await waitFor(() => expect(screen.getByText(/0xbbbb/)).toBeDefined())
-    expect(screen.queryByText(/0xaaaa/)).toBeNull()
+    await waitFor(() => expect(screen.getAllByText(/0xbbbb/).length).toBeGreaterThan(0))
+    expect(screen.queryAllByText(/0xaaaa/).length).toBe(0)
   })
 
   it('clears wallet A royalty info, confirm dialog, and claim history when switching to wallet B (#222 RE1 finding)', async () => {
