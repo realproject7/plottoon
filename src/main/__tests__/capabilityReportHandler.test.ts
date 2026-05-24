@@ -174,4 +174,188 @@ describe('#253 capability:getReport handler wiring', () => {
     expect(serialized).not.toContain('plottoon-writer-distinctive-internal-selector')
     expect(serialized).not.toContain('owsName')
   })
+
+  describe('#253 RE1 — vault freshness gate', () => {
+    const VAULT_PATH = '/private/var/folders/SENSITIVE/vault.json'
+
+    function vaultConfig() {
+      return { vaultPath: VAULT_PATH }
+    }
+
+    function owsModuleWithEntries(
+      entries: Array<{
+        name: string
+        id?: number
+        accounts: Array<{ chainId: string; address: string }>
+      }>
+    ) {
+      return {
+        listWallets: vi.fn().mockReturnValue(
+          entries.map((entry, i) => ({
+            id: entry.id ?? i + 1,
+            name: entry.name,
+            accounts: entry.accounts
+          }))
+        )
+      }
+    }
+
+    it('wallet fails when active identity is not in the vault (helper returns stale)', async () => {
+      // Active identity points at a wallet that no longer exists in the
+      // vault. Before #253 RE1 the Status page would still report
+      // Wallet:pass — now the helper makes it fail with the generic
+      // stale message.
+      registerProjectHandlers({
+        walletIdentityStore: fakeStore(makeIdentity(WALLET_A)),
+        capabilityContext: {
+          publishConfig: PUBLISH_CONFIG_VALID,
+          signerMode: 'live',
+          owsModule: owsModuleWithEntries([]),
+          vaultConfig: vaultConfig()
+        }
+      })
+      const report = (await ipcHandlers['capability:getReport']()) as Report
+      const wallet = findCheck(report, 'wallet')
+      expect(wallet?.status).toBe('fail')
+      expect(wallet?.detail).toMatch(/no longer available/i)
+    })
+
+    it('publish-ready fails when freshness fails even with valid wallet + plotlink + CLI', async () => {
+      registerProjectHandlers({
+        walletIdentityStore: fakeStore(makeIdentity(WALLET_A)),
+        capabilityContext: {
+          publishConfig: PUBLISH_CONFIG_VALID,
+          signerMode: 'live',
+          owsModule: owsModuleWithEntries([]),
+          vaultConfig: vaultConfig()
+        }
+      })
+      const report = (await ipcHandlers['capability:getReport']()) as Report
+      const publish = findCheck(report, 'publish-ready')
+      expect(publish?.status).toBe('fail')
+    })
+
+    it('wallet fails when vault has a same-name entry on a non-EVM chain (mismatch caught by helper)', async () => {
+      // The identity carries owsName `plottoon-writer-distinctive-internal-selector`
+      // and a real EVM address. The vault has the same name + a Solana
+      // account at that address but no EVM account. #240 RE1 rejects
+      // this; the Status row must reflect that rejection.
+      registerProjectHandlers({
+        walletIdentityStore: fakeStore(makeIdentity(WALLET_A)),
+        capabilityContext: {
+          publishConfig: PUBLISH_CONFIG_VALID,
+          signerMode: 'live',
+          owsModule: owsModuleWithEntries([
+            {
+              name: 'plottoon-writer-distinctive-internal-selector',
+              accounts: [{ chainId: 'solana:mainnet', address: WALLET_A }]
+            }
+          ]),
+          vaultConfig: vaultConfig()
+        }
+      })
+      const report = (await ipcHandlers['capability:getReport']()) as Report
+      const wallet = findCheck(report, 'wallet')
+      expect(wallet?.status).toBe('fail')
+    })
+
+    it('wallet passes when the vault has a matching name + EVM account at the active address', async () => {
+      registerProjectHandlers({
+        walletIdentityStore: fakeStore(makeIdentity(WALLET_A)),
+        capabilityContext: {
+          publishConfig: PUBLISH_CONFIG_VALID,
+          signerMode: 'live',
+          owsModule: owsModuleWithEntries([
+            {
+              name: 'plottoon-writer-distinctive-internal-selector',
+              accounts: [{ chainId: 'eip155:8453', address: WALLET_A }]
+            }
+          ]),
+          vaultConfig: vaultConfig()
+        }
+      })
+      const report = (await ipcHandlers['capability:getReport']()) as Report
+      const wallet = findCheck(report, 'wallet')
+      expect(wallet?.status).toBe('pass')
+      expect(wallet?.detail).toContain('0xaaaa')
+    })
+
+    it('mock signer mode skips the freshness check', async () => {
+      // Mock mode: signing flows don't dispatch to OWS, so the Status
+      // wallet row only requires identity presence (a missing vault
+      // entry is acceptable while the user is iterating locally).
+      registerProjectHandlers({
+        walletIdentityStore: fakeStore(makeIdentity(WALLET_A)),
+        capabilityContext: {
+          publishConfig: PUBLISH_CONFIG_VALID,
+          signerMode: 'mock',
+          owsModule: owsModuleWithEntries([]),
+          vaultConfig: vaultConfig()
+        }
+      })
+      const report = (await ipcHandlers['capability:getReport']()) as Report
+      const wallet = findCheck(report, 'wallet')
+      expect(wallet?.status).toBe('pass')
+    })
+
+    it('freshness leak proof — vault path and OWS internals do not appear in the report payload', async () => {
+      // Inject a vault entry whose accounts list throws when listWallets
+      // is called, with an error referencing the sensitive vault path.
+      // The helper collapses to the generic stale message; the report
+      // must NOT carry the vault path string, the OWS internal name, or
+      // a distinct vault-key fragment.
+      const leakyOws = {
+        listWallets: vi.fn(() => {
+          throw new Error(`disk read EACCES ${VAULT_PATH}`)
+        })
+      }
+      registerProjectHandlers({
+        walletIdentityStore: fakeStore(makeIdentity(WALLET_A)),
+        capabilityContext: {
+          publishConfig: PUBLISH_CONFIG_VALID,
+          signerMode: 'live',
+          owsModule: leakyOws,
+          vaultConfig: vaultConfig()
+        }
+      })
+      const report = (await ipcHandlers['capability:getReport']()) as Report
+      const wallet = findCheck(report, 'wallet')
+      expect(wallet?.status).toBe('fail')
+      // Generic message; specifically, the vault path and OWS internal
+      // selector must not appear anywhere in the report.
+      const serialized = JSON.stringify(report)
+      expect(serialized).not.toContain(VAULT_PATH)
+      expect(serialized).not.toContain('/private/var/folders')
+      expect(serialized).not.toContain('plottoon-writer-distinctive-internal-selector')
+      expect(serialized).not.toContain('owsName')
+      expect(serialized).not.toContain('EACCES')
+    })
+
+    it('falls back to a generic stale-wallet message when the helper itself throws synchronously', async () => {
+      // Defense in depth: if a future code path makes the helper throw
+      // (not return ok:false), the handler must still surface a generic
+      // message and never crash the IPC.
+      const throwingOws = {
+        listWallets: vi.fn(() => {
+          // Cast through unknown so the throw type doesn't accidentally
+          // satisfy the helper's catch — we want a hard throw.
+          throw 'unexpected non-Error throw'
+        })
+      }
+      registerProjectHandlers({
+        walletIdentityStore: fakeStore(makeIdentity(WALLET_A)),
+        capabilityContext: {
+          publishConfig: PUBLISH_CONFIG_VALID,
+          signerMode: 'live',
+          owsModule: throwingOws,
+          vaultConfig: vaultConfig()
+        }
+      })
+      // Should not throw.
+      const report = (await ipcHandlers['capability:getReport']()) as Report
+      const wallet = findCheck(report, 'wallet')
+      expect(wallet?.status).toBe('fail')
+      expect(wallet?.detail).toMatch(/no longer available/i)
+    })
+  })
 })

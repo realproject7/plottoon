@@ -18,6 +18,8 @@ import type { CapabilityCheck, CheckStatus } from '../services/capabilityReport'
 import { logAction, getLog } from '../services/actionLog'
 import type { WalletIdentityStore } from '../services/walletIdentityStore'
 import type { PublishConfig } from '../services/plotlinkPublish'
+import type { OWSCoreModule, OWSVaultConfig } from '../services/owsAdapter'
+import { checkActiveWalletInVault } from '../services/walletVaultCheck'
 
 const PROJECTS_DIR_KEY = 'projectsDir'
 
@@ -82,10 +84,19 @@ export interface RegisterProjectHandlersOptions {
    * the Status page instead of the old static placeholders (#253).
    * Each field is optional so non-production callers (tests, older
    * wirings) don't have to provide a full publish config.
+   *
+   * `owsModule` + `vaultConfig` enable the vault freshness check on the
+   * Status wallet row (#253 RE1): the active identity is validated
+   * against the live vault with the same helper signing flows use, so
+   * the Status page can't show Wallet:pass / Publish:pass when the user
+   * would actually fail the live freshness guard at publish/claim/agent
+   * time. In mock mode the freshness check is skipped.
    */
   capabilityContext?: {
     publishConfig?: PublishConfig | null
     signerMode?: 'live' | 'mock'
+    owsModule?: Pick<OWSCoreModule, 'listWallets'>
+    vaultConfig?: Pick<OWSVaultConfig, 'vaultPath'>
   }
 }
 
@@ -252,12 +263,47 @@ export function registerProjectHandlers(options: RegisterProjectHandlersOptions 
       ? { address: activeIdentity.address, source: activeIdentity.source }
       : null
 
+    // #253 RE1: in live mode, run the same vault freshness guard the
+    // publish/claim/agent flows use so Status can't show Wallet:pass /
+    // Publish:pass for an active identity that would fail the live
+    // signing precheck. The helper accepts the internal `{name,address}`
+    // and returns only a generic non-secret outcome — `owsName` and
+    // `vaultPath` stay inside the handler.
+    const signerMode = capabilityContext?.signerMode ?? 'live'
+    let walletFreshness: { ok: boolean; error?: string } | null = null
+    if (
+      signerMode === 'live' &&
+      activeIdentity &&
+      capabilityContext?.owsModule &&
+      capabilityContext?.vaultConfig
+    ) {
+      try {
+        walletFreshness = checkActiveWalletInVault(
+          capabilityContext.owsModule,
+          capabilityContext.vaultConfig,
+          { name: activeIdentity.owsName, address: activeIdentity.address }
+        )
+      } catch {
+        // The helper already wraps `listWallets` in try/catch and
+        // returns a generic error; this outer guard is a defense in
+        // depth in case a future code path throws synchronously. Fall
+        // back to the same generic stale-wallet message so the Status
+        // page never leaks the underlying detail.
+        walletFreshness = {
+          ok: false,
+          error:
+            'The active wallet is no longer available. Reconnect or switch wallets to continue.'
+        }
+      }
+    }
+
     return generateReport({
       cliChecks,
       writeAccessCheck,
       activeWallet,
       publishConfig: capabilityContext?.publishConfig ?? null,
-      signerMode: capabilityContext?.signerMode ?? 'live'
+      signerMode,
+      walletFreshness
     })
   })
 

@@ -117,7 +117,16 @@ app.whenReady().then(async () => {
   // metadata (#220). Registered after the store is constructed.
   registerProjectHandlers({
     walletIdentityStore: identityStore,
-    capabilityContext: { publishConfig, signerMode }
+    capabilityContext: {
+      publishConfig,
+      signerMode,
+      // #253 RE1: the Status wallet check runs the same vault freshness
+      // guard the live publish/claim/agent flows use, so it can't show
+      // Wallet:pass / Publish:pass when signing would fail at the
+      // existing #235/#240 precheck.
+      owsModule,
+      vaultConfig
+    }
   })
 
   // Terminal sessions are keyed by (projectId, activeWalletAddress) so

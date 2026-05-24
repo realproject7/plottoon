@@ -98,21 +98,53 @@ function checkPlotLink(input: PlotLinkCheckInput): CapabilityCheck {
   }
 }
 
-function checkWallet(activeWallet: ActiveWalletView | null): CapabilityCheck {
-  if (activeWallet) {
-    const short = `${activeWallet.address.slice(0, 6)}…${activeWallet.address.slice(-4)}`
+interface WalletCheckInput {
+  activeWallet: ActiveWalletView | null
+  /**
+   * #253 RE1: when the active identity exists, the Status report must
+   * verify it would still pass the live signing freshness guard (#235 /
+   * #240). Otherwise a restored identity whose vault entry was removed,
+   * renamed, or carries a mismatched EVM address would let `Wallet` and
+   * `Publish features` show pass while live publish/claim/agent flows
+   * fail at `checkActiveWalletInVault` before signing.
+   *
+   * In live mode the caller passes the result of running the helper
+   * against the *internal* identity (`{ name: owsName, address }`); the
+   * report only sees the generic `{ ok, error? }` outcome and the
+   * non-secret error string — never `owsName` or vault paths.
+   *
+   * Pass `null` to opt out (mock signer mode, tests without OWS).
+   */
+  freshness: { ok: boolean; error?: string } | null
+}
+
+function checkWallet(input: WalletCheckInput): CapabilityCheck {
+  const { activeWallet, freshness } = input
+  if (!activeWallet) {
     return {
       id: 'wallet',
       label: 'Wallet',
-      status: 'pass',
-      detail: `Active wallet ${short} (${activeWallet.source})`
+      status: 'fail',
+      detail: 'No active wallet. Connect or pick a wallet in the sidebar to publish.'
+    }
+  }
+  const short = `${activeWallet.address.slice(0, 6)}…${activeWallet.address.slice(-4)}`
+  if (freshness && !freshness.ok) {
+    // The vault freshness guard returned a generic non-secret message; we
+    // forward it verbatim so the Status page wording stays aligned with
+    // the publish/claim/agent paths that already surface the same string.
+    return {
+      id: 'wallet',
+      label: 'Wallet',
+      status: 'fail',
+      detail: freshness.error ?? 'Active wallet is no longer available in the OWS vault.'
     }
   }
   return {
     id: 'wallet',
     label: 'Wallet',
-    status: 'fail',
-    detail: 'No active wallet. Connect or pick a wallet in the sidebar to publish.'
+    status: 'pass',
+    detail: `Active wallet ${short} (${activeWallet.source})`
   }
 }
 
@@ -163,6 +195,16 @@ export interface GenerateReportOptions {
    * callers don't set it.
    */
   signerMode?: 'live' | 'mock'
+  /**
+   * #253 RE1: outcome of the vault freshness check for the active
+   * identity (`checkActiveWalletInVault`), produced by the caller. The
+   * report only sees `{ ok, error? }` so the helper's OWS-name input
+   * stays inside the IPC handler. `null` (default) means the freshness
+   * check did not run — the wallet check then only validates presence,
+   * which is the right behavior for mock mode or tests that don't wire
+   * an OWS module.
+   */
+  walletFreshness?: { ok: boolean; error?: string } | null
 }
 
 export function generateReport(options: GenerateReportOptions = {}): FirstRunReport {
@@ -182,7 +224,10 @@ export function generateReport(options: GenerateReportOptions = {}): FirstRunRep
     publishConfig: options.publishConfig ?? null,
     signerMode
   })
-  const walletCheck = checkWallet(options.activeWallet ?? null)
+  const walletCheck = checkWallet({
+    activeWallet: options.activeWallet ?? null,
+    freshness: options.walletFreshness ?? null
+  })
   const signerModeCheck = checkSignerMode(signerMode)
   const exportCheck = checkExport()
 

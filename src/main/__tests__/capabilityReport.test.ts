@@ -373,6 +373,71 @@ describe('isPublishEnabled', () => {
   })
 })
 
+describe('#253 RE1 wallet freshness — Status cannot show pass when live signing would fail', () => {
+  it('reports wallet fail with the generic stale message when freshness check returns ok:false', () => {
+    const report = generateReport(
+      opts({
+        walletFreshness: {
+          ok: false,
+          error:
+            'The active wallet is no longer available. Reconnect or switch wallets to continue.'
+        }
+      })
+    )
+    const wallet = report.sections.flatMap((s) => s.checks).find((c) => c.id === 'wallet')!
+    expect(wallet.status).toBe('fail')
+    expect(wallet.detail).toMatch(/no longer available/i)
+    // The generic message must not leak OWS internals — but the caller
+    // produces the string, so we just pin the wording the helper uses.
+    expect(wallet.detail).not.toMatch(/owsName|vault|path|selector/i)
+  })
+
+  it('flips publish-ready to fail when freshness fails even though a wallet is present', () => {
+    const report = generateReport(
+      opts({
+        cliChecks: [CLAUDE_PASS],
+        walletFreshness: { ok: false, error: 'stale generic' }
+      })
+    )
+    const publish = report.sections.flatMap((s) => s.checks).find((c) => c.id === 'publish-ready')!
+    expect(publish.status).toBe('fail')
+    expect(publish.detail).toMatch(/wallet/)
+  })
+
+  it('treats freshness ok:true as still passing the wallet check', () => {
+    const report = generateReport(
+      opts({
+        walletFreshness: { ok: true }
+      })
+    )
+    const wallet = report.sections.flatMap((s) => s.checks).find((c) => c.id === 'wallet')!
+    expect(wallet.status).toBe('pass')
+    expect(wallet.detail).toContain('0xaaaa')
+  })
+
+  it('opts out cleanly when walletFreshness is null (mock mode or non-live caller)', () => {
+    // No freshness wired → wallet pass on presence alone. This is the
+    // documented mock-mode/test path.
+    const report = generateReport(opts({ walletFreshness: null }))
+    const wallet = report.sections.flatMap((s) => s.checks).find((c) => c.id === 'wallet')!
+    expect(wallet.status).toBe('pass')
+  })
+
+  it('freshness fail still fails wallet even though activeWallet is set (regression: status was previously pass)', () => {
+    // Before #253 RE1 a restored identity whose vault entry was removed
+    // would have made Status show wallet:pass + publish:pass because the
+    // helper was never consulted. This pins the new behavior.
+    const report = generateReport(
+      opts({
+        activeWallet: FAKE_WALLET,
+        walletFreshness: { ok: false }
+      })
+    )
+    const wallet = report.sections.flatMap((s) => s.checks).find((c) => c.id === 'wallet')!
+    expect(wallet.status).toBe('fail')
+  })
+})
+
 describe('#253 evaluatePublishReadiness — pure-function shape (renderer-shared)', () => {
   // The renderer re-runs this against the augmented check list so the
   // browser-only export checks gate publish-ready. The pure function must
