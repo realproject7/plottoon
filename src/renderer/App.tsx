@@ -33,7 +33,7 @@ function App(): JSX.Element {
 
   let content: JSX.Element
   if (view === 'projects') content = <ProjectList onSelectProject={handleSelectProject} />
-  else if (view === 'dashboard') content = <Dashboard />
+  else if (view === 'dashboard') content = <Dashboard onSelectProject={handleSelectProject} />
   else if (view === 'status') content = <CapabilityReport />
   else if (view === 'guides') content = <AtlasCloudGuide />
   else content = <Workspace projectId={activeProjectId ?? undefined} />

@@ -2,6 +2,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { Dashboard } from '../Dashboard'
+import { WALLET_ACTIVE_CHANGED_EVENT as WALLET_ACTIVE_CHANGED_EVENT_FOR_TESTS } from '../../shared/walletIdentity'
 
 function emptyDashboard(): DashboardData {
   return {
@@ -11,13 +12,25 @@ function emptyDashboard(): DashboardData {
       publishedPlots: 0,
       pendingPlots: 0,
       notIndexedPlots: 0,
-      failedPlots: 0
+      failedPlots: 0,
+      totalPublishCostWei: '0'
     },
     storylines: [],
     localGroups: [],
-    wallet: { address: null, source: null, connected: false, balanceWei: null, balanceError: null },
-    tokenPrice: { ethUsd: null, error: null },
+    wallet: {
+      address: null,
+      source: null,
+      connected: false,
+      balanceWei: null,
+      balanceError: null,
+      usdcBalanceWei: null,
+      usdcBalanceError: null,
+      plotBalanceWei: null,
+      plotBalanceError: null
+    },
+    tokenPrice: { ethUsd: null, plotUsd: null, error: null },
     royalty: { earnedWei: null, claimedWei: null, unclaimedWei: null, error: null },
+    pnl: { totalGasUsd: null, totalRoyaltyUsd: null, netUsd: null },
     generatedAt: '2026-05-18T12:00:00Z'
   }
 }
@@ -66,7 +79,8 @@ describe('Dashboard', () => {
         publishedPlots: 5,
         pendingPlots: 4,
         notIndexedPlots: 2,
-        failedPlots: 1
+        failedPlots: 1,
+        totalPublishCostWei: '0'
       }
     })
     render(<Dashboard />)
@@ -90,7 +104,8 @@ describe('Dashboard', () => {
         publishedPlots: 2,
         pendingPlots: 0,
         notIndexedPlots: 0,
-        failedPlots: 0
+        failedPlots: 0,
+        totalPublishCostWei: '0'
       },
       storylines: [
         {
@@ -154,7 +169,7 @@ describe('Dashboard', () => {
     })
     render(<Dashboard />)
     await waitFor(() => {
-      expect(screen.getByText('Storylines')).toBeDefined()
+      expect(screen.getByText('Published storylines')).toBeDefined()
       expect(screen.getByText('My Comic')).toBeDefined()
       expect(screen.getByText('Episode 1')).toBeDefined()
       expect(screen.getByText('Episode 2')).toBeDefined()
@@ -175,7 +190,8 @@ describe('Dashboard', () => {
         publishedPlots: 0,
         pendingPlots: 1,
         notIndexedPlots: 0,
-        failedPlots: 0
+        failedPlots: 0,
+        totalPublishCostWei: '0'
       },
       localGroups: [
         {
@@ -199,7 +215,7 @@ describe('Dashboard', () => {
     })
     render(<Dashboard />)
     await waitFor(() => {
-      expect(screen.getByText('Local Projects')).toBeDefined()
+      expect(screen.getByText('Local production')).toBeDefined()
       expect(screen.getByText('Draft Comic')).toBeDefined()
       expect(screen.getByText('Chapter 1')).toBeDefined()
       expect(screen.getByText('5 cuts')).toBeDefined()
@@ -214,12 +230,17 @@ describe('Dashboard', () => {
         source: 'plottoon-writer',
         connected: true,
         balanceWei: '1000000000000000000',
-        balanceError: null
+        balanceError: null,
+        usdcBalanceWei: null,
+        usdcBalanceError: null,
+        plotBalanceWei: null,
+        plotBalanceError: null
       }
     })
     render(<Dashboard />)
     await waitFor(() => {
-      expect(screen.getByText('plottoon-writer')).toBeDefined()
+      // Source label is `plottoon` (short form rendered by sourceLabel()).
+      expect(screen.getAllByText(/plottoon/i).length).toBeGreaterThan(0)
       expect(screen.getByText('1.0000 ETH')).toBeDefined()
     })
   })
@@ -252,15 +273,15 @@ describe('Dashboard', () => {
     })
   })
 
-  it('shows ETH price when available', async () => {
+  it('shows ETH price in the P&L card fallback row when available', async () => {
     mockGetData.mockResolvedValue({
       ...emptyDashboard(),
-      tokenPrice: { ethUsd: 3500.42, error: null }
+      tokenPrice: { ethUsd: 3500.42, plotUsd: null, error: null }
     })
     render(<Dashboard />)
     await waitFor(() => {
-      expect(screen.getByText('ETH Price')).toBeDefined()
-      expect(screen.getByText('$3,500.42')).toBeDefined()
+      // ETH/USD fallback line lives inside the P&L card.
+      expect(screen.getByTestId('pnl-eth-fallback').textContent).toContain('$3,500.42')
     })
   })
 
@@ -272,7 +293,11 @@ describe('Dashboard', () => {
         source: 'plottoon-writer',
         connected: true,
         balanceWei: null,
-        balanceError: null
+        balanceError: null,
+        usdcBalanceWei: null,
+        usdcBalanceError: null,
+        plotBalanceWei: null,
+        plotBalanceError: null
       },
       royalty: {
         earnedWei: '500000000000000000',
@@ -284,8 +309,13 @@ describe('Dashboard', () => {
     render(<Dashboard />)
     await waitFor(() => {
       expect(screen.getByText('Royalties')).toBeDefined()
-      expect(screen.getByText(/0.5000 ETH/)).toBeDefined()
-      expect(screen.getByText(/0.4000 ETH/)).toBeDefined()
+      // Royalties are denominated in PLOT (18 decimals); same numeric value
+      // as before but the unit label reads PLOT, not ETH. After #250 RE1
+      // the earned + unclaimed values also surface on the P&L card, so
+      // there are now two DOM occurrences each — both surfaces must show
+      // the right number.
+      expect(screen.getAllByText(/0.5000 PLOT/).length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText(/0.4000 PLOT/).length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -298,7 +328,8 @@ describe('Dashboard', () => {
         publishedPlots: 2,
         pendingPlots: 0,
         notIndexedPlots: 0,
-        failedPlots: 0
+        failedPlots: 0,
+        totalPublishCostWei: '0'
       }
     })
     render(<Dashboard />)
@@ -317,7 +348,8 @@ describe('Dashboard', () => {
         publishedPlots: 0,
         pendingPlots: 0,
         notIndexedPlots: 0,
-        failedPlots: 1
+        failedPlots: 1,
+        totalPublishCostWei: '0'
       },
       localGroups: [
         {
@@ -356,7 +388,8 @@ describe('Dashboard', () => {
         publishedPlots: 0,
         pendingPlots: 0,
         notIndexedPlots: 0,
-        failedPlots: 0
+        failedPlots: 0,
+        totalPublishCostWei: '0'
       }
     })
     fireEvent.click(screen.getByText('Refresh'))
@@ -373,7 +406,11 @@ describe('Dashboard', () => {
         source: 'plottoon-writer',
         connected: true,
         balanceWei: null,
-        balanceError: null
+        balanceError: null,
+        usdcBalanceWei: null,
+        usdcBalanceError: null,
+        plotBalanceWei: null,
+        plotBalanceError: null
       },
       royalty: {
         earnedWei: '500000000000000000',
@@ -405,7 +442,11 @@ describe('Dashboard', () => {
         source: 'plottoon-writer',
         connected: true,
         balanceWei: null,
-        balanceError: null
+        balanceError: null,
+        usdcBalanceWei: null,
+        usdcBalanceError: null,
+        plotBalanceWei: null,
+        plotBalanceError: null
       },
       royalty: {
         earnedWei: '500000000000000000',
@@ -440,7 +481,11 @@ describe('Dashboard', () => {
         source: 'plottoon-writer',
         connected: true,
         balanceWei: null,
-        balanceError: null
+        balanceError: null,
+        usdcBalanceWei: null,
+        usdcBalanceError: null,
+        plotBalanceWei: null,
+        plotBalanceError: null
       },
       royalty: {
         earnedWei: '500000000000000000',
@@ -477,7 +522,11 @@ describe('Dashboard', () => {
         source: 'plottoon-writer',
         connected: true,
         balanceWei: null,
-        balanceError: null
+        balanceError: null,
+        usdcBalanceWei: null,
+        usdcBalanceError: null,
+        plotBalanceWei: null,
+        plotBalanceError: null
       },
       royalty: {
         earnedWei: '500000000000000000',
@@ -515,7 +564,11 @@ describe('Dashboard', () => {
         source: 'plottoon-writer',
         connected: true,
         balanceWei: null,
-        balanceError: null
+        balanceError: null,
+        usdcBalanceWei: null,
+        usdcBalanceError: null,
+        plotBalanceWei: null,
+        plotBalanceError: null
       },
       royalty: {
         earnedWei: '500000000000000000',
@@ -552,7 +605,11 @@ describe('Dashboard', () => {
         source: 'plottoon-writer',
         connected: true,
         balanceWei: null,
-        balanceError: null
+        balanceError: null,
+        usdcBalanceWei: null,
+        usdcBalanceError: null,
+        plotBalanceWei: null,
+        plotBalanceError: null
       },
       royalty: {
         earnedWei: '500000000000000000',
@@ -607,7 +664,11 @@ describe('Dashboard', () => {
         source: 'plottoon-writer',
         connected: true,
         balanceWei: null,
-        balanceError: null
+        balanceError: null,
+        usdcBalanceWei: null,
+        usdcBalanceError: null,
+        plotBalanceWei: null,
+        plotBalanceError: null
       },
       royalty: {
         earnedWei: '500000000000000000',
@@ -631,5 +692,322 @@ describe('Dashboard', () => {
       expect(screen.getByText('0xhistoryt…')).toBeDefined()
       expect(screen.getByText('Reverted')).toBeDefined()
     })
+  })
+})
+
+const FAKE_WALLET_A = '0xaaaa000000000000000000000000000000000001'
+
+function connectedWallet(extra: Partial<DashboardWalletSummary> = {}): DashboardWalletSummary {
+  return {
+    address: FAKE_WALLET_A,
+    source: 'plottoon-writer',
+    connected: true,
+    balanceWei: null,
+    balanceError: null,
+    usdcBalanceWei: null,
+    usdcBalanceError: null,
+    plotBalanceWei: null,
+    plotBalanceError: null,
+    ...extra
+  }
+}
+
+describe('#250 Dashboard — header + active wallet context', () => {
+  it('renders the active wallet address and source in the header subtitle when connected', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet()
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      // Truncated active address surfaces next to the page heading.
+      expect(screen.getByTestId('active-wallet-context').textContent).toMatch(/0xaaaa/)
+    })
+  })
+
+  it('renders the no-wallet hint when disconnected', async () => {
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByText(/No wallet connected/)).toBeDefined()
+    })
+    expect(screen.queryByTestId('active-wallet-context')).toBeNull()
+  })
+})
+
+describe('#250 Wallet card — ETH + USDC + PLOT + Base + copy/explorer', () => {
+  it('renders the Base network chip, copy button, and explorer link for a connected wallet', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet()
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByTestId('wallet-network-chip').textContent).toBe('Base')
+      expect(screen.getByTestId('wallet-copy-address')).toBeDefined()
+      const explorer = screen.getByTestId('wallet-open-explorer') as HTMLAnchorElement
+      expect(explorer.href).toContain(`basescan.org/address/${FAKE_WALLET_A}`)
+    })
+  })
+
+  it('renders ETH + USDC + PLOT balance rows formatted per-token', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet({
+        balanceWei: '2500000000000000000', // 2.5 ETH
+        usdcBalanceWei: '12345670', // 12.34 USDC (6 decimals)
+        plotBalanceWei: '50000000000000000000' // 50 PLOT (18 decimals)
+      })
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByTestId('wallet-balance-ETH').textContent).toContain('2.5000 ETH')
+      expect(screen.getByTestId('wallet-balance-USDC').textContent).toContain('12.35 USDC')
+      expect(screen.getByTestId('wallet-balance-PLOT').textContent).toContain('50.0000 PLOT')
+    })
+  })
+
+  it('surfaces a per-token error on the failing row without hiding the others', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet({
+        balanceWei: '1000000000000000000',
+        usdcBalanceWei: null,
+        usdcBalanceError: 'USDC RPC failed',
+        plotBalanceWei: '100000000000000000'
+      })
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByTestId('wallet-balance-ETH').textContent).toContain('1.0000 ETH')
+      expect(screen.getByTestId('wallet-balance-USDC').textContent).toContain('USDC RPC failed')
+      expect(screen.getByTestId('wallet-balance-PLOT').textContent).toContain('0.1000 PLOT')
+    })
+  })
+
+  it('shows "—" placeholder rows when balance fetchers are not wired', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet()
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByTestId('wallet-balance-ETH').textContent).toContain('—')
+      expect(screen.getByTestId('wallet-balance-USDC').textContent).toContain('—')
+      expect(screen.getByTestId('wallet-balance-PLOT').textContent).toContain('—')
+    })
+  })
+})
+
+describe('#250 P&L card', () => {
+  it('renders gas/royalty/net rows and ETH/USD + PLOT/USD fallback states when prices are unavailable', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      counts: {
+        totalProjects: 0,
+        totalPlots: 0,
+        publishedPlots: 0,
+        pendingPlots: 0,
+        notIndexedPlots: 0,
+        failedPlots: 0,
+        totalPublishCostWei: '0'
+      }
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByTestId('dash-pnl-card')).toBeDefined()
+      expect(screen.getByTestId('pnl-eth-fallback').textContent).toContain('unavailable')
+      expect(screen.getByTestId('pnl-plot-fallback').textContent).toContain('unavailable')
+    })
+  })
+
+  it('renders USD-converted gas, royalty, and net rows when all inputs are present', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      counts: {
+        totalProjects: 1,
+        totalPlots: 1,
+        publishedPlots: 1,
+        pendingPlots: 0,
+        notIndexedPlots: 0,
+        failedPlots: 0,
+        totalPublishCostWei: '1000000000000000' // 0.001 ETH gas
+      },
+      wallet: connectedWallet(),
+      tokenPrice: { ethUsd: 4000, plotUsd: 0.5, error: null },
+      royalty: {
+        earnedWei: '10000000000000000000', // 10 PLOT earned
+        claimedWei: '0',
+        unclaimedWei: '10000000000000000000',
+        error: null
+      },
+      pnl: {
+        totalGasUsd: 4, // 0.001 × $4000
+        totalRoyaltyUsd: 5, // 10 × $0.5
+        netUsd: 1
+      }
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByTestId('pnl-gas-row').textContent).toContain('$4.00')
+      expect(screen.getByTestId('pnl-royalty-row').textContent).toContain('$5.00')
+      expect(screen.getByTestId('pnl-net-row').textContent).toContain('$1.00')
+      expect(screen.getByTestId('pnl-eth-fallback').textContent).toContain('$4,000')
+      expect(screen.getByTestId('pnl-plot-fallback').textContent).toContain('$0.5000')
+    })
+  })
+
+  // #250 RE1: the P&L card surface must expose both earned and unclaimed
+  // royalty values directly, not only the USD aggregate. The royalty
+  // claim card carries the same numbers + the claim action; this card is
+  // the financial summary so it needs the PLOT amounts too.
+  it('exposes earned AND unclaimed royalty values on the P&L card when present', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet(),
+      tokenPrice: { ethUsd: null, plotUsd: 0.5, error: null },
+      royalty: {
+        earnedWei: '10000000000000000000', // 10 PLOT earned
+        claimedWei: '4000000000000000000', // 4 PLOT claimed
+        unclaimedWei: '6000000000000000000', // 6 PLOT still claimable
+        error: null
+      },
+      pnl: {
+        totalGasUsd: null,
+        totalRoyaltyUsd: 5, // 10 PLOT × $0.5
+        netUsd: null
+      }
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      // Earned row carries the PLOT amount.
+      const earnedRow = screen.getByTestId('pnl-royalty-row')
+      expect(earnedRow.textContent).toContain('10.0000 PLOT')
+      // New unclaimed row carries the PLOT amount and the USD estimate.
+      const unclaimedRow = screen.getByTestId('pnl-unclaimed-row')
+      expect(unclaimedRow.textContent).toContain('6.0000 PLOT')
+      expect(unclaimedRow.textContent).toContain('$3.00') // 6 × $0.5
+    })
+  })
+
+  it('shows "—" placeholders on earned + unclaimed rows when royalty is absent', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet()
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByTestId('pnl-royalty-row').textContent).toContain('—')
+      expect(screen.getByTestId('pnl-unclaimed-row').textContent).toContain('—')
+    })
+  })
+
+  it('renders the net row with a negative-class colour when net P&L is below zero', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      counts: {
+        totalProjects: 1,
+        totalPlots: 1,
+        publishedPlots: 1,
+        pendingPlots: 0,
+        notIndexedPlots: 0,
+        failedPlots: 0,
+        totalPublishCostWei: '10000000000000000'
+      },
+      wallet: connectedWallet(),
+      tokenPrice: { ethUsd: 4000, plotUsd: 0.5, error: null },
+      pnl: {
+        totalGasUsd: 40,
+        totalRoyaltyUsd: 5,
+        netUsd: -35
+      }
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      const netRow = screen.getByTestId('pnl-net-row')
+      const aux = netRow.querySelector('.dash-pnl__row-aux')
+      expect(aux?.className).toContain('dash-pnl__row-aux--negative')
+      expect(aux?.textContent).toContain('-$35')
+    })
+  })
+})
+
+describe('#250 Published storylines — Open in workspace action', () => {
+  function storylineFixture(): DashboardData {
+    return {
+      ...emptyDashboard(),
+      counts: {
+        totalProjects: 1,
+        totalPlots: 1,
+        publishedPlots: 1,
+        pendingPlots: 0,
+        notIndexedPlots: 0,
+        failedPlots: 0,
+        totalPublishCostWei: '21000000000000'
+      },
+      wallet: connectedWallet(),
+      storylines: [
+        {
+          storylineId: 'sl-managed-1',
+          projectId: 'proj-managed',
+          projectName: 'Managed Comic',
+          plots: [
+            {
+              projectId: 'proj-managed',
+              projectName: 'Managed Comic',
+              plotSlug: 'ep-1',
+              plotTitle: 'Episode 1',
+              cutCount: 2,
+              plotState: 'published',
+              publishedAt: '2026-05-22T10:00:00Z',
+              publishResult: {
+                txHash: '0xtx1',
+                storylineId: 'sl-managed-1',
+                plotIndex: 0,
+                contentCid: 'bafytest',
+                contentHash: '0xhash',
+                authorAddress: '0xauthor',
+                gasCostWei: '21000000000000',
+                plotlinkUrl: 'https://plotlink.xyz/story/managed',
+                walletAddress: FAKE_WALLET_A,
+                walletSource: 'plottoon-writer',
+                indexed: true,
+                indexError: null
+              }
+            }
+          ],
+          publishedCount: 1,
+          notIndexedCount: 0,
+          latestPublishedAt: '2026-05-22T10:00:00Z',
+          totalPublishCostWei: '21000000000000'
+        }
+      ]
+    }
+  }
+
+  it('renders Open in workspace when onSelectProject is provided and calls it with the local projectId', async () => {
+    mockGetData.mockResolvedValue(storylineFixture())
+    const onSelectProject = vi.fn()
+    render(<Dashboard onSelectProject={onSelectProject} />)
+    const openBtn = await screen.findByTestId('open-workspace-sl-managed-1')
+    fireEvent.click(openBtn)
+    expect(onSelectProject).toHaveBeenCalledWith('proj-managed')
+  })
+
+  it('does not render the Open in workspace action when onSelectProject is omitted', async () => {
+    mockGetData.mockResolvedValue(storylineFixture())
+    render(<Dashboard />)
+    await screen.findByTestId('storyline-sl-managed-1')
+    expect(screen.queryByTestId('open-workspace-sl-managed-1')).toBeNull()
+  })
+})
+
+describe('#250 Wallet switch — Dashboard reloads on WALLET_ACTIVE_CHANGED_EVENT', () => {
+  it('refetches getData when the active-changed event fires', async () => {
+    mockGetData.mockClear()
+    mockGetData.mockResolvedValue(emptyDashboard())
+    render(<Dashboard />)
+    await waitFor(() => expect(mockGetData).toHaveBeenCalledTimes(1))
+    window.dispatchEvent(new CustomEvent(WALLET_ACTIVE_CHANGED_EVENT_FOR_TESTS))
+    await waitFor(() => expect(mockGetData).toHaveBeenCalledTimes(2))
   })
 })

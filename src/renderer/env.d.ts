@@ -244,6 +244,8 @@ interface DashboardCounts {
   pendingPlots: number
   notIndexedPlots: number
   failedPlots: number
+  /** #249: aggregate gas cost across every published plot for the active wallet. */
+  totalPublishCostWei: string
 }
 
 interface DashboardWalletSummary {
@@ -252,10 +254,18 @@ interface DashboardWalletSummary {
   connected: boolean
   balanceWei: string | null
   balanceError: string | null
+  /** #249: USDC (6 decimals on Base). */
+  usdcBalanceWei: string | null
+  usdcBalanceError: string | null
+  /** #249: PLOT (18 decimals on Base). */
+  plotBalanceWei: string | null
+  plotBalanceError: string | null
 }
 
 interface DashboardTokenPrice {
   ethUsd: number | null
+  /** #249: best-effort PLOT/USD. */
+  plotUsd: number | null
   error: string | null
 }
 
@@ -266,6 +276,12 @@ interface DashboardRoyaltySummary {
   error: string | null
 }
 
+interface DashboardPnlSummary {
+  totalGasUsd: number | null
+  totalRoyaltyUsd: number | null
+  netUsd: number | null
+}
+
 interface DashboardData {
   counts: DashboardCounts
   storylines: DashboardStorylineGroup[]
@@ -273,6 +289,8 @@ interface DashboardData {
   wallet: DashboardWalletSummary
   tokenPrice: DashboardTokenPrice
   royalty: DashboardRoyaltySummary
+  /** #249: rough P&L summary; each leg null when its inputs are missing. */
+  pnl: DashboardPnlSummary
   generatedAt: string
 }
 
