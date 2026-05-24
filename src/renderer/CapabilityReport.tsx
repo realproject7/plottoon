@@ -1,5 +1,6 @@
 import { useEffect, useReducer } from 'react'
 import { checkExportCapabilities } from './exportChecks'
+import { evaluatePublishReadiness } from '../shared/publishReadiness'
 
 type Phase = 'loading' | 'ready' | 'error'
 
@@ -52,15 +53,31 @@ function augmentWithExportChecks(report: FirstRunReport): FirstRunReport {
     }
   ]
 
-  return {
-    ...report,
-    sections: report.sections.map((section) => {
-      if (section.title === 'Local Capabilities') {
-        return { ...section, checks: [...section.checks, ...exportChecks] }
+  const sectionsWithExports = report.sections.map((section) => {
+    if (section.title === 'Local Capabilities') {
+      return { ...section, checks: [...section.checks, ...exportChecks] }
+    }
+    return section
+  })
+
+  // #253: re-evaluate `publish-ready` against the full check list — now
+  // including the browser-only export rows. The main-process call doesn't
+  // see those rows, so it skips them; once the renderer adds them they're
+  // enforced. If any export check fails, publish flips to fail with a
+  // useful reason instead of staying stale.
+  const allChecks = sectionsWithExports.flatMap((s) => s.checks)
+  const refreshedPublishCheck = evaluatePublishReadiness(allChecks)
+  const sections = sectionsWithExports.map((section) => {
+    if (section.title === 'Publishing') {
+      return {
+        ...section,
+        checks: section.checks.map((c) => (c.id === 'publish-ready' ? refreshedPublishCheck : c))
       }
-      return section
-    })
-  }
+    }
+    return section
+  })
+
+  return { ...report, sections }
 }
 
 export function CapabilityReport(): JSX.Element {

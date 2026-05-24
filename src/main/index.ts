@@ -107,10 +107,27 @@ app.whenReady().then(async () => {
   registerWalletConnectionHandlers(walletConfig, walletState, signer, identityStore)
   registerWalletIdentityHandlers({ store: identityStore, walletState })
 
+  // Publish config is computed early so the project handler can surface
+  // the real PlotLink config + signer mode on the Status / Capability
+  // Report page (#253).
+  const publishConfig = getDefaultPublishConfig()
+
   // Project handlers depend on the wallet identity store so `project:discover`
   // can partition by active wallet and `project:create` can stamp ownership
   // metadata (#220). Registered after the store is constructed.
-  registerProjectHandlers({ walletIdentityStore: identityStore })
+  registerProjectHandlers({
+    walletIdentityStore: identityStore,
+    capabilityContext: {
+      publishConfig,
+      signerMode,
+      // #253 RE1: the Status wallet check runs the same vault freshness
+      // guard the live publish/claim/agent flows use, so it can't show
+      // Wallet:pass / Publish:pass when signing would fail at the
+      // existing #235/#240 precheck.
+      owsModule,
+      vaultConfig
+    }
+  })
 
   // Terminal sessions are keyed by (projectId, activeWalletAddress) so
   // wallet A and wallet B don't reattach to each other's running shell
@@ -118,7 +135,6 @@ app.whenReady().then(async () => {
   // as project handlers above.
   registerTerminalHandlers({ walletIdentityStore: identityStore })
 
-  const publishConfig = getDefaultPublishConfig()
   registerPublishHandlers({
     walletState,
     signer,
