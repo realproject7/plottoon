@@ -532,6 +532,250 @@ describe('walletConnectionHandlers', () => {
     expect(identityStore.setActive).toHaveBeenCalledWith('0xnew-created')
   })
 
+  it('#245 — wallet:getOptions hides reuse-existing options whose address is already a known identity', async () => {
+    // A user has previously added a plotlink-ows wallet (it's now in the
+    // identity registry under "Switch wallet"). The same vault entry will
+    // re-surface in the OWS discovery list, but the renderer must not see
+    // it as a clickable "Reuse 0x..." option under "Add wallet" — clicking
+    // is a confusing silent no-op.
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([
+        {
+          name: 'plotlink-writer-already-added',
+          address: '0xaaaa000000000000000000000000000000000001'
+        },
+        {
+          name: 'plotlink-writer-genuinely-new',
+          address: '0xcccc000000000000000000000000000000000003'
+        }
+      ]),
+      createWallet: vi.fn()
+    }
+    const identityStore = {
+      list: vi.fn().mockResolvedValue([
+        {
+          address: '0xaaaa000000000000000000000000000000000001',
+          source: 'plottoon-writer' as const,
+          owsName: 'plotlink-writer-already-added',
+          registeredAt: '2026-05-22T00:00:00.000Z'
+        }
+      ]),
+      getActive: vi.fn(),
+      setActive: vi.fn(),
+      clearActive: vi.fn(),
+      register: vi.fn(),
+      remove: vi.fn()
+    }
+    registerWalletConnectionHandlers(
+      newConfig,
+      createSelectedWalletState(),
+      mockSigner(),
+      identityStore
+    )
+
+    const result = (await handlers['wallet:getOptions']({})) as {
+      options: Array<{ type: string; source: string; address?: string }>
+    }
+
+    // create-new must always remain available.
+    expect(result.options.some((o) => o.type === 'create-new')).toBe(true)
+    // The already-added wallet's address is NOT a clickable reuse candidate.
+    const reuse = result.options.filter((o) => o.type === 'reuse-existing')
+    expect(reuse.map((o) => o.address)).toEqual(['0xcccc000000000000000000000000000000000003'])
+    // Specifically the duplicate address must not appear anywhere in reuse options.
+    expect(reuse.some((o) => o.address === '0xaaaa000000000000000000000000000000000001')).toBe(
+      false
+    )
+  })
+
+  it('#245 — wallet:getOptions normalizes address case when matching against the identity registry', async () => {
+    // A vault entry may return a checksummed address while the identity
+    // registry stores it lowercased (and vice versa). The duplicate filter
+    // must use `normalizeWalletAddress` so checksum/case differences do
+    // not produce false-positive new reuse candidates.
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([
+        {
+          name: 'plotlink-writer-checksummed',
+          // Mixed case: the vault gave us a checksum address.
+          address: '0xDaBf000000000000000000000000000000000004'
+        }
+      ]),
+      createWallet: vi.fn()
+    }
+    const identityStore = {
+      list: vi.fn().mockResolvedValue([
+        {
+          // Registry stores the lowercased form.
+          address: '0xdabf000000000000000000000000000000000004',
+          source: 'plotlink-writer' as const,
+          owsName: 'plotlink-writer-checksummed',
+          registeredAt: '2026-05-22T00:00:00.000Z'
+        }
+      ]),
+      getActive: vi.fn(),
+      setActive: vi.fn(),
+      clearActive: vi.fn(),
+      register: vi.fn(),
+      remove: vi.fn()
+    }
+    registerWalletConnectionHandlers(
+      newConfig,
+      createSelectedWalletState(),
+      mockSigner(),
+      identityStore
+    )
+
+    const result = (await handlers['wallet:getOptions']({})) as {
+      options: Array<{ type: string; address?: string }>
+    }
+    expect(result.options.filter((o) => o.type === 'reuse-existing')).toHaveLength(0)
+    expect(result.options.some((o) => o.type === 'create-new')).toBe(true)
+  })
+
+  it('#245 — wallet:getOptions keeps every reuse option when the identity registry is empty', async () => {
+    // First-run flow: no known identities yet. Every genuinely-distinct
+    // OWS vault wallet must remain a clickable reuse candidate.
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([
+        {
+          name: 'plotlink-writer-1',
+          address: '0xaaaa000000000000000000000000000000000001'
+        },
+        {
+          name: 'plotlink-writer-2',
+          address: '0xbbbb000000000000000000000000000000000002'
+        },
+        {
+          name: 'plottoon-writer-3',
+          address: '0xcccc000000000000000000000000000000000003'
+        }
+      ]),
+      createWallet: vi.fn()
+    }
+    const identityStore = {
+      list: vi.fn().mockResolvedValue([]),
+      getActive: vi.fn(),
+      setActive: vi.fn(),
+      clearActive: vi.fn(),
+      register: vi.fn(),
+      remove: vi.fn()
+    }
+    registerWalletConnectionHandlers(
+      newConfig,
+      createSelectedWalletState(),
+      mockSigner(),
+      identityStore
+    )
+
+    const result = (await handlers['wallet:getOptions']({})) as {
+      options: Array<{ type: string; address?: string }>
+    }
+    const reuse = result.options.filter((o) => o.type === 'reuse-existing')
+    expect(reuse).toHaveLength(3)
+  })
+
+  it('#245 — wallet:getOptions preserves a separate plotlink-ows wallet when only a plottoon wallet is already added', async () => {
+    // Mixed registry: only the plottoon-writer is already known. The
+    // distinct plotlink-ows wallet must still show under "Add wallet"
+    // because it's genuinely a different identity.
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([
+        {
+          name: 'plottoon-writer-known',
+          address: '0xaaaa000000000000000000000000000000000001'
+        },
+        {
+          name: 'plotlink-writer-separate',
+          address: '0xbbbb000000000000000000000000000000000002'
+        }
+      ]),
+      createWallet: vi.fn()
+    }
+    const identityStore = {
+      list: vi.fn().mockResolvedValue([
+        {
+          address: '0xaaaa000000000000000000000000000000000001',
+          source: 'plottoon-writer' as const,
+          owsName: 'plottoon-writer-known',
+          registeredAt: '2026-05-22T00:00:00.000Z'
+        }
+      ]),
+      getActive: vi.fn(),
+      setActive: vi.fn(),
+      clearActive: vi.fn(),
+      register: vi.fn(),
+      remove: vi.fn()
+    }
+    registerWalletConnectionHandlers(
+      newConfig,
+      createSelectedWalletState(),
+      mockSigner(),
+      identityStore
+    )
+
+    const result = (await handlers['wallet:getOptions']({})) as {
+      options: Array<{ type: string; source: string; address?: string }>
+    }
+    const reuse = result.options.filter((o) => o.type === 'reuse-existing')
+    expect(reuse).toHaveLength(1)
+    expect(reuse[0].address).toBe('0xbbbb000000000000000000000000000000000002')
+    expect(reuse[0].source).toBe('plotlink-writer')
+  })
+
+  it('#245 — wallet:getOptions filter does not leak OWS internal names from the identity registry', async () => {
+    // The identity store carries OWS internal names (`owsName`) which the
+    // renderer must never see — the filter reads `list()` to compute
+    // duplicates, but the response is still the renderer-safe view.
+    Object.keys(handlers).forEach((k) => delete handlers[k])
+    const newConfig: WalletConnectionConfig = {
+      discoverVault: vi.fn().mockResolvedValue([
+        {
+          name: 'plotlink-writer-survives-filter',
+          address: '0xeeee000000000000000000000000000000000005'
+        }
+      ]),
+      createWallet: vi.fn()
+    }
+    const identityStore = {
+      list: vi.fn().mockResolvedValue([
+        {
+          address: '0xaaaa000000000000000000000000000000000001',
+          source: 'plottoon-writer' as const,
+          owsName: 'plottoon-writer-distinctive-registry-selector',
+          registeredAt: '2026-05-22T00:00:00.000Z'
+        }
+      ]),
+      getActive: vi.fn(),
+      setActive: vi.fn(),
+      clearActive: vi.fn(),
+      register: vi.fn(),
+      remove: vi.fn()
+    }
+    registerWalletConnectionHandlers(
+      newConfig,
+      createSelectedWalletState(),
+      mockSigner(),
+      identityStore
+    )
+
+    const result = (await handlers['wallet:getOptions']({})) as {
+      options: Array<Record<string, unknown>>
+    }
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain('plottoon-writer-distinctive-registry-selector')
+    expect(serialized).not.toContain('plotlink-writer-survives-filter')
+    // The surviving reuse option carries only the view shape — no `owsName`.
+    const reuse = result.options.filter((o) => o.type === 'reuse-existing')
+    expect(reuse).toHaveLength(1)
+    expect(reuse[0]).not.toHaveProperty('name')
+    expect(reuse[0]).not.toHaveProperty('owsName')
+  })
+
   it('wallet:disconnect clears the active identity in the store', async () => {
     Object.keys(handlers).forEach((k) => delete handlers[k])
     const newState = createSelectedWalletState()

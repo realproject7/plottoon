@@ -17,6 +17,7 @@ import {
 import { OWS_UNAVAILABLE_MESSAGE } from '../services/owsAdapter'
 import type { WalletSigner } from '../services/walletSigning'
 import type { WalletIdentityStore } from '../services/walletIdentityStore'
+import { normalizeWalletAddress } from '../../shared/walletIdentity'
 
 export interface SelectedWalletState {
   wallet: WalletMetadata | null
@@ -31,11 +32,25 @@ export function registerWalletConnectionHandlers(
   ipcMain.handle('wallet:getOptions', async () => {
     try {
       const options = await getConnectionOptions(config)
+      // #245: drop reuse-existing options whose address is already a known
+      // identity. The renderer already lists those wallets under "Switch
+      // wallet"; surfacing them again as "Reuse 0x…" is confusing and the
+      // click is a silent no-op (re-registers / reselects the same wallet).
+      // Address normalization uses the same `normalizeWalletAddress` the
+      // identity store keys identities by, so checksum/case mismatches
+      // between OWS vault and the registry don't produce duplicates.
+      const known = identityStore ? await identityStore.list() : []
+      const knownAddresses = new Set(known.map((i) => normalizeWalletAddress(i.address)))
+      const filtered = options.filter((opt) => {
+        if (opt.type !== 'reuse-existing') return true
+        if (!opt.address) return true
+        return !knownAddresses.has(normalizeWalletAddress(opt.address))
+      })
       // #239: strip OWS internal names before serializing to the renderer.
       // Reuse-existing options keep `address` as their renderer-side
       // identifier; the main process re-resolves the OWS name from the
       // vault at connect time.
-      return { options: options.map(toWalletConnectionOptionView) }
+      return { options: filtered.map(toWalletConnectionOptionView) }
     } catch (err) {
       const unavailable = isOwsUnavailableError(err)
       const reason = unavailable

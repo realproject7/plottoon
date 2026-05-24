@@ -164,6 +164,41 @@ describe('WalletSelector — create + reuse actions', () => {
     expect(screen.getByText('OWS wallet module is unavailable')).toBeDefined()
   })
 
+  it('#245 — does not render Reuse for an address that is already listed under Switch wallet (IPC-level filter)', async () => {
+    // After #245, the main-process `wallet:getOptions` handler drops
+    // reuse-existing options whose address is already a known identity.
+    // The renderer simply renders what it gets back — this test pins the
+    // IPC contract so a regression that re-introduces the duplicate at
+    // the IPC boundary would be caught at the renderer level too.
+    installWalletApi({
+      listIdentities: vi.fn().mockResolvedValue({ identities: [FAKE_B] }),
+      getActiveIdentity: vi.fn().mockResolvedValue({ identity: FAKE_B }),
+      getOptions: vi.fn().mockResolvedValue({
+        options: [
+          // create-new is always present
+          { type: 'create-new', source: 'plottoon-writer' },
+          // FAKE_B (already in identities) is filtered out by the main
+          // process; a genuinely new reuse candidate still appears.
+          {
+            type: 'reuse-existing',
+            source: 'plotlink-writer',
+            address: '0xcccc000000000000000000000000000000000003'
+          }
+        ]
+      })
+    })
+    render(<WalletSelector />)
+    fireEvent.click(await screen.findByTestId('wallet-switcher-trigger'))
+    // The already-added wallet renders under Switch wallet…
+    expect(await screen.findByTestId(`wallet-switcher-item-${FAKE_B.address}`)).toBeDefined()
+    // …and the genuinely-new wallet renders under Add wallet…
+    expect(await screen.findByText(/Reuse 0xcccc/)).toBeDefined()
+    // …but FAKE_B's address never appears as a Reuse 0xbbbb action.
+    expect(screen.queryByText(/Reuse 0xbbbb/)).toBeNull()
+    // Create-new must remain available.
+    expect(screen.getByText('Create new PlotToon wallet')).toBeDefined()
+  })
+
   it('shows a Reuse action for a plotlink-ows identity with a truncated address', async () => {
     const connect = vi.fn().mockResolvedValue({ success: true })
     installWalletApi({
