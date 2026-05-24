@@ -2,7 +2,7 @@ import { encodeFunctionData, createWalletClient, createPublicClient, http, type 
 import { base } from 'viem/chains'
 import type { OWSCoreModule } from './owsAdapter'
 import { createOwsViemAccount } from './owsViemAccount'
-import { resolveRpcUrl } from './owsRuntimeConfig'
+import { resolveRpcUrl, MCV2_BOND_BASE_MAINNET } from './owsRuntimeConfig'
 import type { RoyaltyInfo, RoyaltyClaimResult } from '../../shared/royaltyFlow'
 
 export const PLOT_TOKEN_BASE_MAINNET = '0x4F567DACBF9D15A6acBe4A47FC2Ade0719Fb63C4'
@@ -69,7 +69,13 @@ export function validateRoyaltyConfig(config: RoyaltyClaimConfig): string[] {
 export function getDefaultRoyaltyConfig(): RoyaltyClaimConfig {
   return {
     rpcUrl: resolveRpcUrl(),
-    mcv2BondAddress: process.env.MCV2_BOND_ADDRESS || '',
+    // #262: default to the PlotLink Base mainnet MCV2 bond constant.
+    // Without this default a fresh PlotToon install fails the live
+    // royalty path with `MCV2_BOND_ADDRESS is required for royalty
+    // operations` even though publish flows already work because they
+    // resolve the same constant via resolvePublishContractDefaults.
+    // The env var override is preserved for non-mainnet / staging.
+    mcv2BondAddress: process.env.MCV2_BOND_ADDRESS || MCV2_BOND_BASE_MAINNET,
     plotTokenAddress: process.env.PLOT_TOKEN_ADDRESS || PLOT_TOKEN_BASE_MAINNET
   }
 }
