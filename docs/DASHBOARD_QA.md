@@ -198,13 +198,15 @@ Per the #248 spec, every parity row marked **Gap A–F** was closed by #249 + #2
 
 ## Sensitive-data audit summary
 
-| Surface                      | Result                                                                                                                                        | Evidence                                                                          |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------- | ---------- |
-| Public addresses in fixtures | Fake patterns + deployed contracts only                                                                                                       | Section 12 above                                                                  |
-| Local file paths in fixtures | Only `/home/testuser` literal + deliberately fake `/private/var/folders/SENSITIVE/…` injection paths used to assert leak-proof error handling | Section 12 above                                                                  |
-| OWS internal names           | Only distinctive-string strings deliberately seeded to assert non-leakage (#234 / #239 / #240 / #253 RE1)                                     | `grep -rn "distinctive-selector\|distinctive-registry-selector"`                  |
-| Wallet secrets               | Existing `isWalletIdentityShape` rejects banned keys; serialized-JSON assertions in identity-store + identity-handler tests                   | `walletIdentityStore.test.ts` + `walletIdentityHandlers.test.ts` (grep `vaultPath | privateKey | mnemonic`) |
-| Unpublished story text       | Only short stub strings (`My Comic`, `Episode 1`, `Draft Comic`)                                                                              | manual review of `Dashboard.test.tsx`                                             |
+| Surface                      | Result                                                                                                                                        | Evidence                                                                                  |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Public addresses in fixtures | Fake patterns + deployed contracts only                                                                                                       | Section 12 above                                                                          |
+| Local file paths in fixtures | Only `/home/testuser` literal + deliberately fake `/private/var/folders/SENSITIVE/…` injection paths used to assert leak-proof error handling | Section 12 above                                                                          |
+| OWS internal names           | Only distinctive-string strings deliberately seeded to assert non-leakage (#234 / #239 / #240 / #253 RE1)                                     | `grep -rn "distinctive-selector\|distinctive-registry-selector"`                          |
+| Wallet secrets               | Existing `isWalletIdentityShape` rejects banned keys; serialized-JSON assertions in identity-store + identity-handler tests                   | `walletIdentityStore.test.ts` + `walletIdentityHandlers.test.ts` — see grep pattern below |
+| Unpublished story text       | Only short stub strings (`My Comic`, `Episode 1`, `Draft Comic`)                                                                              | manual review of `Dashboard.test.tsx`                                                     |
+
+The grep pattern for the wallet-secrets evidence cell is `vaultPath|privateKey|mnemonic|seed|passphrase|secret` (kept outside the table so the pipes don't break Markdown rendering).
 
 ## Sign-off
 
