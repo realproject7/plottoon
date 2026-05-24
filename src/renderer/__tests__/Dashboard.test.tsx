@@ -170,14 +170,23 @@ describe('Dashboard', () => {
     render(<Dashboard />)
     await waitFor(() => {
       expect(screen.getByText('Published storylines')).toBeDefined()
-      expect(screen.getByText('My Comic')).toBeDefined()
-      expect(screen.getByText('Episode 1')).toBeDefined()
-      expect(screen.getByText('Episode 2')).toBeDefined()
+      // After #251 the project name + plot titles also surface inside the
+      // Activity feed for the same publishes — assert at-least-one
+      // occurrence so the storyline section AND the activity feed both
+      // count as valid renders.
+      expect(screen.getAllByText('My Comic').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Episode 1').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Episode 2').length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText('3 cuts')).toBeDefined()
       expect(screen.getByText('2 cuts')).toBeDefined()
+      // Storyline row Tx links remain; activity feed also has Tx links so
+      // assert at least 2 (the storyline ones we care about).
       const txLinks = screen.getAllByText('Tx')
-      expect(txLinks).toHaveLength(2)
-      expect(txLinks[0].closest('a')?.href).toContain('basescan.org/tx/0xtx1')
+      expect(txLinks.length).toBeGreaterThanOrEqual(2)
+      const storyTxs = txLinks.filter((a) =>
+        (a.closest('a') as HTMLAnchorElement | null)?.href.includes('basescan.org/tx/0xtx1')
+      )
+      expect(storyTxs.length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -690,7 +699,9 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Claim History')).toBeDefined()
       expect(screen.getByText('0xhistoryt…')).toBeDefined()
-      expect(screen.getByText('Reverted')).toBeDefined()
+      // "Reverted" appears in both the royalty card's claim history AND
+      // the activity feed's failed-claim entry — both are valid surfaces.
+      expect(screen.getAllByText('Reverted').length).toBeGreaterThanOrEqual(1)
     })
   })
 })
@@ -1009,5 +1020,355 @@ describe('#250 Wallet switch — Dashboard reloads on WALLET_ACTIVE_CHANGED_EVEN
     await waitFor(() => expect(mockGetData).toHaveBeenCalledTimes(1))
     window.dispatchEvent(new CustomEvent(WALLET_ACTIVE_CHANGED_EVENT_FOR_TESTS))
     await waitFor(() => expect(mockGetData).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('#251 Local production — retry index on not-indexed plots', () => {
+  function notIndexedFixture(): DashboardData {
+    return {
+      ...emptyDashboard(),
+      counts: {
+        totalProjects: 1,
+        totalPlots: 1,
+        publishedPlots: 0,
+        pendingPlots: 0,
+        notIndexedPlots: 1,
+        failedPlots: 0,
+        totalPublishCostWei: '21000000000000'
+      },
+      wallet: connectedWallet(),
+      storylines: [
+        {
+          storylineId: 'sl-not-indexed',
+          projectId: 'proj-ni',
+          projectName: 'Recovery Story',
+          plots: [
+            {
+              projectId: 'proj-ni',
+              projectName: 'Recovery Story',
+              plotSlug: 'ep-1',
+              plotTitle: 'Episode 1',
+              cutCount: 2,
+              plotState: 'published-not-indexed',
+              publishedAt: '2026-05-22T10:00:00Z',
+              publishResult: {
+                txHash: '0xtx-ni',
+                storylineId: 'sl-not-indexed',
+                plotIndex: 0,
+                contentCid: 'bafytest',
+                contentHash: '0xhash',
+                authorAddress: '0xauthor',
+                gasCostWei: '21000000000000',
+                plotlinkUrl: null,
+                walletAddress: FAKE_WALLET_A,
+                walletSource: 'plottoon-writer',
+                indexed: false,
+                indexError: 'PlotLink index POST returned 503'
+              }
+            }
+          ],
+          publishedCount: 0,
+          notIndexedCount: 1,
+          latestPublishedAt: '2026-05-22T10:00:00Z',
+          totalPublishCostWei: '21000000000000'
+        }
+      ]
+    }
+  }
+
+  it('renders a Retry index button for published-not-indexed plots and calls publish.retryIndex with the projectId+slug', async () => {
+    mockGetData.mockResolvedValue(notIndexedFixture())
+    const retryIndex = vi.fn().mockResolvedValue({ success: true })
+    ;(window.plottoon as unknown as { publish: { retryIndex: typeof retryIndex } }).publish = {
+      retryIndex
+    } as unknown as typeof window.plottoon.publish
+
+    render(<Dashboard />)
+    const retryBtn = await screen.findByTestId('retry-index-proj-ni-ep-1')
+    fireEvent.click(retryBtn)
+    await waitFor(() => {
+      expect(retryIndex).toHaveBeenCalledWith({ projectId: 'proj-ni', plotSlug: 'ep-1' })
+    })
+  })
+
+  it('shows the retry error inline when publish.retryIndex returns success:false (no dashboard reload)', async () => {
+    mockGetData.mockResolvedValue(notIndexedFixture())
+    const retryIndex = vi
+      .fn()
+      .mockResolvedValue({ success: false, error: 'Index POST returned 503' })
+    ;(window.plottoon as unknown as { publish: { retryIndex: typeof retryIndex } }).publish = {
+      retryIndex
+    } as unknown as typeof window.plottoon.publish
+
+    mockGetData.mockClear()
+    mockGetData.mockResolvedValue(notIndexedFixture())
+    render(<Dashboard />)
+    await waitFor(() => expect(mockGetData).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(await screen.findByTestId('retry-index-proj-ni-ep-1'))
+    await waitFor(() => {
+      expect(screen.getByTestId('retry-index-error-proj-ni-ep-1').textContent).toContain(
+        'Index POST returned 503'
+      )
+    })
+    // Dashboard data was NOT reloaded because retry failed.
+    expect(mockGetData).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not render the Retry index button for plots that are not in the not-indexed state', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet(),
+      localGroups: [
+        {
+          groupKey: 'proj-draft:Draft',
+          projectId: 'proj-draft',
+          projectName: 'Draft',
+          plots: [
+            {
+              projectId: 'proj-draft',
+              projectName: 'Draft',
+              plotSlug: 'ep-1',
+              plotTitle: 'Episode 1',
+              cutCount: 1,
+              plotState: 'draft',
+              publishedAt: null,
+              publishResult: null
+            }
+          ]
+        }
+      ]
+    })
+    render(<Dashboard />)
+    await screen.findByTestId('local-group-proj-draft:Draft')
+    expect(screen.queryByTestId('retry-index-proj-draft-ep-1')).toBeNull()
+  })
+})
+
+describe('#251 Activity feed — local publishes + royalty claims, time-sorted', () => {
+  it('renders the empty state when there are no published plots or claim records', async () => {
+    mockGetData.mockResolvedValue(emptyDashboard())
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByTestId('activity-empty')).toBeDefined()
+    })
+  })
+
+  it('renders a publish entry per published plot with BaseScan + PlotLink links', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet(),
+      storylines: [
+        {
+          storylineId: 'sl-pub',
+          projectId: 'proj-pub',
+          projectName: 'Pub Comic',
+          plots: [
+            {
+              projectId: 'proj-pub',
+              projectName: 'Pub Comic',
+              plotSlug: 'ep-1',
+              plotTitle: 'Episode 1',
+              cutCount: 1,
+              plotState: 'published',
+              publishedAt: '2026-05-24T01:00:00Z',
+              publishResult: {
+                txHash: '0xact-tx',
+                storylineId: 'sl-pub',
+                plotIndex: 0,
+                contentCid: 'bafy',
+                contentHash: '0xh',
+                authorAddress: '0xauth',
+                gasCostWei: '1',
+                plotlinkUrl: 'https://plotlink.xyz/story/pub',
+                walletAddress: FAKE_WALLET_A,
+                walletSource: 'plottoon-writer',
+                indexed: true,
+                indexError: null
+              }
+            }
+          ],
+          publishedCount: 1,
+          notIndexedCount: 0,
+          latestPublishedAt: '2026-05-24T01:00:00Z',
+          totalPublishCostWei: '1'
+        }
+      ]
+    })
+    render(<Dashboard />)
+    const list = await screen.findByTestId('activity-list')
+    const firstEntry = await screen.findByTestId('activity-publish-0')
+    expect(firstEntry.textContent).toContain('Episode 1')
+    expect(firstEntry.textContent).toContain('Pub Comic')
+    // Both Tx and PlotLink links present on a publish entry.
+    expect(list.innerHTML).toContain('basescan.org/tx/0xact-tx')
+    expect(list.innerHTML).toContain('plotlink.xyz/story/pub')
+  })
+
+  it('merges royalty claims into the activity list and sorts both kinds by descending time', async () => {
+    ;(window.plottoon.royalty.getClaimHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      claims: [
+        {
+          txHash: '0xclaim-tx-1',
+          walletAddress: FAKE_WALLET_A,
+          reserveToken: '0x0',
+          gasCostWei: '1',
+          status: 'confirmed' as const,
+          error: null,
+          // Newer than the publish below — should appear first.
+          claimedAt: '2026-05-24T02:00:00Z'
+        }
+      ]
+    })
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet(),
+      storylines: [
+        {
+          storylineId: 'sl-mix',
+          projectId: 'proj-mix',
+          projectName: 'Mix Comic',
+          plots: [
+            {
+              projectId: 'proj-mix',
+              projectName: 'Mix Comic',
+              plotSlug: 'ep-1',
+              plotTitle: 'Older Episode',
+              cutCount: 1,
+              plotState: 'published',
+              publishedAt: '2026-05-24T01:00:00Z',
+              publishResult: {
+                txHash: '0xolder-pub-tx',
+                storylineId: 'sl-mix',
+                plotIndex: 0,
+                contentCid: 'bafy',
+                contentHash: '0xh',
+                authorAddress: '0xauth',
+                gasCostWei: '1',
+                plotlinkUrl: null,
+                walletAddress: FAKE_WALLET_A,
+                walletSource: 'plottoon-writer',
+                indexed: true,
+                indexError: null
+              }
+            }
+          ],
+          publishedCount: 1,
+          notIndexedCount: 0,
+          latestPublishedAt: '2026-05-24T01:00:00Z',
+          totalPublishCostWei: '1'
+        }
+      ]
+    })
+    render(<Dashboard />)
+    // First entry (index 0) is the newer claim; second (index 1) is the older publish.
+    const claimEntry = await screen.findByTestId('activity-claim-0')
+    const publishEntry = await screen.findByTestId('activity-publish-1')
+    expect(claimEntry.textContent).toContain('Royalty claimed')
+    expect(publishEntry.textContent).toContain('Older Episode')
+  })
+
+  // #251 RE1: previously, wallet B's dashboard could render while the
+  // claim-history IPC for wallet B was still inflight, briefly leaving
+  // wallet A's claim entry visible in the activity feed. `load()` now
+  // clears `activityClaims` BEFORE setting the new dashboard payload,
+  // so the activity list shows the empty state during the swap and
+  // never the previous wallet's history.
+  it('clears wallet A activity claims before wallet B dashboard data renders (no cross-wallet bleed)', async () => {
+    // First load — wallet A with a confirmed claim entry in activity.
+    const walletA = {
+      ...emptyDashboard(),
+      wallet: connectedWallet()
+    }
+    const walletAClaim = {
+      claims: [
+        {
+          txHash: '0xclaim-wallet-a-aaaaaaaaaaaaaaaaaaaa',
+          walletAddress: FAKE_WALLET_A,
+          reserveToken: '0x0',
+          gasCostWei: '1',
+          status: 'confirmed' as const,
+          error: null,
+          claimedAt: '2026-05-24T01:00:00Z'
+        }
+      ]
+    }
+    const WALLET_B = '0xbbbb000000000000000000000000000000000002'
+    const walletB = {
+      ...emptyDashboard(),
+      wallet: connectedWallet({ address: WALLET_B })
+    }
+
+    mockGetData.mockResolvedValueOnce(walletA).mockResolvedValueOnce(walletB)
+    ;(window.plottoon.royalty.getClaimHistory as ReturnType<typeof vi.fn>)
+      // Initial mount — RoyaltyClaimCard + Dashboard activity feed each call once.
+      .mockResolvedValueOnce(walletAClaim)
+      .mockResolvedValueOnce(walletAClaim)
+      // Wallet-switch reload — keep wallet B's claim-history IPC pending
+      // so we can assert the activity list is already clear *before* it
+      // resolves. After we assert, we resolve it manually.
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ claims: RoyaltyClaimRecord[] }>((resolve) => {
+            deferredResolve = () => resolve({ claims: [] })
+          })
+      )
+      .mockResolvedValueOnce({ claims: [] })
+
+    let deferredResolve: (() => void) | null = null
+    render(<Dashboard />)
+    // Wallet A: claim is visible in the activity feed.
+    await waitFor(() => {
+      expect(screen.getByTestId('activity-claim-0').textContent).toContain('Royalty claimed')
+    })
+
+    // Switch wallets — Dashboard re-fires `load()`. setData/setLoadState
+    // for wallet B will resolve, then the claim-history IPC for wallet B
+    // is gated on `deferredResolve` so we can observe the post-swap /
+    // pre-claims-resolved state.
+    window.dispatchEvent(new CustomEvent(WALLET_ACTIVE_CHANGED_EVENT_FOR_TESTS))
+
+    // Wait for the dashboard payload to be wallet B's.
+    await waitFor(() => {
+      expect(screen.getByTestId('active-wallet-context').textContent).toMatch(/0xbbbb/)
+    })
+
+    // Critical assertion: wallet A's claim must NOT be visible in the
+    // activity feed even though the claim-history IPC for wallet B is
+    // still pending. The activity list should be in its empty state.
+    expect(screen.queryByText(/Royalty claimed/)).toBeNull()
+    expect(screen.queryByTestId('activity-claim-0')).toBeNull()
+    expect(screen.getByTestId('activity-empty')).toBeDefined()
+
+    // Now let the wallet B claim-history IPC resolve (empty for B).
+    deferredResolve?.()
+    await waitFor(() => {
+      // Activity stays empty for wallet B; wallet A's entry never reappears.
+      expect(screen.getByTestId('activity-empty')).toBeDefined()
+    })
+  })
+
+  it('surfaces a failed royalty claim as a distinct activity entry with the error text', async () => {
+    ;(window.plottoon.royalty.getClaimHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      claims: [
+        {
+          txHash: '',
+          walletAddress: FAKE_WALLET_A,
+          reserveToken: '0x0',
+          gasCostWei: null,
+          status: 'failed' as const,
+          error: 'Reverted on chain',
+          claimedAt: '2026-05-24T03:00:00Z'
+        }
+      ]
+    })
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet()
+    })
+    render(<Dashboard />)
+    const entry = await screen.findByTestId('activity-claim-0')
+    expect(entry.textContent).toContain('Royalty claim failed')
+    expect(entry.textContent).toContain('Reverted on chain')
   })
 })
