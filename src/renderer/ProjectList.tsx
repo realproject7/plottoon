@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { WALLET_ACTIVE_CHANGED_EVENT } from '../shared/walletIdentity'
 
 interface State {
@@ -6,6 +6,7 @@ interface State {
   loading: boolean
   error: string | null
   refreshKey: number
+  createDialogOpen: boolean
 }
 
 type Action =
@@ -13,6 +14,8 @@ type Action =
   | { type: 'loaded'; partition: PartitionedDiscovery }
   | { type: 'failed'; error: string }
   | { type: 'refresh' }
+  | { type: 'openCreate' }
+  | { type: 'closeCreate' }
 
 const EMPTY_PARTITION: PartitionedDiscovery = {
   owned: [],
@@ -32,6 +35,10 @@ function reducer(state: State, action: Action): State {
       return { ...state, loading: false, error: action.error }
     case 'refresh':
       return { ...state, refreshKey: state.refreshKey + 1 }
+    case 'openCreate':
+      return { ...state, createDialogOpen: true, error: null }
+    case 'closeCreate':
+      return { ...state, createDialogOpen: false }
   }
 }
 
@@ -44,7 +51,8 @@ export function ProjectList({ onSelectProject }: ProjectListProps): JSX.Element 
     partition: EMPTY_PARTITION,
     loading: true,
     error: null,
-    refreshKey: 0
+    refreshKey: 0,
+    createDialogOpen: false
   })
 
   useEffect(() => {
@@ -75,17 +83,27 @@ export function ProjectList({ onSelectProject }: ProjectListProps): JSX.Element 
     return () => window.removeEventListener(WALLET_ACTIVE_CHANGED_EVENT, onActiveChanged)
   }, [])
 
-  const handleCreate = async (): Promise<void> => {
-    const name = prompt('Project name:')
-    if (!name?.trim()) return
+  // #246: open the in-app dialog instead of `window.prompt` — the browser
+  // prompt was unreliable in Electron (silent failures, appearing off-window).
+  // The actual create call happens inside `NewProjectDialog` on submit.
+  const handleCreate = (): void => {
+    dispatch({ type: 'openCreate' })
+  }
+
+  const handleCreateSubmit = async (name: string): Promise<{ error?: string }> => {
     try {
-      const result = await window.plottoon.project.create(name.trim())
-      if (result) dispatch({ type: 'refresh' })
+      const result = await window.plottoon.project.create(name)
+      if (result) {
+        dispatch({ type: 'closeCreate' })
+        dispatch({ type: 'refresh' })
+      } else {
+        // `project:create` returned null — the user cancelled the
+        // folder-picker dialog after entering a name. Close cleanly.
+        dispatch({ type: 'closeCreate' })
+      }
+      return {}
     } catch (err) {
-      dispatch({
-        type: 'failed',
-        error: err instanceof Error ? err.message : 'Failed to create project'
-      })
+      return { error: err instanceof Error ? err.message : 'Failed to create project' }
     }
   }
 
@@ -151,6 +169,13 @@ export function ProjectList({ onSelectProject }: ProjectListProps): JSX.Element 
           <div className="screen__section-label">Projects with metadata errors</div>
           <ErrorProjectGrid projects={partition.errors} />
         </section>
+      )}
+
+      {state.createDialogOpen && (
+        <NewProjectDialog
+          onCancel={() => dispatch({ type: 'closeCreate' })}
+          onSubmit={handleCreateSubmit}
+        />
       )}
     </div>
   )
@@ -311,6 +336,130 @@ function ErrorProjectGrid({ projects }: { projects: DiscoveredProject[] }): JSX.
           <div className="project-card__error">{project.error}</div>
         </div>
       ))}
+    </div>
+  )
+}
+
+interface NewProjectDialogProps {
+  onCancel: () => void
+  onSubmit: (name: string) => Promise<{ error?: string }>
+}
+
+function NewProjectDialog({ onCancel, onSubmit }: NewProjectDialogProps): JSX.Element {
+  const [name, setName] = useState('')
+  const [validation, setValidation] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === 'Escape' && !submitting) onCancel()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel, submitting])
+
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+    if (submitting) return
+    const trimmed = name.trim()
+    if (trimmed.length === 0) {
+      setValidation('Enter a project name to continue.')
+      return
+    }
+    setValidation(null)
+    setSubmitError(null)
+    setSubmitting(true)
+    const result = await onSubmit(trimmed)
+    setSubmitting(false)
+    if (result.error) {
+      setSubmitError(result.error)
+    }
+  }
+
+  return (
+    <div
+      className="dialog-overlay"
+      role="presentation"
+      data-testid="new-project-dialog-overlay"
+      onClick={(e) => {
+        // Clicking the dim overlay (but not the dialog itself) cancels.
+        if (e.target === e.currentTarget && !submitting) onCancel()
+      }}
+    >
+      <div
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-project-dialog-title"
+        data-testid="new-project-dialog"
+      >
+        <form onSubmit={handleSubmit} className="dialog__form">
+          <h2 id="new-project-dialog-title" className="dialog__title">
+            New project
+          </h2>
+          <label className="dialog__field">
+            <span className="dialog__label">Project name</span>
+            <input
+              ref={inputRef}
+              type="text"
+              className="dialog__input"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                if (validation) setValidation(null)
+              }}
+              disabled={submitting}
+              data-testid="new-project-name-input"
+              aria-invalid={validation !== null}
+              aria-describedby={validation ? 'new-project-name-error' : undefined}
+            />
+          </label>
+          {validation && (
+            <div
+              id="new-project-name-error"
+              className="dialog__validation"
+              role="alert"
+              data-testid="new-project-validation"
+            >
+              {validation}
+            </div>
+          )}
+          {submitError && (
+            <div
+              className="dialog__submit-error"
+              role="alert"
+              data-testid="new-project-submit-error"
+            >
+              {submitError}
+            </div>
+          )}
+          <div className="dialog__actions">
+            <button
+              type="button"
+              className="dialog__btn dialog__btn--secondary"
+              onClick={onCancel}
+              disabled={submitting}
+              data-testid="new-project-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={submitting}
+              data-testid="new-project-submit"
+            >
+              {submitting ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
