@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
@@ -466,6 +466,60 @@ describe('buildDashboardData — wallet scoping (#222)', () => {
     expect(data.counts.totalProjects).toBe(1)
   })
 
+  it('clears wallet/royalty data on wallet switch (no bleed from previous wallet)', async () => {
+    // Switch-wallets-mid-session pin: invoke buildDashboardData with one
+    // wallet's deps, then re-invoke with a different wallet, and assert
+    // none of the first wallet's balance/royalty leaks through.
+    const projA = await createProject('wallet-a-story', DEFAULT_TEST_WALLET)
+    await createPlot(projA.root, 'episode-1', 'A1', 2)
+    const WALLET_B_BAL = '777'
+    const WALLET_A_BAL = '111'
+
+    const fromA = await buildDashboardData(
+      baseDeps({
+        getWallet: () => ({
+          address: DEFAULT_TEST_WALLET,
+          source: 'plottoon-writer',
+          name: 'plottoon-writer-fake',
+          createdAt: '2026-05-22T00:00:00.000Z'
+        }),
+        fetchBalance: async () => WALLET_A_BAL,
+        fetchRoyalty: async () => ({
+          earnedWei: '500',
+          claimedWei: '200',
+          unclaimedWei: '300'
+        })
+      })
+    )
+    expect(fromA.wallet.balanceWei).toBe(WALLET_A_BAL)
+    expect(fromA.royalty.unclaimedWei).toBe('300')
+
+    const fromB = await buildDashboardData(
+      baseDeps({
+        getWallet: () => ({
+          address: WALLET_B,
+          source: 'plottoon-writer',
+          name: 'plottoon-writer-fake-b',
+          createdAt: '2026-05-22T00:00:00.000Z'
+        }),
+        fetchBalance: async () => WALLET_B_BAL,
+        fetchRoyalty: async () => ({
+          earnedWei: '0',
+          claimedWei: '0',
+          unclaimedWei: '0'
+        })
+      })
+    )
+    // Fresh build per call — none of wallet A's numbers can survive.
+    expect(fromB.wallet.balanceWei).toBe(WALLET_B_BAL)
+    expect(fromB.wallet.address).toBe(WALLET_B)
+    expect(fromB.royalty.earnedWei).toBe('0')
+    expect(fromB.royalty.unclaimedWei).toBe('0')
+    // Wallet B has no project on disk, so no wallet-A counts leak either.
+    expect(fromB.counts.totalProjects).toBe(0)
+    expect(fromB.counts.totalPlots).toBe(0)
+  })
+
   it('only queries balance/royalty for the active wallet', async () => {
     const balances: string[] = []
     const royaltyAddresses: string[] = []
@@ -490,5 +544,297 @@ describe('buildDashboardData — wallet scoping (#222)', () => {
     expect(royaltyAddresses).toEqual([DEFAULT_TEST_WALLET])
     expect(data.wallet.balanceWei).toBe('1000000000000000000')
     expect(data.royalty.unclaimedWei).toBe('1')
+  })
+})
+
+describe('#249 buildDashboardData — USDC + PLOT balances', () => {
+  it('returns null balances when no fetchers are provided', async () => {
+    const data = await buildDashboardData(
+      baseDeps({
+        getWallet: () => ({
+          address: DEFAULT_TEST_WALLET,
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-22T00:00:00.000Z'
+        })
+      })
+    )
+    expect(data.wallet.usdcBalanceWei).toBeNull()
+    expect(data.wallet.usdcBalanceError).toBeNull()
+    expect(data.wallet.plotBalanceWei).toBeNull()
+    expect(data.wallet.plotBalanceError).toBeNull()
+  })
+
+  it('fetches USDC + PLOT raw wei strings when fetchers are wired', async () => {
+    const usdcAddresses: string[] = []
+    const plotAddresses: string[] = []
+    const data = await buildDashboardData(
+      baseDeps({
+        getWallet: () => ({
+          address: DEFAULT_TEST_WALLET,
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-22T00:00:00.000Z'
+        }),
+        fetchUsdcBalance: async (addr) => {
+          usdcAddresses.push(addr)
+          return '5000000' // 5 USDC (6 decimals)
+        },
+        fetchPlotBalance: async (addr) => {
+          plotAddresses.push(addr)
+          return '2000000000000000000' // 2 PLOT (18 decimals)
+        }
+      })
+    )
+    expect(data.wallet.usdcBalanceWei).toBe('5000000')
+    expect(data.wallet.plotBalanceWei).toBe('2000000000000000000')
+    // Both fetchers receive the active wallet address.
+    expect(usdcAddresses).toEqual([DEFAULT_TEST_WALLET])
+    expect(plotAddresses).toEqual([DEFAULT_TEST_WALLET])
+  })
+
+  it('degrades gracefully when USDC or PLOT balance fetch throws', async () => {
+    const data = await buildDashboardData(
+      baseDeps({
+        getWallet: () => ({
+          address: DEFAULT_TEST_WALLET,
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-22T00:00:00.000Z'
+        }),
+        fetchUsdcBalance: async () => {
+          throw new Error('USDC RPC failed')
+        },
+        fetchPlotBalance: async () => {
+          throw new Error('PLOT RPC failed')
+        }
+      })
+    )
+    expect(data.wallet.usdcBalanceWei).toBeNull()
+    expect(data.wallet.usdcBalanceError).toBe('USDC RPC failed')
+    expect(data.wallet.plotBalanceWei).toBeNull()
+    expect(data.wallet.plotBalanceError).toBe('PLOT RPC failed')
+  })
+
+  it('does not call balance fetchers when no wallet is connected', async () => {
+    const usdcSpy = vi.fn(async () => '1')
+    const plotSpy = vi.fn(async () => '1')
+    const data = await buildDashboardData(
+      baseDeps({
+        getWallet: () => null,
+        fetchUsdcBalance: usdcSpy,
+        fetchPlotBalance: plotSpy
+      })
+    )
+    expect(usdcSpy).not.toHaveBeenCalled()
+    expect(plotSpy).not.toHaveBeenCalled()
+    expect(data.wallet.usdcBalanceWei).toBeNull()
+    expect(data.wallet.plotBalanceWei).toBeNull()
+  })
+})
+
+describe('#249 buildDashboardData — top-line total gas cost', () => {
+  it('sums gasCostWei across every owned plot into counts.totalPublishCostWei', async () => {
+    const proj = await createProject('my-comic')
+
+    const d1 = await createPlot(proj.root, 'ep-1', 'Ep1', 1)
+    let s1 = createPublishStatus([])
+    s1 = markPlotPublished(s1, mockResult({ storylineId: '1', gasCostWei: '10000' }))
+    await writePublishStatus(d1, s1)
+
+    const d2 = await createPlot(proj.root, 'ep-2', 'Ep2', 1)
+    let s2 = createPublishStatus([])
+    s2 = markPlotPublished(s2, mockResult({ storylineId: '2', gasCostWei: '25000' }))
+    await writePublishStatus(d2, s2)
+
+    const d3 = await createPlot(proj.root, 'ep-3', 'Ep3', 1)
+    let s3 = createPublishStatus([])
+    // No storylineId → ends up in localGroups; gas still counted in the
+    // top-line total because the user paid it.
+    s3 = markPlotPublished(s3, mockResult({ storylineId: undefined, gasCostWei: '7' }))
+    await writePublishStatus(d3, s3)
+
+    const data = await buildDashboardData(baseDeps())
+    expect(data.counts.totalPublishCostWei).toBe('35007')
+  })
+
+  it('returns "0" when no published plot carries a gas cost', async () => {
+    const data = await buildDashboardData(baseDeps())
+    expect(data.counts.totalPublishCostWei).toBe('0')
+  })
+})
+
+describe('#249 buildDashboardData — PLOT/USD price', () => {
+  it('returns null plotUsd when no fetcher is provided', async () => {
+    const data = await buildDashboardData(baseDeps())
+    expect(data.tokenPrice.plotUsd).toBeNull()
+  })
+
+  it('fetches plotUsd alongside ethUsd', async () => {
+    const data = await buildDashboardData(
+      baseDeps({
+        fetchEthPrice: async () => 3500,
+        fetchPlotPrice: async () => 0.0123
+      })
+    )
+    expect(data.tokenPrice.ethUsd).toBe(3500)
+    expect(data.tokenPrice.plotUsd).toBe(0.0123)
+    expect(data.tokenPrice.error).toBeNull()
+  })
+
+  it('degrades gracefully on plot price fetch failure without clobbering eth price', async () => {
+    const data = await buildDashboardData(
+      baseDeps({
+        fetchEthPrice: async () => 3500,
+        fetchPlotPrice: async () => {
+          throw new Error('PLOT price API failed')
+        }
+      })
+    )
+    expect(data.tokenPrice.ethUsd).toBe(3500)
+    expect(data.tokenPrice.plotUsd).toBeNull()
+    expect(data.tokenPrice.error).toBe('PLOT price API failed')
+  })
+})
+
+describe('#249 buildDashboardData — PnL summary', () => {
+  it('returns all-null pnl when no prices are available', async () => {
+    const data = await buildDashboardData(baseDeps())
+    expect(data.pnl.totalGasUsd).toBeNull()
+    expect(data.pnl.totalRoyaltyUsd).toBeNull()
+    expect(data.pnl.netUsd).toBeNull()
+  })
+
+  it('computes gas USD from totalPublishCostWei when ethUsd is available', async () => {
+    const proj = await createProject('my-comic')
+    const plotDir = await createPlot(proj.root, 'ep-1', 'Ep1', 1)
+    let s = createPublishStatus([])
+    // 0.001 ETH worth of gas (1e15 wei).
+    s = markPlotPublished(s, mockResult({ gasCostWei: '1000000000000000' }))
+    await writePublishStatus(plotDir, s)
+
+    const data = await buildDashboardData(
+      baseDeps({
+        fetchEthPrice: async () => 4000
+      })
+    )
+    // 0.001 ETH × $4000 = $4.
+    expect(data.pnl.totalGasUsd).toBeCloseTo(4, 5)
+    // Royalty USD still null (no royalty fetched + no plotUsd).
+    expect(data.pnl.totalRoyaltyUsd).toBeNull()
+    expect(data.pnl.netUsd).toBeNull()
+  })
+
+  it('computes royalty USD from earnedWei × plotUsd', async () => {
+    const data = await buildDashboardData(
+      baseDeps({
+        getWallet: () => ({
+          address: DEFAULT_TEST_WALLET,
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-22T00:00:00.000Z'
+        }),
+        fetchPlotPrice: async () => 0.5,
+        fetchRoyalty: async () => ({
+          // 10 PLOT earned.
+          earnedWei: '10000000000000000000',
+          claimedWei: '0',
+          unclaimedWei: '10000000000000000000'
+        })
+      })
+    )
+    // 10 PLOT × $0.5 = $5.
+    expect(data.pnl.totalRoyaltyUsd).toBeCloseTo(5, 5)
+  })
+
+  it('computes netUsd = royaltyUsd − gasUsd when both legs are present', async () => {
+    const proj = await createProject('my-comic')
+    const plotDir = await createPlot(proj.root, 'ep-1', 'Ep1', 1)
+    let s = createPublishStatus([])
+    // 0.001 ETH × $4000 = $4 gas.
+    s = markPlotPublished(s, mockResult({ gasCostWei: '1000000000000000' }))
+    await writePublishStatus(plotDir, s)
+
+    const data = await buildDashboardData(
+      baseDeps({
+        getWallet: () => ({
+          address: DEFAULT_TEST_WALLET,
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-22T00:00:00.000Z'
+        }),
+        fetchEthPrice: async () => 4000,
+        fetchPlotPrice: async () => 0.5,
+        fetchRoyalty: async () => ({
+          // 10 PLOT × $0.5 = $5 royalty.
+          earnedWei: '10000000000000000000',
+          claimedWei: '0',
+          unclaimedWei: '10000000000000000000'
+        })
+      })
+    )
+    expect(data.pnl.totalGasUsd).toBeCloseTo(4, 5)
+    expect(data.pnl.totalRoyaltyUsd).toBeCloseTo(5, 5)
+    expect(data.pnl.netUsd).toBeCloseTo(1, 5)
+  })
+
+  it('keeps netUsd null when royalty is present but plot price is missing', async () => {
+    const data = await buildDashboardData(
+      baseDeps({
+        getWallet: () => ({
+          address: DEFAULT_TEST_WALLET,
+          source: 'plottoon-writer',
+          name: 'pw-1',
+          createdAt: '2026-05-22T00:00:00.000Z'
+        }),
+        fetchEthPrice: async () => 4000,
+        fetchRoyalty: async () => ({
+          earnedWei: '500',
+          claimedWei: '0',
+          unclaimedWei: '500'
+        })
+      })
+    )
+    expect(data.pnl.totalRoyaltyUsd).toBeNull()
+    expect(data.pnl.netUsd).toBeNull()
+  })
+})
+
+describe('#249 buildDashboardData — no PlotLink HTTP for royalty', () => {
+  // The pre-#249 wiring fetched royalty via `${plotlinkBaseUrl}/api/royalty/<addr>` —
+  // an HTTP call to a nonexistent PlotLink endpoint. This regression pins
+  // that the service NEVER reaches out to a PlotLink HTTP endpoint when
+  // it builds royalty data: the `fetchRoyalty` callback is the only
+  // input, and any caller that injects a direct-RPC implementation (the
+  // production wiring in `src/main/index.ts`) bypasses HTTP entirely.
+  it('does not make any global fetch() call when given a direct-RPC fetchRoyalty', async () => {
+    const fetchSpy = vi.fn(async () => {
+      throw new Error('fetch must not be called for royalty in this path')
+    })
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch
+    try {
+      const data = await buildDashboardData(
+        baseDeps({
+          getWallet: () => ({
+            address: DEFAULT_TEST_WALLET,
+            source: 'plottoon-writer',
+            name: 'pw-1',
+            createdAt: '2026-05-22T00:00:00.000Z'
+          }),
+          // A direct-RPC implementation produces the values without HTTP.
+          fetchRoyalty: async () => ({
+            earnedWei: '999',
+            claimedWei: '111',
+            unclaimedWei: '888'
+          })
+        })
+      )
+      expect(fetchSpy).not.toHaveBeenCalled()
+      // Royalty data still flows through.
+      expect(data.royalty.earnedWei).toBe('999')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })

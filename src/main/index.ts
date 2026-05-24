@@ -18,12 +18,17 @@ import { registerPublishHandlers } from './ipc/publishHandlers'
 import { registerDashboardHandlers } from './ipc/dashboardHandlers'
 import { registerRoyaltyHandlers } from './ipc/royaltyHandlers'
 import { registerAgentRegistrationHandlers } from './ipc/agentRegistrationHandlers'
-import { getDefaultRoyaltyConfig } from './services/royaltyClaim'
+import {
+  getDefaultRoyaltyConfig,
+  readRoyaltyInfo,
+  PLOT_TOKEN_BASE_MAINNET
+} from './services/royaltyClaim'
 import { getDefaultAgentRegistrationConfig } from './services/agentRegistration'
 import { destroyAllSessions } from './services/terminalSession'
 import { createWalletSigner } from './services/walletSigning'
 import { createOWSConfig, createOWSFromCore, OWS_UNAVAILABLE_MESSAGE } from './services/owsAdapter'
 import { getDefaultPublishConfig, createPlotlinkUploadClient } from './services/plotlinkPublish'
+import { readErc20Balance, USDC_BASE_MAINNET } from './services/erc20Balance'
 import { resolveOwsVaultConfig } from './services/owsRuntimeConfig'
 import { resolveProjectFilePath } from './services/fsService'
 import { keccak256, toBytes } from 'viem'
@@ -149,6 +154,14 @@ app.whenReady().then(async () => {
       resolveProjectFilePath(projectId, 'plots', plotSlug)
   })
 
+  // #249: derive the Dashboard royalty config from the publish config so
+  // we read PLOT royalties from the same MCV2 bond + PLOT token plotlink-ows
+  // hits. The previous wiring called `${plotlinkBaseUrl}/api/royalty/<addr>`
+  // — that PlotLink endpoint does not exist, and #248 / #249 explicitly
+  // forbid introducing one. Dashboard royalty now reads directly from
+  // Base RPC via `readRoyaltyInfo`.
+  const dashboardRoyaltyConfig = getDefaultRoyaltyConfig()
+
   registerDashboardHandlers({
     getDashboardDeps: () => ({
       getWallet: () => walletState.wallet,
@@ -166,6 +179,22 @@ app.whenReady().then(async () => {
             return balance.toString()
           }
         : undefined,
+      // #249: USDC + PLOT balances via direct RPC. Mirrors plotlink-ows
+      // wallet.ts which hits the same two contracts with `balanceOf`.
+      fetchUsdcBalance: publishConfig.rpcUrl
+        ? (walletAddress: string) =>
+            readErc20Balance(walletAddress, {
+              rpcUrl: publishConfig.rpcUrl,
+              token: USDC_BASE_MAINNET
+            })
+        : undefined,
+      fetchPlotBalance: publishConfig.rpcUrl
+        ? (walletAddress: string) =>
+            readErc20Balance(walletAddress, {
+              rpcUrl: publishConfig.rpcUrl,
+              token: dashboardRoyaltyConfig.plotTokenAddress || PLOT_TOKEN_BASE_MAINNET
+            })
+        : undefined,
       fetchEthPrice: async () => {
         const response = await fetch(
           'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd'
@@ -176,19 +205,33 @@ app.whenReady().then(async () => {
         if (typeof usd !== 'number') throw new Error('Unexpected price response format')
         return usd
       },
+      // #249: best-effort PLOT/USD via the same CoinGecko shape, looked up
+      // by the PLOT token's Base address. Returns 0 on failure (the
+      // dashboard hides the PnL row when this is unavailable) — never
+      // raise: the rest of the Dashboard must always render.
+      fetchPlotPrice: async () => {
+        const tokenAddr = (
+          dashboardRoyaltyConfig.plotTokenAddress || PLOT_TOKEN_BASE_MAINNET
+        ).toLowerCase()
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/simple/token_price/base?contract_addresses=${tokenAddr}&vs_currencies=usd`
+        )
+        if (!response.ok) throw new Error(`PLOT price API returned ${response.status}`)
+        const json = (await response.json()) as Record<string, { usd?: number }>
+        const usd = json[tokenAddr]?.usd
+        if (typeof usd !== 'number') throw new Error('Unexpected PLOT price response format')
+        return usd
+      },
       fetchRoyalty: async (walletAddress: string) => {
-        const baseUrl = publishConfig.plotlinkBaseUrl
-        const response = await fetch(`${baseUrl}/api/royalty/${walletAddress}`)
-        if (!response.ok) throw new Error(`Royalty API returned ${response.status}`)
-        const json = (await response.json()) as {
-          earnedWei: string
-          claimedWei: string
-          unclaimedWei: string
-        }
+        const info = await readRoyaltyInfo(
+          walletAddress,
+          dashboardRoyaltyConfig.plotTokenAddress || PLOT_TOKEN_BASE_MAINNET,
+          { config: dashboardRoyaltyConfig }
+        )
         return {
-          earnedWei: json.earnedWei,
-          claimedWei: json.claimedWei,
-          unclaimedWei: json.unclaimedWei
+          earnedWei: info.earnedWei,
+          claimedWei: info.claimedWei,
+          unclaimedWei: info.unclaimedWei
         }
       }
     })
