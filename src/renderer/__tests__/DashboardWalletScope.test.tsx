@@ -150,21 +150,28 @@ describe('Dashboard wallet scoping (#222)', () => {
         error: null
       })
       .mockResolvedValueOnce({ info: null, error: null })
+    // #251 lifted the activity-feed history fetch into the Dashboard, so
+    // getClaimHistory is called twice on initial mount (once for the
+    // Dashboard activity feed, once for the RoyaltyClaimCard's own
+    // state) and twice again after a wallet switch. Mock A→A→B→B so each
+    // surface sees the right wallet's history.
+    const walletAClaims = {
+      claims: [
+        {
+          txHash: '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+          walletAddress: WALLET_A,
+          reserveToken: '0x0',
+          gasCostWei: '0',
+          status: 'confirmed' as const,
+          error: null,
+          claimedAt: '2026-05-22T00:30:00.000Z'
+        }
+      ]
+    }
     royaltyHistoryMock
-      .mockResolvedValueOnce({
-        claims: [
-          {
-            txHash: '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
-            walletAddress: WALLET_A,
-            reserveToken: '0x0',
-            gasCostWei: '0',
-            status: 'confirmed' as const,
-            error: null,
-            claimedAt: '2026-05-22T00:30:00.000Z'
-          }
-        ]
-      })
-      .mockResolvedValueOnce({ claims: [] })
+      .mockResolvedValueOnce(walletAClaims)
+      .mockResolvedValueOnce(walletAClaims)
+      .mockResolvedValue({ claims: [] })
 
     render(<Dashboard />)
     // Wallet A: claim button visible because unclaimedWei > 0; history row present.

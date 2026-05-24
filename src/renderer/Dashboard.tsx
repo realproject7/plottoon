@@ -80,7 +80,43 @@ function PlotStateBadge({ state }: { state: string }) {
   return <span className={`plot-state plot-state--${state}`}>{state}</span>
 }
 
-function PlotRow({ plot }: { plot: DashboardPlotEntry }) {
+function PlotRow({
+  plot,
+  onRetryIndex
+}: {
+  plot: DashboardPlotEntry
+  onRetryIndex?: (
+    projectId: string,
+    plotSlug: string
+  ) => Promise<{ success: boolean; error?: string }>
+}) {
+  const [retrying, setRetrying] = useState(false)
+  const [retryError, setRetryError] = useState<string | null>(null)
+
+  // #251: surface a Retry index affordance for `published-not-indexed`
+  // plots so the user can rescue an indexed-fail state without leaving
+  // the Dashboard. Uses the existing publish:retryIndex IPC (#129) —
+  // no new IPC introduced. Live + mock both honour the wallet-scoped
+  // ownership check (#223 RE1) inside the handler, so cross-wallet
+  // clicks are rejected before any state mutation.
+  const isNotIndexed = plot.plotState === 'published-not-indexed'
+
+  const handleRetry = async (): Promise<void> => {
+    if (!onRetryIndex || retrying) return
+    setRetryError(null)
+    setRetrying(true)
+    try {
+      const result = await onRetryIndex(plot.projectId, plot.plotSlug)
+      if (!result.success) {
+        setRetryError(result.error ?? 'Retry failed')
+      }
+    } catch (err) {
+      setRetryError(err instanceof Error ? err.message : 'Retry failed')
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   return (
     <div className="plot-row">
       <span className="plot-row__title" title={plot.plotTitle}>
@@ -108,16 +144,40 @@ function PlotRow({ plot }: { plot: DashboardPlotEntry }) {
           View →
         </a>
       )}
+      {isNotIndexed && onRetryIndex && (
+        <button
+          type="button"
+          className="text-btn"
+          onClick={handleRetry}
+          disabled={retrying}
+          data-testid={`retry-index-${plot.projectId}-${plot.plotSlug}`}
+        >
+          {retrying ? 'Retrying…' : 'Retry index'}
+        </button>
+      )}
+      {retryError && (
+        <span
+          className="dash-card__danger"
+          data-testid={`retry-index-error-${plot.projectId}-${plot.plotSlug}`}
+        >
+          {retryError}
+        </span>
+      )}
     </div>
   )
 }
 
 function StorylineCard({
   group,
-  onOpenWorkspace
+  onOpenWorkspace,
+  onRetryIndex
 }: {
   group: DashboardStorylineGroup
   onOpenWorkspace?: (projectId: string) => void
+  onRetryIndex?: (
+    projectId: string,
+    plotSlug: string
+  ) => Promise<{ success: boolean; error?: string }>
 }) {
   return (
     <div className="dash-card dash-card--group" data-testid={`storyline-${group.storylineId}`}>
@@ -151,7 +211,7 @@ function StorylineCard({
         </div>
       </div>
       {group.plots.map((plot) => (
-        <PlotRow key={plot.plotSlug} plot={plot} />
+        <PlotRow key={plot.plotSlug} plot={plot} onRetryIndex={onRetryIndex} />
       ))}
       {onOpenWorkspace && (
         <div className="dash-card__group-actions">
@@ -171,10 +231,15 @@ function StorylineCard({
 
 function LocalGroupCard({
   group,
-  onOpenWorkspace
+  onOpenWorkspace,
+  onRetryIndex
 }: {
   group: DashboardLocalGroup
   onOpenWorkspace?: (projectId: string) => void
+  onRetryIndex?: (
+    projectId: string,
+    plotSlug: string
+  ) => Promise<{ success: boolean; error?: string }>
 }) {
   return (
     <div className="dash-card dash-card--group" data-testid={`local-group-${group.groupKey}`}>
@@ -184,7 +249,7 @@ function LocalGroupCard({
         </div>
       </div>
       {group.plots.map((plot) => (
-        <PlotRow key={plot.plotSlug} plot={plot} />
+        <PlotRow key={plot.plotSlug} plot={plot} onRetryIndex={onRetryIndex} />
       ))}
       {onOpenWorkspace && (
         <div className="dash-card__group-actions">
@@ -614,6 +679,120 @@ function RoyaltyClaimCard({
   )
 }
 
+/**
+ * #251: rolled-up activity entry — drawn from local sources only. A
+ * publish entry comes from `dashboardData` (plot's `publishedAt` +
+ * `publishResult`); a claim entry comes from `royalty:claimHistory`
+ * (already wallet-scoped per #233). No new IPC, no fake records, no
+ * external PlotLink-only data.
+ */
+type ActivityEntry =
+  | {
+      kind: 'publish'
+      iso: string
+      title: string
+      detail: string
+      txHash: string | null
+      plotlinkUrl: string | null
+    }
+  | {
+      kind: 'claim'
+      iso: string
+      title: string
+      detail: string
+      txHash: string | null
+      success: boolean
+    }
+
+function buildActivity(
+  data: DashboardData,
+  claims: RoyaltyClaimRecord[],
+  limit = 8
+): ActivityEntry[] {
+  const entries: ActivityEntry[] = []
+
+  // Active-wallet publishes already in the dashboard payload (storylines +
+  // localGroups are both wallet-scoped at the data layer per #222).
+  const allPlots: DashboardPlotEntry[] = [
+    ...data.storylines.flatMap((s) => s.plots),
+    ...data.localGroups.flatMap((g) => g.plots)
+  ]
+  for (const plot of allPlots) {
+    if (!plot.publishedAt || !plot.publishResult) continue
+    entries.push({
+      kind: 'publish',
+      iso: plot.publishedAt,
+      title: plot.plotTitle,
+      detail: plot.projectName,
+      txHash: plot.publishResult.txHash || null,
+      plotlinkUrl: plot.publishResult.plotlinkUrl || null
+    })
+  }
+
+  // Active-wallet royalty claims from local history (#233 scoping).
+  for (const claim of claims) {
+    entries.push({
+      kind: 'claim',
+      iso: claim.claimedAt,
+      title: claim.status === 'confirmed' ? 'Royalty claimed' : 'Royalty claim failed',
+      detail: claim.error ?? (claim.status === 'confirmed' ? 'Confirmed on chain' : 'Unknown'),
+      txHash: claim.txHash || null,
+      success: claim.status === 'confirmed'
+    })
+  }
+
+  entries.sort((a, b) => (a.iso < b.iso ? 1 : a.iso > b.iso ? -1 : 0))
+  return entries.slice(0, limit)
+}
+
+function ActivityFeed({ entries }: { entries: ActivityEntry[] }): JSX.Element {
+  if (entries.length === 0) {
+    return (
+      <div className="dash-empty" data-testid="activity-empty">
+        No local activity yet. Published plots and royalty claims will appear here.
+      </div>
+    )
+  }
+  return (
+    <div className="dash-activity" data-testid="activity-list">
+      {entries.map((e, i) => (
+        <div
+          key={`${e.kind}-${e.iso}-${i}`}
+          className={`dash-activity__row dash-activity__row--${e.kind}`}
+          data-testid={`activity-${e.kind}-${i}`}
+        >
+          <span className="dash-activity__kind">{e.kind === 'publish' ? '⤴' : '◎'}</span>
+          <span className="dash-activity__when">{formatDate(e.iso)}</span>
+          <span className="dash-activity__body">
+            <span className="dash-activity__title">{e.title}</span>
+            <span className="dash-activity__detail">{e.detail}</span>
+          </span>
+          {e.txHash && (
+            <a
+              href={`https://basescan.org/tx/${e.txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="dash-activity__link"
+            >
+              Tx
+            </a>
+          )}
+          {e.kind === 'publish' && e.plotlinkUrl && (
+            <a
+              href={e.plotlinkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="dash-activity__link dash-activity__link--accent"
+            >
+              View
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 interface DashboardProps {
   /**
    * #250: opens the local project in the workspace view. When omitted (e.g.
@@ -628,6 +807,11 @@ export function Dashboard({ onSelectProject }: DashboardProps = {}) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // #251: lifted activity-feed history fetch — separate from the Royalty
+  // claim card's own state so a click on Claim doesn't have to re-render
+  // the activity feed via prop drilling. Activity refreshes on the next
+  // dashboard load or wallet switch (re-uses the wallet-scoped IPC).
+  const [activityClaims, setActivityClaims] = useState<RoyaltyClaimRecord[]>([])
 
   const load = useCallback(async () => {
     setLoadState('loading')
@@ -636,6 +820,15 @@ export function Dashboard({ onSelectProject }: DashboardProps = {}) {
       const result = await window.plottoon.dashboard.getData()
       setData(result)
       setLoadState('loaded')
+      // #251: refresh wallet-scoped activity claims on the same load tick.
+      // Errors here are intentionally swallowed — activity is a secondary
+      // surface; a fetch failure must not break the rest of the dashboard.
+      try {
+        const history = await window.plottoon.royalty.getClaimHistory()
+        setActivityClaims(history.claims)
+      } catch {
+        setActivityClaims([])
+      }
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to load dashboard data')
       setLoadState('error')
@@ -658,6 +851,15 @@ export function Dashboard({ onSelectProject }: DashboardProps = {}) {
         }
       }
     )
+    // #251: parallel claim-history fetch for the activity feed.
+    window.plottoon.royalty.getClaimHistory().then(
+      (result) => {
+        if (!cancelled) setActivityClaims(result.claims)
+      },
+      () => {
+        if (!cancelled) setActivityClaims([])
+      }
+    )
     return () => {
       cancelled = true
     }
@@ -672,6 +874,22 @@ export function Dashboard({ onSelectProject }: DashboardProps = {}) {
     window.addEventListener(WALLET_ACTIVE_CHANGED_EVENT, onActiveChanged)
     return () => window.removeEventListener(WALLET_ACTIVE_CHANGED_EVENT, onActiveChanged)
   }, [load])
+
+  // #251: bind the existing publish:retryIndex IPC so PlotRow can offer
+  // a Retry-index action on `published-not-indexed` plots. Defined here
+  // (above the conditional early returns) to satisfy the Rules of Hooks.
+  // Refreshes the dashboard data on success so the badge transitions
+  // from "not indexed" to "published" immediately.
+  const handleRetryIndex = useCallback(
+    async (projectId: string, plotSlug: string) => {
+      const result = await window.plottoon.publish.retryIndex({ projectId, plotSlug })
+      if (result.success) {
+        void load()
+      }
+      return result
+    },
+    [load]
+  )
 
   if (loadState === 'loading') {
     return <div className="loading-state">Loading dashboard…</div>
@@ -766,7 +984,12 @@ export function Dashboard({ onSelectProject }: DashboardProps = {}) {
         <section className="screen__section">
           <div className="screen__section-label">Published storylines</div>
           {data.storylines.map((g) => (
-            <StorylineCard key={g.storylineId} group={g} onOpenWorkspace={onSelectProject} />
+            <StorylineCard
+              key={g.storylineId}
+              group={g}
+              onOpenWorkspace={onSelectProject}
+              onRetryIndex={handleRetryIndex}
+            />
           ))}
         </section>
       )}
@@ -778,10 +1001,27 @@ export function Dashboard({ onSelectProject }: DashboardProps = {}) {
             Drafts, ready, failed, and not-indexed plots grouped by local project.
           </p>
           {data.localGroups.map((g) => (
-            <LocalGroupCard key={g.groupKey} group={g} onOpenWorkspace={onSelectProject} />
+            <LocalGroupCard
+              key={g.groupKey}
+              group={g}
+              onOpenWorkspace={onSelectProject}
+              onRetryIndex={handleRetryIndex}
+            />
           ))}
         </section>
       )}
+
+      {/*
+        #251: activity feed surfaces local publishes (from dashboardData)
+        and royalty claims (from royalty:claimHistory, wallet-scoped per
+        #233) in a single time-ordered list. No external PlotLink-only
+        records and no fake entries — empty state when no local activity
+        exists.
+      */}
+      <section className="screen__section" data-testid="activity-section">
+        <div className="screen__section-label">Activity</div>
+        <ActivityFeed entries={buildActivity(data, activityClaims)} />
+      </section>
 
       <div className="screen__meta">Updated {formatDate(data.generatedAt)}</div>
     </div>
