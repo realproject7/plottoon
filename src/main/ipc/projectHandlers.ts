@@ -17,6 +17,7 @@ import { generateReport } from '../services/capabilityReport'
 import type { CapabilityCheck, CheckStatus } from '../services/capabilityReport'
 import { logAction, getLog } from '../services/actionLog'
 import type { WalletIdentityStore } from '../services/walletIdentityStore'
+import type { PublishConfig } from '../services/plotlinkPublish'
 
 const PROJECTS_DIR_KEY = 'projectsDir'
 
@@ -42,7 +43,8 @@ async function probeWriteAccess(dir: string | null): Promise<CapabilityCheck> {
       id: 'write-access',
       label: 'Project write access',
       status: 'fail',
-      detail: 'No projects directory configured'
+      detail:
+        'No projects directory configured. Choose a projects folder via "New Project" on the Projects screen to enable editing and publishing.'
     }
   }
   try {
@@ -74,10 +76,22 @@ export interface RegisterProjectHandlersOptions {
    * store is available.
    */
   walletIdentityStore?: WalletIdentityStore
+  /**
+   * Optional capability-report context. The `capability:getReport` handler
+   * uses these to surface real PlotLink / wallet / signer-mode state on
+   * the Status page instead of the old static placeholders (#253).
+   * Each field is optional so non-production callers (tests, older
+   * wirings) don't have to provide a full publish config.
+   */
+  capabilityContext?: {
+    publishConfig?: PublishConfig | null
+    signerMode?: 'live' | 'mock'
+  }
 }
 
 export function registerProjectHandlers(options: RegisterProjectHandlersOptions = {}): void {
   const walletStore = options.walletIdentityStore
+  const capabilityContext = options.capabilityContext
 
   ipcMain.handle('project:discover', async () => {
     // Resolve the active wallet first so a first-run user with a selected
@@ -214,7 +228,14 @@ export function registerProjectHandlers(options: RegisterProjectHandlersOptions 
   ipcMain.handle('project:detectClis', () => detectClis())
 
   ipcMain.handle('capability:getReport', async () => {
-    const [cliReport, projectDir] = await Promise.all([detectClis(), getProjectsDir()])
+    const [cliReport, projectDir, activeIdentity] = await Promise.all([
+      detectClis(),
+      getProjectsDir(),
+      // Read the active wallet on every report so a switch is picked up
+      // without needing a full app restart. Falls back to null if no
+      // walletStore was wired in (test setups, older bootstraps).
+      walletStore ? walletStore.getActive() : Promise.resolve(null)
+    ])
 
     const cliChecks: CapabilityCheck[] = cliReport.clis.map((cli) => ({
       id: `cli-${cli.command}`,
@@ -225,7 +246,19 @@ export function registerProjectHandlers(options: RegisterProjectHandlersOptions 
 
     const writeAccessCheck = await probeWriteAccess(projectDir)
 
-    return generateReport({ cliChecks, writeAccessCheck })
+    // Project the identity through the renderer-safe view shape (#234).
+    // The OWS internal `owsName` must not cross the IPC boundary.
+    const activeWallet = activeIdentity
+      ? { address: activeIdentity.address, source: activeIdentity.source }
+      : null
+
+    return generateReport({
+      cliChecks,
+      writeAccessCheck,
+      activeWallet,
+      publishConfig: capabilityContext?.publishConfig ?? null,
+      signerMode: capabilityContext?.signerMode ?? 'live'
+    })
   })
 
   ipcMain.handle(
