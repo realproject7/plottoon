@@ -15,8 +15,18 @@ const royaltyAbi = [
       { name: 'account', type: 'address' },
       { name: 'reserveToken', type: 'address' }
     ],
+    // #249: the MCV2 bond contract returns `(unclaimed, totalClaimed)`,
+    // NOT `(earned, claimed)`. plotlink-ows treats the first return value
+    // as the still-claimable amount; earned = unclaimed + totalClaimed.
+    // The old PlotToon convention labelled them `(earned, claimed)` and
+    // computed `unclaimed = earned − claimed`, which under-reports earned
+    // and produces a negative/zero unclaimed once the user has claimed
+    // anything. The ABI output names below are documentation only —
+    // viem decodes by position — but we keep them aligned with the
+    // actual semantics so future readers understand what the contract
+    // returns.
     outputs: [
-      { name: 'earned', type: 'uint256' },
+      { name: 'unclaimed', type: 'uint256' },
       { name: 'claimed', type: 'uint256' }
     ],
     stateMutability: 'view'
@@ -95,8 +105,11 @@ export async function readRoyaltyInfo(
     args: [walletAddress as Hex, reserveToken as Hex]
   })
 
-  const [earned, claimed] = result as [bigint, bigint]
-  const unclaimed = earned - claimed
+  // #249: contract returns `(unclaimed, totalClaimed)`. Total earned over
+  // the lifetime of the wallet is `unclaimed + totalClaimed`. This
+  // matches plotlink-ows (`app/routes/dashboard.ts`).
+  const [unclaimed, claimed] = result as [bigint, bigint]
+  const earned = unclaimed + claimed
 
   return {
     earnedWei: earned.toString(),

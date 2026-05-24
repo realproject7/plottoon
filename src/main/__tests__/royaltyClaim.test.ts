@@ -133,10 +133,13 @@ describe('readRoyaltyInfo targets mcv2BondAddress with PLOT token', () => {
     const walletAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     const plotToken = '0xcccccccccccccccccccccccccccccccccccccccc'
 
-    const earned = BigInt(500000)
+    // #249: contract returns `(unclaimed, totalClaimed)`. With this
+    // encoding the helper should report `earned = unclaimed + claimed`,
+    // not the old `earned = first_value, unclaimed = first_value - second`.
+    const unclaimed = BigInt(500000)
     const claimed = BigInt(100000)
     const encodedResult =
-      '0x' + earned.toString(16).padStart(64, '0') + claimed.toString(16).padStart(64, '0')
+      '0x' + unclaimed.toString(16).padStart(64, '0') + claimed.toString(16).padStart(64, '0')
 
     const capturedBodies: unknown[] = []
     const originalFetch = globalThis.fetch
@@ -175,7 +178,7 @@ describe('readRoyaltyInfo targets mcv2BondAddress with PLOT token', () => {
               { name: 'reserveToken', type: 'address' }
             ],
             outputs: [
-              { name: 'earned', type: 'uint256' },
+              { name: 'unclaimed', type: 'uint256' },
               { name: 'claimed', type: 'uint256' }
             ],
             stateMutability: 'view'
@@ -186,9 +189,10 @@ describe('readRoyaltyInfo targets mcv2BondAddress with PLOT token', () => {
       })
       expect(ethCall.params[0].data).toBe(expectedCalldata)
 
-      expect(info.earnedWei).toBe('500000')
+      // #249: new semantics — earned = unclaimed + claimed = 500000 + 100000.
+      expect(info.unclaimedWei).toBe('500000')
       expect(info.claimedWei).toBe('100000')
-      expect(info.unclaimedWei).toBe('400000')
+      expect(info.earnedWei).toBe('600000')
     } finally {
       globalThis.fetch = originalFetch
     }

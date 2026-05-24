@@ -39,6 +39,8 @@ export interface DashboardCounts {
   pendingPlots: number
   notIndexedPlots: number
   failedPlots: number
+  /** #249: aggregate gas cost across every published plot for the active wallet. */
+  totalPublishCostWei: string
 }
 
 export interface WalletSummary {
@@ -47,10 +49,22 @@ export interface WalletSummary {
   connected: boolean
   balanceWei: string | null
   balanceError: string | null
+  /**
+   * #249: USDC (6 decimals on Base) — raw `uint256` wei string.
+   * `null` when no wallet is connected or the balance lookup is not
+   * wired (mock environment). Renderer formats for display.
+   */
+  usdcBalanceWei: string | null
+  usdcBalanceError: string | null
+  /** #249: PLOT (18 decimals on Base) — raw `uint256` wei string. */
+  plotBalanceWei: string | null
+  plotBalanceError: string | null
 }
 
 export interface TokenPrice {
   ethUsd: number | null
+  /** #249: best-effort PLOT/USD; null when the helper isn't configured. */
+  plotUsd: number | null
   error: string | null
 }
 
@@ -59,6 +73,15 @@ export interface RoyaltySummary {
   claimedWei: string | null
   unclaimedWei: string | null
   error: string | null
+}
+
+export interface PnlSummary {
+  /** Total publish gas across the active wallet's plots, in USD. */
+  totalGasUsd: number | null
+  /** Total royalties earned for the active wallet, in USD. */
+  totalRoyaltyUsd: number | null
+  /** royalty USD − gas USD. `null` when any input is missing. */
+  netUsd: number | null
 }
 
 export interface LocalGroup {
@@ -75,6 +98,7 @@ export interface DashboardData {
   wallet: WalletSummary
   tokenPrice: TokenPrice
   royalty: RoyaltySummary
+  pnl: PnlSummary
   generatedAt: string
 }
 
@@ -89,8 +113,15 @@ export type PriceFetchFn = () => Promise<number>
 export interface DashboardDeps {
   getWallet: () => WalletMetadata | null
   fetchRoyalty?: RoyaltyFetchFn
+  /** Native ETH balance on Base. Already wired prior to #249. */
   fetchBalance?: BalanceFetchFn
+  /** #249: USDC (6 decimals) balance on Base — same shape as ETH. */
+  fetchUsdcBalance?: BalanceFetchFn
+  /** #249: PLOT (18 decimals) balance on Base. */
+  fetchPlotBalance?: BalanceFetchFn
   fetchEthPrice?: PriceFetchFn
+  /** #249: best-effort PLOT/USD price. */
+  fetchPlotPrice?: PriceFetchFn
 }
 
 async function loadPlotEntry(
@@ -213,6 +244,12 @@ function groupByStoryline(entries: PlotDashboardEntry[]): {
   return { storylines, localGroups }
 }
 
+function sumPublishCost(entries: PlotDashboardEntry[]): bigint {
+  let total = BigInt(0)
+  for (const e of entries) total = addPublishCost(total, e.publishResult)
+  return total
+}
+
 function computeCounts(entries: PlotDashboardEntry[], projectCount: number): DashboardCounts {
   let publishedPlots = 0
   let pendingPlots = 0
@@ -244,7 +281,8 @@ function computeCounts(entries: PlotDashboardEntry[], projectCount: number): Das
     publishedPlots,
     pendingPlots,
     notIndexedPlots,
-    failedPlots
+    failedPlots,
+    totalPublishCostWei: sumPublishCost(entries).toString()
   }
 }
 
@@ -305,7 +343,11 @@ export async function buildDashboardData(deps: DashboardDeps): Promise<Dashboard
     source: wallet?.source ?? null,
     connected: wallet !== null,
     balanceWei: null,
-    balanceError: null
+    balanceError: null,
+    usdcBalanceWei: null,
+    usdcBalanceError: null,
+    plotBalanceWei: null,
+    plotBalanceError: null
   }
 
   if (wallet && deps.fetchBalance) {
@@ -315,13 +357,39 @@ export async function buildDashboardData(deps: DashboardDeps): Promise<Dashboard
       walletSummary.balanceError = err instanceof Error ? err.message : 'Failed to fetch balance'
     }
   }
+  if (wallet && deps.fetchUsdcBalance) {
+    try {
+      walletSummary.usdcBalanceWei = await deps.fetchUsdcBalance(wallet.address)
+    } catch (err) {
+      walletSummary.usdcBalanceError =
+        err instanceof Error ? err.message : 'Failed to fetch USDC balance'
+    }
+  }
+  if (wallet && deps.fetchPlotBalance) {
+    try {
+      walletSummary.plotBalanceWei = await deps.fetchPlotBalance(wallet.address)
+    } catch (err) {
+      walletSummary.plotBalanceError =
+        err instanceof Error ? err.message : 'Failed to fetch PLOT balance'
+    }
+  }
 
-  const tokenPrice: TokenPrice = { ethUsd: null, error: null }
+  const tokenPrice: TokenPrice = { ethUsd: null, plotUsd: null, error: null }
   if (deps.fetchEthPrice) {
     try {
       tokenPrice.ethUsd = await deps.fetchEthPrice()
     } catch (err) {
       tokenPrice.error = err instanceof Error ? err.message : 'Failed to fetch price'
+    }
+  }
+  if (deps.fetchPlotPrice) {
+    try {
+      tokenPrice.plotUsd = await deps.fetchPlotPrice()
+    } catch (err) {
+      // Don't overwrite ethUsd error — best-effort surface.
+      if (!tokenPrice.error) {
+        tokenPrice.error = err instanceof Error ? err.message : 'Failed to fetch PLOT price'
+      }
     }
   }
 
@@ -346,6 +414,25 @@ export async function buildDashboardData(deps: DashboardDeps): Promise<Dashboard
     }
   }
 
+  // #249: best-effort PnL summary in USD. Each leg renders only when its
+  // inputs are available; the renderer hides the row when `netUsd` is
+  // null. PLOT is 18 decimals (matches royalty units); ETH is 18 decimals
+  // (gas costs are wei). Match plotlink-ows pattern: zero-on-failure
+  // never raises; the rest of the dashboard always renders.
+  const totalGasUsd =
+    tokenPrice.ethUsd !== null
+      ? weiToTokenAmount(counts.totalPublishCostWei, 18) * tokenPrice.ethUsd
+      : null
+  const totalRoyaltyUsd =
+    tokenPrice.plotUsd !== null && royalty.earnedWei !== null
+      ? weiToTokenAmount(royalty.earnedWei, 18) * tokenPrice.plotUsd
+      : null
+  const pnl: PnlSummary = {
+    totalGasUsd,
+    totalRoyaltyUsd,
+    netUsd: totalGasUsd !== null && totalRoyaltyUsd !== null ? totalRoyaltyUsd - totalGasUsd : null
+  }
+
   return {
     counts,
     storylines,
@@ -353,6 +440,23 @@ export async function buildDashboardData(deps: DashboardDeps): Promise<Dashboard
     wallet: walletSummary,
     tokenPrice,
     royalty,
+    pnl,
     generatedAt: new Date().toISOString()
+  }
+}
+
+/**
+ * Convert a raw uint256 wei string into a human-scale token amount as a
+ * `number`. Precision loss above ~15 digits is acceptable here because
+ * the result feeds USD math, not on-chain calls. The renderer never
+ * displays the result of this conversion directly — it always re-derives
+ * from the wei string.
+ */
+function weiToTokenAmount(wei: string, decimals: number): number {
+  try {
+    const n = BigInt(wei)
+    return Number(n) / Math.pow(10, decimals)
+  } catch {
+    return 0
   }
 }
