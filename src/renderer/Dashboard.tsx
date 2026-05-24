@@ -324,14 +324,28 @@ function WalletBalanceRow({
 function PnlCard({
   pnl,
   tokenPrice,
-  totalGasWei
+  totalGasWei,
+  royalty
 }: {
   pnl: DashboardPnlSummary
   tokenPrice: DashboardTokenPrice
   totalGasWei: string
+  royalty: DashboardRoyaltySummary
 }) {
   // Always render the card so users see WHY a value isn't available (price
   // missing, royalty missing) instead of the row simply disappearing.
+
+  // #250 RE1: surface earned + unclaimed PLOT amounts directly on the P&L
+  // card. The Royalty claim card carries the same numbers + the claim
+  // action; the P&L card is the financial summary surface so it needs the
+  // token-denominated values too, not just the USD aggregate.
+  const earnedPlot = royalty.earnedWei ? formatToken(royalty.earnedWei, 18, 'PLOT') : '—'
+  const unclaimedPlot = royalty.unclaimedWei ? formatToken(royalty.unclaimedWei, 18, 'PLOT') : '—'
+  const unclaimedUsd =
+    royalty.unclaimedWei && tokenPrice.plotUsd !== null
+      ? (Number(BigInt(royalty.unclaimedWei)) / 1e18) * tokenPrice.plotUsd
+      : null
+
   return (
     <div className="dash-card dash-card--pnl" data-testid="dash-pnl-card">
       <div className="dash-card__label">P&L</div>
@@ -344,9 +358,16 @@ function PnlCard({
       </div>
       <div className="dash-pnl__row" data-testid="pnl-royalty-row">
         <span className="dash-pnl__row-label">Royalty (earned)</span>
-        <span className="dash-card__mono">—</span>
+        <span className="dash-card__mono">{earnedPlot}</span>
         <span className="dash-pnl__row-aux">
           {pnl.totalRoyaltyUsd !== null ? formatUsd(pnl.totalRoyaltyUsd) : '—'}
+        </span>
+      </div>
+      <div className="dash-pnl__row" data-testid="pnl-unclaimed-row">
+        <span className="dash-pnl__row-label">Royalty (unclaimed)</span>
+        <span className="dash-card__mono">{unclaimedPlot}</span>
+        <span className="dash-pnl__row-aux">
+          {unclaimedUsd !== null ? formatUsd(unclaimedUsd) : '—'}
         </span>
       </div>
       <div className="dash-pnl__row dash-pnl__row--net" data-testid="pnl-net-row">
@@ -718,6 +739,7 @@ export function Dashboard({ onSelectProject }: DashboardProps = {}) {
           pnl={data.pnl}
           tokenPrice={data.tokenPrice}
           totalGasWei={data.counts.totalPublishCostWei}
+          royalty={data.royalty}
         />
         {/*
          * key={data.wallet.address ?? '-'} forces React to unmount and

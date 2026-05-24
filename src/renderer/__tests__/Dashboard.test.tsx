@@ -310,9 +310,12 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Royalties')).toBeDefined()
       // Royalties are denominated in PLOT (18 decimals); same numeric value
-      // as before but the unit label reads PLOT, not ETH.
-      expect(screen.getByText(/0.5000 PLOT/)).toBeDefined()
-      expect(screen.getByText(/0.4000 PLOT/)).toBeDefined()
+      // as before but the unit label reads PLOT, not ETH. After #250 RE1
+      // the earned + unclaimed values also surface on the P&L card, so
+      // there are now two DOM occurrences each — both surfaces must show
+      // the right number.
+      expect(screen.getAllByText(/0.5000 PLOT/).length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText(/0.4000 PLOT/).length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -850,6 +853,51 @@ describe('#250 P&L card', () => {
       expect(screen.getByTestId('pnl-net-row').textContent).toContain('$1.00')
       expect(screen.getByTestId('pnl-eth-fallback').textContent).toContain('$4,000')
       expect(screen.getByTestId('pnl-plot-fallback').textContent).toContain('$0.5000')
+    })
+  })
+
+  // #250 RE1: the P&L card surface must expose both earned and unclaimed
+  // royalty values directly, not only the USD aggregate. The royalty
+  // claim card carries the same numbers + the claim action; this card is
+  // the financial summary so it needs the PLOT amounts too.
+  it('exposes earned AND unclaimed royalty values on the P&L card when present', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet(),
+      tokenPrice: { ethUsd: null, plotUsd: 0.5, error: null },
+      royalty: {
+        earnedWei: '10000000000000000000', // 10 PLOT earned
+        claimedWei: '4000000000000000000', // 4 PLOT claimed
+        unclaimedWei: '6000000000000000000', // 6 PLOT still claimable
+        error: null
+      },
+      pnl: {
+        totalGasUsd: null,
+        totalRoyaltyUsd: 5, // 10 PLOT × $0.5
+        netUsd: null
+      }
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      // Earned row carries the PLOT amount.
+      const earnedRow = screen.getByTestId('pnl-royalty-row')
+      expect(earnedRow.textContent).toContain('10.0000 PLOT')
+      // New unclaimed row carries the PLOT amount and the USD estimate.
+      const unclaimedRow = screen.getByTestId('pnl-unclaimed-row')
+      expect(unclaimedRow.textContent).toContain('6.0000 PLOT')
+      expect(unclaimedRow.textContent).toContain('$3.00') // 6 × $0.5
+    })
+  })
+
+  it('shows "—" placeholders on earned + unclaimed rows when royalty is absent', async () => {
+    mockGetData.mockResolvedValue({
+      ...emptyDashboard(),
+      wallet: connectedWallet()
+    })
+    render(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByTestId('pnl-royalty-row').textContent).toContain('—')
+      expect(screen.getByTestId('pnl-unclaimed-row').textContent).toContain('—')
     })
   })
 
