@@ -6,6 +6,7 @@ import {
   PLOT_TOKEN_BASE_MAINNET,
   readRoyaltyInfo
 } from '../services/royaltyClaim'
+import { MCV2_BOND_BASE_MAINNET } from '../services/owsRuntimeConfig'
 import { encodeFunctionData } from 'viem'
 
 describe('encodeClaimRoyalties', () => {
@@ -27,7 +28,11 @@ describe('getDefaultRoyaltyConfig', () => {
   it('returns config with MCV2_BOND and PLOT token fields', () => {
     const config = getDefaultRoyaltyConfig()
     expect(config.rpcUrl).toBeTruthy()
-    expect(config.mcv2BondAddress).toBe('')
+    // #262: previously defaulted to '' which failed validation in fresh
+    // installs that didn't set MCV2_BOND_ADDRESS. Now defaults to the
+    // PlotLink Base mainnet constant so live royalty reads work
+    // out-of-the-box, matching the publish-config behavior.
+    expect(config.mcv2BondAddress).toBe(MCV2_BOND_BASE_MAINNET)
     expect(config.plotTokenAddress).toBeTruthy()
   })
 
@@ -42,6 +47,48 @@ describe('getDefaultRoyaltyConfig', () => {
     const config = getDefaultRoyaltyConfig()
     expect('mcv2BondAddress' in config).toBe(true)
     expect('contractAddress' in config).toBe(false)
+  })
+
+  // #262: fresh-install regression. Without an MCV2_BOND_ADDRESS env var
+  // the default config must still pass validateRoyaltyConfig — otherwise
+  // a normal local PlotToon run fails with "MCV2_BOND_ADDRESS is required
+  // for royalty operations" even though publish flows already work.
+  it('default config validates without MCV2_BOND_ADDRESS env var set', () => {
+    const originalEnv = process.env.MCV2_BOND_ADDRESS
+    delete process.env.MCV2_BOND_ADDRESS
+    try {
+      const config = getDefaultRoyaltyConfig()
+      const errors = validateRoyaltyConfig(config)
+      expect(errors).not.toContain('MCV2_BOND_ADDRESS is required for royalty operations')
+      // The PLOT token + RPC URL defaults already populated, so the
+      // entire config should validate cleanly on a fresh install.
+      expect(errors).toEqual([])
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.MCV2_BOND_ADDRESS
+      } else {
+        process.env.MCV2_BOND_ADDRESS = originalEnv
+      }
+    }
+  })
+
+  // #262: env override path stays intact — a non-mainnet / staging deploy
+  // can still point royalty operations at a different bond contract.
+  it('honors MCV2_BOND_ADDRESS env var as an override', () => {
+    const originalEnv = process.env.MCV2_BOND_ADDRESS
+    const override = '0xdead000000000000000000000000000000000042'
+    process.env.MCV2_BOND_ADDRESS = override
+    try {
+      const config = getDefaultRoyaltyConfig()
+      expect(config.mcv2BondAddress).toBe(override)
+      expect(config.mcv2BondAddress).not.toBe(MCV2_BOND_BASE_MAINNET)
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.MCV2_BOND_ADDRESS
+      } else {
+        process.env.MCV2_BOND_ADDRESS = originalEnv
+      }
+    }
   })
 })
 
