@@ -16,6 +16,11 @@ import {
   detectCleanImages,
   registerAgentFile
 } from '../services/cleanImageImport'
+import {
+  syncAgentImagesForPlot,
+  syncAgentImagesForCut,
+  type CutSyncRequest
+} from '../services/agentImageSync'
 
 export function registerFsHandlers(): void {
   ipcMain.handle('fs:openProject', async (event) => {
@@ -91,5 +96,22 @@ export function registerFsHandlers(): void {
     'fs:registerAgentFile',
     (_event, projectId: string, plotSlug: string, cutId: string, filename: string) =>
       registerAgentFile(projectId, plotSlug, cutId, filename)
+  )
+
+  ipcMain.handle(
+    'fs:syncAgentImagesForCut',
+    (
+      _event,
+      projectId: string,
+      plotSlug: string,
+      cutId: string,
+      knownVersions: readonly number[]
+    ) => syncAgentImagesForCut(projectId, plotSlug, { cutId, knownVersions })
+  )
+
+  ipcMain.handle(
+    'fs:syncAgentImagesForPlot',
+    (_event, projectId: string, plotSlug: string, requests: readonly CutSyncRequest[]) =>
+      syncAgentImagesForPlot(projectId, plotSlug, requests)
   )
 }
