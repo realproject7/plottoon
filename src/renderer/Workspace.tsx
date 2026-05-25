@@ -26,6 +26,8 @@ import {
   type AgentImageSyncSnapshot
 } from './agentImageSync'
 import { AgentImageSyncBadge } from './AgentImageSyncBadge'
+import { WorkflowGuide } from './WorkflowGuide'
+import { allCutsApproved, deriveWorkflowState } from './workflowGuide'
 
 interface Props {
   projectId?: string
@@ -52,6 +54,10 @@ export function Workspace({ projectId }: Props): JSX.Element {
   // 5 s interval AND on manual click; this ref keeps us from
   // double-merging if one run is still in flight when the next ticks.
   const syncInFlightRef = useRef(false)
+  // #279: list of plot slugs loaded by CutList — drives the
+  // workflow-guide "no plots yet" branch and lets the Workspace
+  // surface the right empty state above the panel layout.
+  const [plotList, setPlotList] = useState<string[]>([])
   // #278 RE1: cutsOverride state for CutList. Workspace owns this so
   // sync-driven merges can flow into CutList's internal reducer via
   // the `cutsOverride` prop, defeating the SSOT bug where CutList's
@@ -421,13 +427,29 @@ export function Workspace({ projectId }: Props): JSX.Element {
   // The component itself returns null when both lists are empty, so
   // this guard purely handles the user-dismiss case (which we never
   // persist beyond the current Workspace mount).
+  //
+  // #279: derive the workflow-guide state from the live cuts view.
+  // `cutsOverride` is the post-#278 source of truth for the current
+  // cuts array; we default to [] for the first paint before CutList
+  // has loaded from disk. The plotList comes from CutList's
+  // listProjectDir result via `onPlotsLoaded` so we can show the
+  // "no plots yet" branch.
+  const liveCuts = cutsOverride ?? []
+  const workflow = deriveWorkflowState({
+    hasAnyPlot: plotList.length > 0,
+    cuts: liveCuts,
+    activeCut,
+    allCutsApproved: allCutsApproved(liveCuts)
+  })
+
   return (
-    <div className="workspace">
+    <div className="workspace" data-guide-cta={workflow.cta ?? 'none'}>
       {cwd && (
         <div className="workspace__cwd" data-testid="workspace-cwd" title={cwd}>
           cwd: {cwd}
         </div>
       )}
+      <WorkflowGuide state={workflow} />
       {!syncDismissed && (
         <AgentImageSyncBadge
           snapshot={syncSnapshot}
@@ -445,6 +467,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             onSelectCut={handleSelectCut}
             onCutsChanged={handleCutsChanged}
             onPlotChanged={handlePlotChanged}
+            onPlotsLoaded={setPlotList}
             onEnvelopeLoaded={handleEnvelopeLoaded}
             cutsOverride={cutsOverride}
           />

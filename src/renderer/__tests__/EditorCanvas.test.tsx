@@ -43,7 +43,9 @@ describe('EditorCanvas', () => {
       />
     )
     expect(getByTestId('editor-empty')).toBeTruthy()
-    expect(getByTestId('editor-empty').textContent).toContain('Select a cut to edit')
+    // #279: updated empty-state copy points the user at the cut list
+    // and explains where agent-generated images land.
+    expect(getByTestId('editor-empty').textContent).toMatch(/Select a cut from the list/)
   })
 
   it('renders canvas with default dimensions when no canvasOverrides', () => {
@@ -183,7 +185,9 @@ describe('EditorCanvas', () => {
       />
     )
     expect(getByTestId('editor-blank')).toBeTruthy()
-    expect(getByTestId('editor-blank').textContent).toContain('No image')
+    // #279: copy updated from "No image" to "Clean image pending" so
+    // the empty state matches the workflow-guide step name.
+    expect(getByTestId('editor-blank').textContent).toMatch(/Clean image pending/)
     expect(getByTestId('editor-blank').textContent).toContain('320 x 480')
   })
 

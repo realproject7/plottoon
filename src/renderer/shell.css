@@ -716,6 +716,51 @@
   text-overflow: ellipsis;
 }
 
+/*
+ * #279: one-line workflow guide above the panel grid. Dense, no
+ * cards, no marketing tone — just a step label + the next action.
+ * The CTA target lights up the relevant panel via the data-cta
+ * attribute, which the panels mirror onto an outline ring.
+ */
+.workspace__guide {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.workspace__guide-step {
+  font-weight: var(--font-weight-semibold);
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+
+.workspace__guide-hint {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * #279: outline ring on the panel the workflow guide is pointing at.
+ * We highlight via a 1px accent inset border so the ring sits inside
+ * the panel and doesn't shift the layout. The data-cta attribute is
+ * mirrored from the guide via the workspace wrapper below.
+ */
+.workspace[data-guide-cta='agent'] .workspace__terminal,
+.workspace[data-guide-cta='editor'] .workspace__panel--preview,
+.workspace[data-guide-cta='inspector'] .workspace__panel--inspector,
+.workspace[data-guide-cta='export'] .workspace__panel--inspector {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
 .workspace__panels {
   display: flex;
   flex: 1;
@@ -744,6 +789,32 @@
   width: 240px;
   border-left: 1px solid var(--border);
   overflow: auto;
+}
+
+/*
+ * #279: narrow desktop layout. At 1100px and below the inspector
+ * shrinks to 200px so the preview panel still has enough room; below
+ * 900px the cut list compresses too. We avoid stacking entirely —
+ * PlotToon's editor depends on the preview + inspector being visible
+ * together while lettering, and a stacked layout would defeat the
+ * working-surface acceptance criterion.
+ */
+@media (max-width: 1100px) {
+  .workspace__panel--list {
+    width: 180px;
+  }
+  .workspace__panel--inspector {
+    width: 200px;
+  }
+}
+
+@media (max-width: 900px) {
+  .workspace__panel--list {
+    width: 150px;
+  }
+  .workspace__panel--inspector {
+    width: 180px;
+  }
 }
 
 .workspace__terminal {

@@ -135,14 +135,32 @@ export function EditorCanvas({
         data-testid="editor-empty"
         style={{
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           height: '100%',
           color: 'var(--color-text-muted)',
-          fontSize: 13
+          fontSize: 13,
+          padding: 'var(--space-3)',
+          textAlign: 'center'
         }}
       >
-        Select a cut to edit
+        <div>Select a cut from the list to preview and edit it.</div>
+        {/*
+          #279: anchor the empty state in the loop so the user knows
+          this is the preview surface — they don't have to guess where
+          the agent output will land once a cut is selected.
+        */}
+        <div
+          style={{
+            fontSize: 11,
+            color: 'var(--color-text-muted)',
+            marginTop: 'var(--space-2)',
+            opacity: 0.85
+          }}
+        >
+          Agent-generated clean images appear here when a cut is selected.
+        </div>
       </div>
     )
   }
@@ -212,8 +230,17 @@ export function EditorCanvas({
             }}
           >
             <div style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
-              <div style={{ fontSize: 12 }}>No image</div>
-              <div style={{ fontSize: 11, marginTop: 4 }}>
+              {/*
+                #279: clearer message that ties the empty canvas to
+                the agent loop. The previous "No image" was a
+                technical state label; this surfaces the next action
+                without dictating which path (agent vs manual) to take.
+              */}
+              <div style={{ fontSize: 12 }}>Clean image pending</div>
+              <div style={{ fontSize: 10, marginTop: 4, opacity: 0.85 }}>
+                Ask the agent or import one
+              </div>
+              <div style={{ fontSize: 11, marginTop: 6 }}>
                 {width} x {height}
               </div>
             </div>
