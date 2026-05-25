@@ -1,7 +1,9 @@
-import { useEffect, useReducer, useRef, useCallback } from 'react'
+import { useEffect, useReducer, useRef, useCallback, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { readScrollback, writeScrollback, clearScrollback } from './terminalScrollback'
+import { WALLET_ACTIVE_CHANGED_EVENT } from '../shared/walletIdentity'
 
 interface Props {
   projectId: string
@@ -93,11 +95,45 @@ function panelTitle(agentKind: 'claude' | 'codex' | null): string {
 
 export function TerminalPanel({ projectId }: Props): JSX.Element {
   const [state, dispatch] = useReducer(reducer, { phase: 'init' })
+  const [activeWallet, setActiveWallet] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const inputDisposerRef = useRef<{ dispose(): void } | null>(null)
+  // #273: rolling scrollback buffer + debounced persister. We keep the
+  // tail (MAX_SCROLLBACK_BYTES, enforced inside writeScrollback) so a
+  // remount can paint history before the live PTY reattaches.
+  const scrollbackRef = useRef<string>('')
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Tracks which (wallet, project) pair the current scrollback belongs
+  // to so a wallet switch clears the previous wallet's buffer instead
+  // of bleeding it into the next.
+  const scrollbackOwnerRef = useRef<{ wallet: string; project: string } | null>(null)
+
+  // #273: track active wallet so scrollback persistence is wallet-
+  // scoped. Re-resolves on every WALLET_ACTIVE_CHANGED_EVENT so a
+  // wallet switch flips the scrollback key.
+  useEffect(() => {
+    let cancelled = false
+    async function load(): Promise<void> {
+      try {
+        const id = await window.plottoon.wallet.getActiveIdentity()
+        if (!cancelled) setActiveWallet(id?.address ?? null)
+      } catch {
+        if (!cancelled) setActiveWallet(null)
+      }
+    }
+    load()
+    const onChange = (): void => {
+      void load()
+    }
+    window.addEventListener(WALLET_ACTIVE_CHANGED_EVENT, onChange)
+    return () => {
+      cancelled = true
+      window.removeEventListener(WALLET_ACTIVE_CHANGED_EVENT, onChange)
+    }
+  }, [])
 
   // Mount xterm once into the container; tear down on unmount.
   useEffect(() => {
@@ -126,6 +162,15 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     return () => {
       inputDisposerRef.current?.dispose()
       inputDisposerRef.current = null
+      // #273: flush any pending scrollback write so the next mount
+      // (window reopen) restores the latest bytes the user saw, not
+      // a stale snapshot from the previous debounce tick.
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current)
+        persistTimerRef.current = null
+        const owner = scrollbackOwnerRef.current
+        if (owner) void writeScrollback(owner.wallet, owner.project, scrollbackRef.current)
+      }
       term.dispose()
       terminalRef.current = null
       fitRef.current = null
@@ -204,22 +249,71 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     }
   }, [projectId])
 
-  // Wire IPC → xterm buffer.
+  // Wire IPC → xterm buffer (+ #273 scrollback capture).
   useEffect(() => {
     const offData = window.plottoon.terminal.onData((sid, data) => {
       if (sid !== sessionIdRef.current) return
       terminalRef.current?.write(data)
+      // Append to in-memory scrollback and schedule a debounced
+      // persist. The store enforces the byte cap, so we just keep
+      // appending here and let the writer tail-trim.
+      scrollbackRef.current += data
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
+      persistTimerRef.current = setTimeout(() => {
+        const owner = scrollbackOwnerRef.current
+        if (owner) void writeScrollback(owner.wallet, owner.project, scrollbackRef.current)
+      }, 400)
     })
     const offExit = window.plottoon.terminal.onExit((sid, code) => {
       if (sid !== sessionIdRef.current) return
       dispatch({ type: 'exited', code })
-      terminalRef.current?.writeln(`\r\n[process exited with code ${code ?? '?'}]`)
+      const note = `\r\n[process exited with code ${code ?? '?'}]`
+      terminalRef.current?.writeln(note)
+      scrollbackRef.current += note + '\n'
     })
     return () => {
       offData()
       offExit()
     }
   }, [])
+
+  // #273: restore persisted scrollback on (wallet, project) change.
+  // Also flushes the previous owner's buffer to disk before swapping,
+  // and clears xterm so the next wallet's history doesn't leak.
+  useEffect(() => {
+    if (!activeWallet) {
+      // Wallet unset: clear visible buffer + in-memory tail, but do
+      // NOT touch persisted scrollback — the wallet may come back.
+      scrollbackOwnerRef.current = null
+      scrollbackRef.current = ''
+      terminalRef.current?.clear()
+      return
+    }
+    let cancelled = false
+    const owner = { wallet: activeWallet, project: projectId }
+    async function restore(): Promise<void> {
+      // Flush any in-flight write before swapping owners.
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current)
+        persistTimerRef.current = null
+      }
+      scrollbackRef.current = ''
+      scrollbackOwnerRef.current = owner
+      const restored = await readScrollback(owner.wallet, owner.project)
+      if (cancelled || scrollbackOwnerRef.current !== owner) return
+      const term = terminalRef.current
+      if (!term) return
+      term.clear()
+      if (restored) {
+        term.write(restored)
+        scrollbackRef.current = restored
+      }
+    }
+    void restore()
+    return () => {
+      cancelled = true
+    }
+  }, [activeWallet, projectId])
 
   // Connect xterm input → IPC write while connected.
   useEffect(() => {
@@ -259,6 +353,11 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     const term = terminalRef.current
     const dims = term ? { cols: term.cols, rows: term.rows } : undefined
     term?.clear()
+    // #273: restart wipes the agent session, so the persisted
+    // scrollback for the old session is no longer relevant.
+    scrollbackRef.current = ''
+    const owner = scrollbackOwnerRef.current
+    if (owner) void clearScrollback(owner.wallet, owner.project)
     const ok = await window.plottoon.terminal.restart(sid, dims)
     if (ok) {
       dispatch({

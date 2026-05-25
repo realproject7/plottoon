@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import FDBFactory from 'fake-indexeddb/lib/FDBFactory'
 import { TerminalPanel } from '../TerminalPanel'
+import { writeScrollback } from '../terminalScrollback'
 
 interface MockSession {
   id: string
@@ -18,6 +20,8 @@ function installApi(opts: {
   createReturn?: MockSession
   connectOk?: boolean
   onConnect?: (sessionId: string, dims?: { cols?: number; rows?: number }) => void | Promise<void>
+  activeWalletAddress?: string | null
+  onData?: (handler: (sid: string, data: string) => void) => () => void
 }): {
   findByProject: ReturnType<typeof vi.fn>
   create: ReturnType<typeof vi.fn>
@@ -29,7 +33,9 @@ function installApi(opts: {
     await opts.onConnect?.(sid, dims)
     return opts.connectOk ?? true
   })
-  ;(window as unknown as { plottoon: { terminal: Record<string, unknown> } }).plottoon = {
+  ;(
+    window as unknown as { plottoon: { terminal: Record<string, unknown>; wallet?: unknown } }
+  ).plottoon = {
     terminal: {
       create,
       getSession: vi.fn(),
@@ -40,8 +46,15 @@ function installApi(opts: {
       disconnect: vi.fn().mockResolvedValue(true),
       restart: vi.fn().mockResolvedValue(true),
       destroy: vi.fn(),
-      onData: vi.fn(() => () => {}),
+      onData: opts.onData ? vi.fn(opts.onData) : vi.fn(() => () => {}),
       onExit: vi.fn(() => () => {})
+    },
+    wallet: {
+      getActiveIdentity: vi.fn(async () =>
+        opts.activeWalletAddress
+          ? { address: opts.activeWalletAddress, source: 'plottoon-writer' }
+          : null
+      )
     }
   }
   return { findByProject, create, connect }
@@ -49,6 +62,8 @@ function installApi(opts: {
 
 beforeEach(() => {
   ;(window as unknown as { plottoon: unknown }).plottoon = {}
+  // #273: fresh IDB per test so scrollback content can't bleed across.
+  ;(globalThis as { indexedDB: IDBFactory }).indexedDB = new FDBFactory() as unknown as IDBFactory
 })
 
 afterEach(cleanup)
@@ -190,5 +205,92 @@ describe('#272 RE1 TerminalPanel — no-agent UX (production path when no CLI de
       expect(screen.getByTestId('agent-terminal-restart')).toBeDefined()
     })
     expect(screen.queryByTestId('agent-terminal-no-agent')).toBeNull()
+  })
+})
+
+describe('#273 TerminalPanel — scrollback restore (uses fake content only)', () => {
+  const WALLET_A = '0xaaaa000000000000000000000000000000000001'
+  const WALLET_B = '0xbbbb000000000000000000000000000000000002'
+
+  it('restores persisted scrollback for (wallet, project) on mount', async () => {
+    // Seed the renderer's IDB with fake content for (wallet A,
+    // proj_restore). Simulates a previous session leaving its
+    // scrollback on disk.
+    await writeScrollback(WALLET_A, 'proj_restore', 'fake-scrollback-from-prior-session\r\n')
+    const session: MockSession = {
+      id: 'term_restore',
+      projectId: 'proj_restore',
+      cwd: '/tmp/fake-project',
+      state: 'connected',
+      createdAt: '2026-05-25T00:00:00.000Z',
+      exitCode: null,
+      agentKind: 'claude'
+    }
+    installApi({
+      initial: session,
+      activeWalletAddress: WALLET_A
+    })
+    const { container } = render(<TerminalPanel projectId="proj_restore" />)
+    // xterm renders the prior content into the xterm viewport — assert
+    // it lands in the DOM. jsdom's xterm rendering is text-only so the
+    // distinctive marker appears as plain text.
+    await waitFor(() => {
+      expect(container.textContent ?? '').toContain('fake-scrollback-from-prior-session')
+    })
+  })
+
+  it('does NOT show wallet A’s scrollback when wallet B is active', async () => {
+    // Seed wallet A's scrollback for the project.
+    await writeScrollback(
+      WALLET_A,
+      'proj_shared',
+      'WALLET_A_PRIVATE_FAKE_SCROLLBACK_SHOULD_NOT_LEAK'
+    )
+    const session: MockSession = {
+      id: 'term_shared',
+      projectId: 'proj_shared',
+      cwd: '/tmp/fake-project',
+      state: 'connected',
+      createdAt: '2026-05-25T00:00:00.000Z',
+      exitCode: null,
+      agentKind: 'claude'
+    }
+    installApi({
+      initial: session,
+      // Wallet B is active — wallet A's scrollback must not leak.
+      activeWalletAddress: WALLET_B
+    })
+    const { container } = render(<TerminalPanel projectId="proj_shared" />)
+    // Wait for the panel title to render so we know the restore effect
+    // has had a chance to run.
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-terminal-title').textContent).toBe('Claude session')
+    })
+    // Give the restore effect a tick to settle.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(container.textContent ?? '').not.toContain('WALLET_A_PRIVATE_FAKE_SCROLLBACK')
+  })
+
+  it('renders an empty terminal when no scrollback was persisted for (wallet, project)', async () => {
+    const session: MockSession = {
+      id: 'term_empty',
+      projectId: 'proj_empty',
+      cwd: '/tmp/fake-project',
+      state: 'connected',
+      createdAt: '2026-05-25T00:00:00.000Z',
+      exitCode: null,
+      agentKind: 'claude'
+    }
+    installApi({
+      initial: session,
+      activeWalletAddress: WALLET_A
+    })
+    const { container } = render(<TerminalPanel projectId="proj_empty" />)
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-terminal-title').textContent).toBe('Claude session')
+    })
+    // Sanity: no stray fake content from any prior test.
+    expect(container.textContent ?? '').not.toContain('fake-scrollback-from-prior-session')
+    expect(container.textContent ?? '').not.toContain('WALLET_A_PRIVATE_FAKE_SCROLLBACK')
   })
 })
