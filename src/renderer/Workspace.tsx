@@ -132,19 +132,51 @@ export function Workspace({ projectId }: Props): JSX.Element {
     [projectId]
   )
 
-  const handleCutsChanged = useCallback(
-    (cuts: Cut[]) => {
-      cutsRef.current = cuts
-      // #278 RE1: keep the override mirror current so a later sync
-      // merge can be computed off the latest user mutations instead of
-      // the original load. We don't push this back into CutList (it
-      // already has the latest in its own reducer) — we only set it so
-      // sync-side reads via `cutsRef` stay aligned with what we'd hand
-      // to `<CutList cutsOverride={...}>` on the next sync.
-      setCutsOverride(cuts)
-      saveCuts(cuts)
+  /**
+   * #279 RE1: single mutation funnel. Every path that produces a new
+   * cuts array MUST go through here so the four sources of truth stay
+   * aligned:
+   *   1. `cutsRef.current`         — sync reads + later mutations
+   *   2. `cutsOverride` state      — CutList prop (#278) + WorkflowGuide
+   *   3. `activeCut` state         — preview/inspector view
+   *   4. `cuts.json` on disk       — persistence (also triggers plot-text.md regen)
+   * Pre-RE1 most handlers updated 1/3/4 but skipped 2, so the
+   * workflow guide saw stale state — e.g. approving the last cut
+   * still showed "move to the next cut" instead of "ready to export".
+   *
+   * `commitCuts` does the four updates in one place. Caller-specific
+   * side effects (selection changes, last-revision tracking) stay in
+   * the caller; only the cuts-state plumbing is centralised here.
+   */
+  /**
+   * #279 RE1: activeCut is tracked via setActiveCut(prev => ...) so
+   * we always read the LATEST state inside the commit, not whatever
+   * was captured when commitCuts last ran via useCallback. This
+   * prevents a stale closure from skipping the activeCut refresh
+   * when a mutation arrives between renders.
+   */
+  const commitCuts = useCallback(
+    (next: Cut[]) => {
+      cutsRef.current = next
+      setCutsOverride(next)
+      saveCuts(next)
+      setActiveCut((prev) => {
+        if (!prev) return prev
+        // Find the updated cut, or null if it was deleted.
+        return next.find((c) => c.id === prev.id) ?? null
+      })
     },
     [saveCuts]
+  )
+
+  const handleCutsChanged = useCallback(
+    (cuts: Cut[]) => {
+      // #278 RE1 + #279 RE1: route through commitCuts so the override
+      // mirror, the active-cut state, and disk all stay aligned with
+      // the cuts array CutList just produced.
+      commitCuts(cuts)
+    },
+    [commitCuts]
   )
 
   const handlePlotChanged = useCallback((plot: string | null) => {
@@ -163,15 +195,9 @@ export function Workspace({ projectId }: Props): JSX.Element {
 
   const handleStatusChange = useCallback(
     (cutId: string, status: CutStatus) => {
-      const next = setStatus(cutsRef.current, cutId, status)
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) {
-        setActiveCut(updated)
-      }
+      commitCuts(setStatus(cutsRef.current, cutId, status))
     },
-    [saveCuts, activeCut]
+    [commitCuts]
   )
 
   const handleImportCleanImage = useCallback(
@@ -206,14 +232,9 @@ export function Workspace({ projectId }: Props): JSX.Element {
           }
         }
       })
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) {
-        setActiveCut(updated)
-      }
+      commitCuts(next)
     },
-    [projectId, saveCuts, activeCut]
+    [projectId, commitCuts]
   )
 
   const handleSetCurrentRevision = useCallback(
@@ -235,14 +256,9 @@ export function Workspace({ projectId }: Props): JSX.Element {
             }
           : c
       )
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) {
-        setActiveCut(updated)
-      }
+      commitCuts(next)
     },
-    [saveCuts, activeCut]
+    [commitCuts]
   )
 
   // #278: agent image sync — main scans the asset folders, returns new
@@ -264,19 +280,12 @@ export function Workspace({ projectId }: Props): JSX.Element {
       }
       if (result.adopted.length > 0) {
         const merged = mergeAdoptedRevisions(cutsRef.current, result.adopted)
-        cutsRef.current = merged
-        // #278 RE1: push the merged array into CutList via the
-        // override prop BEFORE we persist + before we touch activeCut.
-        // The new array reference triggers CutList's update-cuts
-        // dispatch, so its internal state.cuts matches disk. Without
-        // this, the next CutList mutation would write its stale view
-        // back over the synced revisions.
-        setCutsOverride(merged)
-        saveCuts(merged)
-        if (activeCut) {
-          const updated = merged.find((c) => c.id === activeCut.id)
-          if (updated) setActiveCut(updated)
-        }
+        // #278 RE1 + #279 RE1: routing the merged array through
+        // commitCuts (instead of touching cutsRef/setCutsOverride/
+        // saveCuts/setActiveCut by hand) keeps the four sources of
+        // truth aligned and gives the workflow guide the post-merge
+        // view immediately.
+        commitCuts(merged)
       }
       setSyncSnapshot({
         adopted: result.adopted,
@@ -288,7 +297,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
     } finally {
       syncInFlightRef.current = false
     }
-  }, [projectId, saveCuts, activeCut])
+  }, [projectId, commitCuts])
 
   useEffect(() => {
     if (!projectId || !activePlot) return
@@ -309,100 +318,65 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const handleAddOverlay = useCallback(
     (cutId: string, presetName: PresetName) => {
       const overlay = createOverlayFromPreset(presetName, 20, 20)
-      const next = addOverlay(cutsRef.current, cutId, overlay)
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) {
-        setActiveCut(updated)
-      }
+      commitCuts(addOverlay(cutsRef.current, cutId, overlay))
       setSelectedOverlayId(overlay.id)
     },
-    [saveCuts, activeCut]
+    [commitCuts]
   )
 
   const handleDeleteOverlay = useCallback(
     (cutId: string, overlayId: string) => {
-      const next = deleteOverlay(cutsRef.current, cutId, overlayId)
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) {
-        setActiveCut(updated)
-      }
+      commitCuts(deleteOverlay(cutsRef.current, cutId, overlayId))
       if (selectedOverlayId === overlayId) {
         setSelectedOverlayId(null)
       }
     },
-    [saveCuts, activeCut, selectedOverlayId]
+    [commitCuts, selectedOverlayId]
   )
 
   const handleMoveOverlay = useCallback(
     (overlayId: string, x: number, y: number) => {
       if (!activeCut) return
-      const next = moveOverlay(cutsRef.current, activeCut.id, overlayId, x, y)
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === activeCut.id)
-      if (updated) setActiveCut(updated)
+      commitCuts(moveOverlay(cutsRef.current, activeCut.id, overlayId, x, y))
     },
-    [saveCuts, activeCut]
+    [commitCuts, activeCut]
   )
 
   const handleResizeOverlay = useCallback(
     (cutId: string, overlayId: string, width: number, height: number) => {
-      const next = resizeOverlay(cutsRef.current, cutId, overlayId, width, height)
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+      commitCuts(resizeOverlay(cutsRef.current, cutId, overlayId, width, height))
     },
-    [saveCuts, activeCut]
+    [commitCuts]
   )
 
   const handleDuplicateOverlay = useCallback(
     (cutId: string, overlayId: string) => {
       const { cuts: next, newId } = duplicateOverlay(cutsRef.current, cutId, overlayId)
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+      commitCuts(next)
       if (newId) setSelectedOverlayId(newId)
     },
-    [saveCuts, activeCut]
+    [commitCuts]
   )
 
   const handleReorderOverlay = useCallback(
     (cutId: string, overlayId: string, direction: 'up' | 'down') => {
-      const next = reorderOverlay(cutsRef.current, cutId, overlayId, direction)
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+      commitCuts(reorderOverlay(cutsRef.current, cutId, overlayId, direction))
     },
-    [saveCuts, activeCut]
+    [commitCuts]
   )
 
   const handleSetTailAnchor = useCallback(
     (cutId: string, overlayId: string, x: number, y: number) => {
-      const next = setOverlayTailAnchor(cutsRef.current, cutId, overlayId, { x, y })
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+      commitCuts(setOverlayTailAnchor(cutsRef.current, cutId, overlayId, { x, y }))
     },
-    [saveCuts, activeCut]
+    [commitCuts]
   )
 
   const handleRemoveTailAnchor = useCallback(
     (cutId: string, overlayId: string) => {
-      const next = setOverlayTailAnchor(cutsRef.current, cutId, overlayId, undefined)
-      cutsRef.current = next
-      saveCuts(next)
-      const updated = next.find((c) => c.id === cutId)
-      if (updated && activeCut?.id === cutId) setActiveCut(updated)
+      commitCuts(setOverlayTailAnchor(cutsRef.current, cutId, overlayId, undefined))
     },
-    [saveCuts, activeCut]
+    [commitCuts]
   )
 
   if (!projectId) {
