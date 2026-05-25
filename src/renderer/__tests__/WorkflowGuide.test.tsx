@@ -2,7 +2,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { WorkflowGuide } from '../WorkflowGuide'
-import type { WorkflowState } from '../workflowGuide'
+import type { WorkflowState } from '../workflowState'
 
 afterEach(cleanup)
 
