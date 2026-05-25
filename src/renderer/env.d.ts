@@ -63,6 +63,37 @@ interface PlottoonFs {
     cutId: string,
     filename: string
   ): Promise<{ relativePath: string; absolutePath: string; filename: string }>
+  syncAgentImagesForCut(
+    projectId: string,
+    plotSlug: string,
+    cutId: string,
+    knownVersions: readonly number[]
+  ): Promise<AgentImageSyncResult>
+  syncAgentImagesForPlot(
+    projectId: string,
+    plotSlug: string,
+    requests: ReadonlyArray<{ cutId: string; knownVersions: readonly number[] }>
+  ): Promise<AgentImageSyncResult>
+}
+
+interface AgentAdoptedRevision {
+  cutId: string
+  version: number
+  filename: string
+  relativePath: string
+  createdAt: string
+  sizeBytes: number
+}
+
+interface AgentRejectedImage {
+  cutId: string
+  filename: string
+  reason: string
+}
+
+interface AgentImageSyncResult {
+  adopted: AgentAdoptedRevision[]
+  rejected: AgentRejectedImage[]
 }
 
 interface CliStatus {

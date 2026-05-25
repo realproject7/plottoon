@@ -20,6 +20,12 @@ import type { Cut, CutsFileEnvelope } from './CutList'
 import { createOverlayFromPreset } from './overlayPresets'
 import type { PresetName } from './overlayPresets'
 import type { ExportMeta } from './exportMetadata'
+import {
+  buildSyncRequests,
+  mergeAdoptedRevisions,
+  type AgentImageSyncSnapshot
+} from './agentImageSync'
+import { AgentImageSyncBadge } from './AgentImageSyncBadge'
 
 interface Props {
   projectId?: string
@@ -34,6 +40,18 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const activePlotRef = useRef<string | null>(null)
   const cutsRef = useRef<Cut[]>([])
   const envelopeRef = useRef<CutsFileEnvelope | null>(null)
+  // #278: last sync snapshot — drives the status badge. `dismissed`
+  // hides the badge until the next sync produces a new result; the
+  // sync hook (`triggerSync`) sets it back to `false` when it runs.
+  const [syncSnapshot, setSyncSnapshot] = useState<AgentImageSyncSnapshot>({
+    adopted: [],
+    rejected: []
+  })
+  const [syncDismissed, setSyncDismissed] = useState(true)
+  // Guards against overlapping syncs. The renderer fires sync on a
+  // 5 s interval AND on manual click; this ref keeps us from
+  // double-merging if one run is still in flight when the next ticks.
+  const syncInFlightRef = useRef(false)
 
   useEffect(() => {
     if (!projectId) return
@@ -202,6 +220,60 @@ export function Workspace({ projectId }: Props): JSX.Element {
     [saveCuts, activeCut]
   )
 
+  // #278: agent image sync — main scans the asset folders, returns new
+  // revisions, we merge them into cuts.json and surface the result.
+  const triggerSync = useCallback(async () => {
+    if (!projectId || !activePlotRef.current) return
+    if (syncInFlightRef.current) return
+    syncInFlightRef.current = true
+    try {
+      const requests = buildSyncRequests(cutsRef.current)
+      const result = await window.plottoon.fs.syncAgentImagesForPlot(
+        projectId,
+        activePlotRef.current,
+        requests
+      )
+      if (result.adopted.length === 0 && result.rejected.length === 0) {
+        // Nothing to report. Don't churn the badge.
+        return
+      }
+      if (result.adopted.length > 0) {
+        const merged = mergeAdoptedRevisions(cutsRef.current, result.adopted)
+        cutsRef.current = merged
+        saveCuts(merged)
+        if (activeCut) {
+          const updated = merged.find((c) => c.id === activeCut.id)
+          if (updated) setActiveCut(updated)
+        }
+      }
+      setSyncSnapshot({
+        adopted: result.adopted,
+        rejected: result.rejected
+      })
+      setSyncDismissed(false)
+    } catch {
+      // Best-effort; sync failures must never crash the workspace.
+    } finally {
+      syncInFlightRef.current = false
+    }
+  }, [projectId, saveCuts, activeCut])
+
+  useEffect(() => {
+    if (!projectId || !activePlot) return
+    // Poll every 5 s while a project is open. Polling is the MVP per
+    // the #278 issue: avoids the platform variability of fs.watch and
+    // matches the agent's write cadence (one image every few seconds
+    // at most). The first sync runs immediately so the user doesn't
+    // wait 5 s on open.
+    void triggerSync()
+    const id = setInterval(() => {
+      void triggerSync()
+    }, 5000)
+    return () => clearInterval(id)
+  }, [projectId, activePlot, triggerSync])
+
+  const dismissSyncBadge = useCallback(() => setSyncDismissed(true), [])
+
   const handleAddOverlay = useCallback(
     (cutId: string, presetName: PresetName) => {
       const overlay = createOverlayFromPreset(presetName, 20, 20)
@@ -309,12 +381,25 @@ export function Workspace({ projectId }: Props): JSX.Element {
     )
   }
 
+  // #278: render the badge only when the user hasn't dismissed it.
+  // The component itself returns null when both lists are empty, so
+  // this guard purely handles the user-dismiss case (which we never
+  // persist beyond the current Workspace mount).
   return (
     <div className="workspace">
       {cwd && (
         <div className="workspace__cwd" data-testid="workspace-cwd" title={cwd}>
           cwd: {cwd}
         </div>
+      )}
+      {!syncDismissed && (
+        <AgentImageSyncBadge
+          snapshot={syncSnapshot}
+          onRetry={() => {
+            void triggerSync()
+          }}
+          onDismiss={dismissSyncBadge}
+        />
       )}
       <div className="workspace__panels">
         <div className="workspace__panel workspace__panel--list" data-testid="cut-list-panel">
