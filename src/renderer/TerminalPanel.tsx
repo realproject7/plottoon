@@ -153,7 +153,13 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     return () => ro.disconnect()
   }, [])
 
-  // Create / find the session on mount.
+  // Create / find the session on mount, then auto-start the agent
+  // process if it's not already connected. #272 acceptance: opening a
+  // project auto-starts the selected agent. We deliberately do NOT
+  // auto-connect when `agentKind === null` — that path would spawn the
+  // user's shell, which is not what the user clicked into the agent
+  // panel for. Instead the renderer shows a "No AI agent CLI
+  // available" hint and hides the Connect button (see render below).
   useEffect(() => {
     let cancelled = false
     async function init(): Promise<void> {
@@ -162,15 +168,31 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
         if (!session) {
           session = await window.plottoon.terminal.create(projectId)
         }
-        if (!cancelled) {
-          sessionIdRef.current = session.id
-          dispatch({
-            type: 'session-created',
-            sessionId: session.id,
-            state: session.state,
-            exitCode: session.exitCode,
-            agentKind: session.agentKind
-          })
+        if (cancelled) return
+        sessionIdRef.current = session.id
+        dispatch({
+          type: 'session-created',
+          sessionId: session.id,
+          state: session.state,
+          exitCode: session.exitCode,
+          agentKind: session.agentKind
+        })
+        // Auto-start when:
+        //  - we have an agent runtime (claude/codex), AND
+        //  - the session isn't already running, AND
+        //  - it hasn't crashed (we don't relaunch a crashed agent
+        //    automatically — the user clicks Restart explicitly).
+        if (session.agentKind !== null && session.state === 'disconnected') {
+          const term = terminalRef.current
+          const dims = term ? { cols: term.cols, rows: term.rows } : undefined
+          const ok = await window.plottoon.terminal.connect(session.id, dims)
+          if (!cancelled && ok) {
+            dispatch({
+              type: 'connected',
+              sessionId: session.id,
+              agentKind: session.agentKind
+            })
+          }
         }
       } catch (e) {
         if (!cancelled) dispatch({ type: 'error', message: (e as Error).message })
@@ -268,7 +290,15 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
           {state.phase === 'error' && 'error'}
         </span>
         <div className="terminal-panel__actions">
-          {state.phase === 'ready' && (
+          {/*
+            #272 RE1: when no agent runtime is installed (agentKind ===
+            null) we deliberately hide the Connect / Restart buttons.
+            The panel falls back to spawning the user's shell at the
+            service layer if asked, which is wrong UX for an agent
+            panel. Surfacing the no-agent hint below + hiding the
+            actions prevents the IPC connect path from running at all.
+          */}
+          {state.phase === 'ready' && state.agentKind !== null && (
             <button
               type="button"
               className="terminal-action"
@@ -288,7 +318,7 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
               disconnect
             </button>
           )}
-          {(state.phase === 'ready' || state.phase === 'connected') && (
+          {(state.phase === 'ready' || state.phase === 'connected') && state.agentKind !== null && (
             <button
               type="button"
               className="terminal-action"
@@ -309,6 +339,20 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
 
       {state.phase === 'init' && (
         <div className="terminal-panel__hint">Initializing agent session…</div>
+      )}
+      {/*
+        #272 RE1: explicit no-agent hint. Surfaces both the cause and
+        the remediation so the user doesn't think the panel is broken
+        when neither Claude nor Codex is installed. Hidden by design
+        when agentKind is non-null (legacy null-agent sessions from
+        tests don't render this in production because the IPC path
+        only produces null agentKind when no runtime was detected).
+      */}
+      {(state.phase === 'ready' || state.phase === 'connected') && state.agentKind === null && (
+        <div className="terminal-panel__hint" data-testid="agent-terminal-no-agent">
+          No AI agent CLI available. Install Claude or Codex on your PATH and restart PlotToon to
+          enable this session.
+        </div>
       )}
       {state.phase === 'error' && (
         <div className="terminal-panel__hint terminal-panel__hint--error">
