@@ -86,10 +86,10 @@ describe('#272 connectSession — spawns the configured agent command, not a pla
     expect(calls).toHaveLength(1)
     const call = calls[0]
     expect(call.command).toBe('claude')
-    // Fresh-mode Claude carries `--session-id <uuid>` or no args if
-    // sessionId omitted; today the session-store doesn't yet generate
-    // ids itself (deferred to #273), so the args are [].
-    expect(call.args).toEqual([])
+    // #273: createSession now allocates a UUID for new Claude
+    // sessions and passes it via `--session-id <uuid>`.
+    expect(call.args[0]).toBe('--session-id')
+    expect(call.args[1]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
     expect(call.cwd).toBe(tmpDir)
     expect(call.env.TERM).toBe('xterm-256color')
 

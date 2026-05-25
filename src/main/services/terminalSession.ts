@@ -26,6 +26,16 @@ export interface SessionMeta {
    * The agent kind drives the launch command + the UI label.
    */
   agentKind: AgentKind | null
+  /**
+   * #273: opaque per-session id passed through to the agent runtime
+   * for persistence + resume. For Claude this is a UUID matching the
+   * `--session-id <uuid>` flag from #271 — when a connect mode is
+   * `resume`, the same id flows back via `--resume <uuid>`. For
+   * Codex it's typically '' because the local CLI doesn't expose a
+   * stable session id; we still allocate one so the persistence path
+   * can key by it once Codex grows the capability.
+   */
+  sessionId: string
 }
 
 /**
@@ -206,6 +216,13 @@ export interface CreateSessionInput {
    * wiring resolves this from `detectAgentRuntimes().defaultAgent`.
    */
   agentKind?: AgentKind | null
+  /**
+   * #273: explicit session id to assign to this session (instead of
+   * generating a fresh one). Production callers pass a persisted
+   * Claude UUID so reconnect uses `--resume <uuid>`; tests can pass
+   * any deterministic value.
+   */
+  sessionId?: string
 }
 
 export function createSession(input: CreateSessionInput): SessionMeta
@@ -236,6 +253,13 @@ export function createSession(
   if (existing) return existing
 
   const id = `term_${nextId++}`
+  // #273: allocate a session id at creation time so we can persist
+  // it before connect. Claude consumes it via `--session-id <uuid>`;
+  // for Codex it's reserved for future deterministic-resume support.
+  // Skip generation when the caller provided one (e.g. restoring a
+  // persisted Claude UUID), and skip entirely for legacy null-agent
+  // sessions because there's no agent to bind it to.
+  const sessionId = input.sessionId ?? (input.agentKind ? globalThis.crypto.randomUUID() : '')
   const meta: SessionMeta = {
     id,
     projectId: input.projectId,
@@ -244,7 +268,8 @@ export function createSession(
     state: 'disconnected',
     createdAt: new Date().toISOString(),
     exitCode: null,
-    agentKind: input.agentKind ?? null
+    agentKind: input.agentKind ?? null,
+    sessionId
   }
   sessions.set(id, meta)
   generations.set(id, 0)
@@ -296,6 +321,16 @@ export interface ConnectSessionDeps {
   /** Optional initial PTY dimensions. */
   cols?: number
   rows?: number
+  /**
+   * #273: launch mode. `'fresh'` (default) launches the agent with a
+   * `--session-id` flag (Claude) or `-C <cwd>` (Codex). `'resume'`
+   * launches with `--resume <sessionId>` (Claude) or the picker
+   * (`codex resume` per #271 limitation). The session's `sessionId`
+   * is the value passed through to the launch builder; for resume
+   * the caller MUST have populated it (either at creation time via
+   * `CreateSessionInput.sessionId` or via #273 persistence restore).
+   */
+  mode?: 'fresh' | 'resume'
 }
 
 export async function connectSession(
@@ -315,10 +350,12 @@ export async function connectSession(
   // tests + recovery flows still work.
   let launch: LaunchCommand
   if (meta.agentKind) {
+    const mode = deps.mode ?? 'fresh'
     launch = buildLaunchCommand({
       kind: meta.agentKind,
-      mode: 'fresh',
-      projectRoot: meta.cwd
+      mode,
+      projectRoot: meta.cwd,
+      sessionId: meta.sessionId || undefined
     })
   } else {
     // Legacy: spawn the user's shell. Preserves the pre-#272 behavior
@@ -406,6 +443,38 @@ export async function restartSession(
   if (meta.state === 'connected') killHandle(id)
   sessions.set(id, { ...meta, state: 'disconnected', exitCode: null })
   return connectSession(id, onData, onExit, deps)
+}
+
+/**
+ * #273: restore a previously-persisted session into in-memory state.
+ * Used by IPC handlers on app startup when a persisted record exists
+ * for the (wallet, project) pair. Caller is responsible for reading
+ * the record via `loadPersistedSession(...)`.
+ */
+export function adoptPersistedSession(input: {
+  projectId: string
+  cwd: string
+  walletAddress: string | null
+  agentKind: AgentKind
+  sessionId: string
+  createdAt: string
+}): SessionMeta {
+  const key = normalizeOrNull(input.walletAddress)
+  const id = `term_${nextId++}`
+  const meta: SessionMeta = {
+    id,
+    projectId: input.projectId,
+    walletAddress: key,
+    cwd: input.cwd,
+    state: 'disconnected',
+    createdAt: input.createdAt,
+    exitCode: null,
+    agentKind: input.agentKind,
+    sessionId: input.sessionId
+  }
+  sessions.set(id, meta)
+  generations.set(id, 0)
+  return meta
 }
 
 export function destroySession(id: string): boolean {
