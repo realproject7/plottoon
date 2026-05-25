@@ -95,16 +95,19 @@ interface TerminalSessionMeta {
   state: 'connected' | 'disconnected' | 'exited'
   createdAt: string
   exitCode: number | null
+  /** #272: which agent runtime the PTY launches (claude/codex), or null for legacy shell. */
+  agentKind: 'claude' | 'codex' | null
 }
 
 interface PlottoonTerminal {
   create(projectId: string): Promise<TerminalSessionMeta>
   getSession(sessionId: string): Promise<TerminalSessionMeta | null>
   findByProject(projectId: string): Promise<TerminalSessionMeta | null>
-  connect(sessionId: string): Promise<boolean>
+  connect(sessionId: string, dims?: { cols?: number; rows?: number }): Promise<boolean>
   write(sessionId: string, data: string): Promise<boolean>
+  resize(sessionId: string, cols: number, rows: number): Promise<boolean>
   disconnect(sessionId: string): Promise<boolean>
-  restart(sessionId: string): Promise<boolean>
+  restart(sessionId: string, dims?: { cols?: number; rows?: number }): Promise<boolean>
   destroy(sessionId: string): Promise<boolean>
   onData(callback: (sessionId: string, data: string) => void): () => void
   onExit(callback: (sessionId: string, code: number | null) => void): () => void
