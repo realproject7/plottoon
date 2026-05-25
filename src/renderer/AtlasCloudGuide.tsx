@@ -155,22 +155,24 @@ function WarningBox({ children }: { children: React.ReactNode }): JSX.Element {
  * the key value) and lets the user flip the per-backend toggle.
  */
 function AtlasCloudBridgeCard(): JSX.Element {
-  const [status, setStatus] = useState<AgentEnvBridgeStatus | null>(null)
+  // Defensive: older preloads (or test fixtures that mock a smaller
+  // subset of `window.plottoon`) may not expose the bridge IPC. We
+  // resolve that in the useState initializer rather than inside the
+  // useEffect body so we don't trip the React rule against synchronous
+  // setState in effects.
+  const bridgeApi = window.plottoon?.agentEnvBridge?.getStatus
+    ? window.plottoon.agentEnvBridge
+    : null
+  const [status, setStatus] = useState<AgentEnvBridgeStatus | null>(
+    bridgeApi ? null : { entries: [] }
+  )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!bridgeApi) return
     let cancelled = false
-    // Defensive: older preloads (or test fixtures that mock a smaller
-    // subset of `window.plottoon`) may not expose the bridge IPC.
-    // Skip without erroring — the rest of the guide still renders.
-    if (!window.plottoon?.agentEnvBridge?.getStatus) {
-      setStatus({ entries: [] })
-      return () => {
-        cancelled = true
-      }
-    }
-    window.plottoon.agentEnvBridge
+    bridgeApi
       .getStatus()
       .then((s) => {
         if (!cancelled) setStatus(s)
@@ -182,7 +184,7 @@ function AtlasCloudBridgeCard(): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [bridgeApi])
 
   const atlasEntry = status?.entries.find((e) => e.bridgeKey === 'atlascloud')
 
