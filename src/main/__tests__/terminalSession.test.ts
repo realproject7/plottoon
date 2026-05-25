@@ -13,6 +13,7 @@ import {
   restartSession,
   destroySession,
   clearSessionsForTesting,
+  defaultAgentPtySpawner,
   type PtyHandle
 } from '../services/terminalSession'
 
@@ -341,5 +342,59 @@ describe('#290 connectSession — spawner failure surfaces as a controlled false
     expect(secondOk).toBe(true)
     expect(getSession(session.id)?.state).toBe('connected')
     disconnectSession(session.id)
+  })
+})
+
+/**
+ * #290 RE1: direct coverage of `defaultAgentPtySpawner` going through
+ * the child_process fallback with a command that can't spawn. Without
+ * the new `error` listener on the ChildProcess, Node emits an unhandled
+ * `error` event and the test runner crashes (the EXACT failure mode the
+ * ticket warns about). With the listener:
+ *   - the spawner returns a usable handle (no throw),
+ *   - the caller's onExit handler is invoked with a non-null code,
+ *   - no unhandled error escapes the test.
+ *
+ * Note: on this developer sandbox `node-pty` doesn't compile, so the
+ * spawner already takes the child_process path. CI installs node-pty,
+ * and there the new try/catch in `defaultAgentPtySpawner` (#290) sends
+ * us into the same fallback when the wrapped `pty.spawn(...)` throws,
+ * so this test exercises the same code path either way.
+ */
+describe('#290 RE1 defaultAgentPtySpawner — child_process fallback handles spawn errors', () => {
+  it('a bogus command does NOT throw an unhandled error; onExit fires with a non-null code', async () => {
+    // Path that definitely doesn't exist; spawn returns a ChildProcess
+    // whose `error` event fires synchronously on the next tick with ENOENT.
+    const bogus = '/nonexistent-binary-for-#290-test'
+    const exitCodes: Array<number | null> = []
+    const handle = await defaultAgentPtySpawner({
+      command: bogus,
+      args: [],
+      cwd: tmpDir,
+      env: {}
+    })
+    handle.onExit((evt) => exitCodes.push(evt.exitCode))
+    // Give Node a tick to fire the error event.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(exitCodes.length).toBeGreaterThan(0)
+    // Our error-listener synthesises an exit code of 1 when ENOENT
+    // fires before any natural exit. Some platforms may also emit a
+    // real exit afterwards; either way the first signal arrives.
+    expect(exitCodes[0]).not.toBeNull()
+  })
+
+  it('a bogus command does NOT throw out of defaultAgentPtySpawner (no unhandled error)', async () => {
+    // The spawner itself must resolve to a handle — if it rejected,
+    // connectSession's catch would log a generic error instead of the
+    // specific lifecycle state. We just await the spawner directly to
+    // pin "no throw" as the contract.
+    await expect(
+      defaultAgentPtySpawner({
+        command: '/nonexistent-binary-for-#290-test-2',
+        args: [],
+        cwd: tmpDir,
+        env: {}
+      })
+    ).resolves.toBeDefined()
   })
 })

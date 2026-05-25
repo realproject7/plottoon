@@ -178,6 +178,18 @@ export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<
     stdio: ['pipe', 'pipe', 'pipe'],
     shell: false
   })
+  // #290 RE1: attach an `error` listener BEFORE returning the handle
+  // so a synchronous-tick `error` emission (e.g. ENOENT when the
+  // configured command isn't on PATH) can't bubble up as an unhandled
+  // error and crash the app. We buffer the early errors so we can
+  // replay them through the caller's onExit handler once it's wired,
+  // since Node fires `error` and `exit` at different times depending
+  // on platform — and on missing-command ENOENT, sometimes only
+  // `error` fires.
+  let earlyError: Error | null = null
+  child.on('error', (err) => {
+    if (earlyError === null) earlyError = err
+  })
   const handle: ChildHandle = {
     __kind: 'child',
     process: child,
@@ -186,7 +198,20 @@ export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<
       child.stderr?.on('data', (chunk: Buffer) => handler(chunk.toString('utf-8')))
     },
     onExit: (handler) => {
+      // If an error already fired before the caller hooked onExit
+      // (ENOENT is typically delivered on the next tick after spawn),
+      // replay it as exit-code-1 so the lifecycle path proceeds.
+      if (earlyError !== null) {
+        queueMicrotask(() => handler({ exitCode: 1 }))
+        return
+      }
       child.on('exit', (code) => handler({ exitCode: code }))
+      child.on('error', () => {
+        // Late error after a successful spawn — synthesise an exit so
+        // the caller still gets a signal even if Node skips the
+        // `exit` emission on this platform.
+        handler({ exitCode: 1 })
+      })
     },
     write: (data) => {
       if (child.stdin?.writable) child.stdin.write(data)
@@ -196,6 +221,7 @@ export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<
     },
     kill: () => {
       child.removeAllListeners('exit')
+      child.removeAllListeners('error')
       child.stdout?.removeAllListeners('data')
       child.stderr?.removeAllListeners('data')
       child.kill()
