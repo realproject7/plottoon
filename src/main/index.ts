@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerFsHandlers } from './ipc/fsHandlers'
 import { registerProjectHandlers } from './ipc/projectHandlers'
+import { registerAgentEnvBridgeHandlers } from './ipc/agentEnvBridgeHandlers'
 import { registerTerminalHandlers } from './ipc/terminalHandlers'
 import { registerSigningHandlers } from './ipc/signingHandlers'
 import {
@@ -117,6 +118,11 @@ app.whenReady().then(async () => {
   // the real PlotLink config + signer mode on the Status / Capability
   // Report page (#253).
   const publishConfig = getDefaultPublishConfig()
+
+  // #276: agent env bridge — opt-in per-backend toggle for forwarding
+  // image-backend API keys (e.g. ATLASCLOUD_API_KEY) into spawned
+  // agent processes. Renderer surface is non-secret status only.
+  registerAgentEnvBridgeHandlers()
 
   // Project handlers depend on the wallet identity store so `project:discover`
   // can partition by active wallet and `project:create` can stamp ownership

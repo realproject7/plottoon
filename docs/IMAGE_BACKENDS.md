@@ -32,6 +32,7 @@ In v1:
 - PlotToon validates generated output files.
 - PlotToon does not store provider API keys.
 - PlotToon does not manage provider billing.
+- **Env bridge (#276)**: PlotToon's default agent env sanitizer denies all `_API_KEY`-shaped variables. Users can opt in to forward `ATLASCLOUD_API_KEY` from their shell into the agent process via the per-key toggle on the **AtlasCloud Backend Guide** screen. Only the on/off choice is persisted; the key value never crosses any renderer-facing IPC, action log, or project file.
 
 ## Metadata
 

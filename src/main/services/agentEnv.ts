@@ -48,9 +48,22 @@ function isDenied(key: string): boolean {
   return DENIED_PATTERNS.some((pattern) => pattern.test(key))
 }
 
+export interface BuildAgentEnvOptions {
+  /**
+   * #276: opt-in env keys that bypass the default deny list. The
+   * caller (typically the env-bridge service) constructs this map
+   * from a persisted per-backend toggle + the host env. Values are
+   * NOT inspected here — the bridge module is the only path that
+   * decides which keys are eligible (`BRIDGEABLE_ENV_KEYS`). Anything
+   * else still goes through the standard ALLOWED / denied filter.
+   */
+  bridgedEnv?: Record<string, string>
+}
+
 export function buildAgentEnv(
   hostEnv: Record<string, string | undefined> = process.env,
-  overrides: Record<string, string> = {}
+  overrides: Record<string, string> = {},
+  options: BuildAgentEnvOptions = {}
 ): Record<string, string> {
   const env: Record<string, string> = {}
 
@@ -64,6 +77,17 @@ export function buildAgentEnv(
   for (const [key, value] of Object.entries(overrides)) {
     if (!isDenied(key) && value !== undefined) {
       env[key] = value
+    }
+  }
+
+  // #276: bridged keys land last so an explicit opt-in user override
+  // wins over the default deny. The bridge module already validated
+  // that these keys are eligible + present; we trust its output here.
+  if (options.bridgedEnv) {
+    for (const [key, value] of Object.entries(options.bridgedEnv)) {
+      if (typeof value === 'string' && value.length > 0) {
+        env[key] = value
+      }
     }
   }
 

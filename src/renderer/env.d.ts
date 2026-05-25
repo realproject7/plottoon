@@ -133,6 +133,27 @@ interface PlottoonCapability {
   getReport(): Promise<FirstRunReport>
 }
 
+/** #276: opt-in env bridge for agent-managed image backends. */
+interface AgentEnvBridgeConfig {
+  atlascloud: boolean
+}
+
+interface AgentEnvBridgeStatusEntry {
+  envName: string
+  bridgeKey: keyof AgentEnvBridgeConfig
+  enabled: boolean
+  configured: boolean
+}
+
+interface AgentEnvBridgeStatus {
+  entries: AgentEnvBridgeStatusEntry[]
+}
+
+interface PlottoonAgentEnvBridge {
+  getStatus(): Promise<AgentEnvBridgeStatus>
+  setConfig(next: Partial<AgentEnvBridgeConfig>): Promise<AgentEnvBridgeStatus>
+}
+
 interface ActionEntry {
   timestamp: string
   action: string
@@ -423,6 +444,7 @@ interface Window {
     royalty: PlottoonRoyalty
     project: PlottoonProject
     capability: PlottoonCapability
+    agentEnvBridge: PlottoonAgentEnvBridge
     actionLog: PlottoonActionLog
   }
 }

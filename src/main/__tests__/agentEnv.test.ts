@@ -87,6 +87,44 @@ describe('buildAgentEnv', () => {
     const env = buildAgentEnv({ ...fakeHost, RANDOM_THING: 'leak' })
     expect(env.RANDOM_THING).toBeUndefined()
   })
+
+  // #276: an explicit bridge map (constructed by the bridge service) is
+  // allowed to bypass the deny list — that's the whole point of the
+  // opt-in. The agentEnv module trusts its bridge input; gating is the
+  // bridge module's job.
+  it('#276 bridgedEnv keys land in the output even when the key matches a deny pattern', () => {
+    const env = buildAgentEnv(
+      fakeHost,
+      {},
+      { bridgedEnv: { ATLASCLOUD_API_KEY: 'fake-test-atlas-key' } }
+    )
+    expect(env.ATLASCLOUD_API_KEY).toBe('fake-test-atlas-key')
+  })
+
+  it('#276 unrelated deny-pattern keys are still blocked when bridge does not include them', () => {
+    // Bridge only carries ATLASCLOUD — ANTHROPIC_API_KEY is still
+    // denied from the host env. Pins that the bridge is per-key, not a
+    // global escape hatch.
+    const env = buildAgentEnv(
+      fakeHost,
+      {},
+      { bridgedEnv: { ATLASCLOUD_API_KEY: 'fake-test-atlas-key' } }
+    )
+    expect(env.ATLASCLOUD_API_KEY).toBe('fake-test-atlas-key')
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined()
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+    expect(env.WALLET_SEED).toBeUndefined()
+  })
+
+  it('#276 empty-string bridge values do not land', () => {
+    const env = buildAgentEnv(fakeHost, {}, { bridgedEnv: { ATLASCLOUD_API_KEY: '' } })
+    expect(env.ATLASCLOUD_API_KEY).toBeUndefined()
+  })
+
+  it('#276 omitting bridgedEnv preserves the default deny behavior', () => {
+    const env = buildAgentEnv(fakeHost)
+    expect(env.ATLASCLOUD_API_KEY).toBeUndefined()
+  })
 })
 
 describe('isDenied', () => {
