@@ -126,6 +126,17 @@ interface CutListProps {
   onPlotChanged?: (plot: string | null) => void
   onPlotsLoaded?: (plots: string[]) => void
   onEnvelopeLoaded?: (envelope: CutsFileEnvelope) => void
+  /**
+   * #278 RE1: external override for the cuts array. When the parent
+   * (Workspace) mutates cuts outside CutList — e.g. agent-image sync
+   * merges new revisions in — it passes the new array here. CutList
+   * dispatches `update-cuts` (NOT `cuts-loaded`) so the user's
+   * selection + plot-load envelope are preserved. The pre-RE1 bug
+   * was that CutList kept its own stale state.cuts after a sync, and
+   * subsequent mutations saved the stale array back over the synced
+   * revisions.
+   */
+  cutsOverride?: Cut[]
 }
 
 export type { Cut, CutsData, CutsFileEnvelope, Overlay, CanvasOverrides, TailAnchor }
@@ -137,7 +148,8 @@ export function CutList({
   onCutsChanged,
   onPlotChanged,
   onPlotsLoaded,
-  onEnvelopeLoaded
+  onEnvelopeLoaded,
+  cutsOverride
 }: CutListProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, {
     phase: 'loading',
@@ -227,6 +239,17 @@ export function CutList({
       cancelled = true
     }
   }, [projectId, state.activePlot, onSelectCut, onCutsChanged, onEnvelopeLoaded])
+
+  // #278 RE1: when the parent passes a new cuts array (e.g. after
+  // agent-image sync merged in new revisions), push it into our
+  // reducer via `update-cuts`. That preserves activeCutId — unlike
+  // `cuts-loaded`, which resets the selection to the first cut. We
+  // intentionally compare by reference: the parent allocates a fresh
+  // array every time it merges, so identity-equal arrays are no-ops.
+  useEffect(() => {
+    if (!cutsOverride) return
+    dispatch({ type: 'update-cuts', cuts: cutsOverride })
+  }, [cutsOverride])
 
   const mutateCuts = useCallback(
     (next: Cut[]) => {

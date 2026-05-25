@@ -52,6 +52,14 @@ export function Workspace({ projectId }: Props): JSX.Element {
   // 5 s interval AND on manual click; this ref keeps us from
   // double-merging if one run is still in flight when the next ticks.
   const syncInFlightRef = useRef(false)
+  // #278 RE1: cutsOverride state for CutList. Workspace owns this so
+  // sync-driven merges can flow into CutList's internal reducer via
+  // the `cutsOverride` prop, defeating the SSOT bug where CutList's
+  // stale state could overwrite synced revisions on the next mutation.
+  // CutList's own mutations still flow back through onCutsChanged ->
+  // handleCutsChanged, and that path updates this state too so the
+  // override always reflects the latest merged view.
+  const [cutsOverride, setCutsOverride] = useState<Cut[] | undefined>(undefined)
 
   useEffect(() => {
     if (!projectId) return
@@ -121,6 +129,13 @@ export function Workspace({ projectId }: Props): JSX.Element {
   const handleCutsChanged = useCallback(
     (cuts: Cut[]) => {
       cutsRef.current = cuts
+      // #278 RE1: keep the override mirror current so a later sync
+      // merge can be computed off the latest user mutations instead of
+      // the original load. We don't push this back into CutList (it
+      // already has the latest in its own reducer) — we only set it so
+      // sync-side reads via `cutsRef` stay aligned with what we'd hand
+      // to `<CutList cutsOverride={...}>` on the next sync.
+      setCutsOverride(cuts)
       saveCuts(cuts)
     },
     [saveCuts]
@@ -130,6 +145,10 @@ export function Workspace({ projectId }: Props): JSX.Element {
     activePlotRef.current = plot
     setActivePlot(plot)
     envelopeRef.current = null
+    // #278 RE1: clear the cuts override on plot switch — the new plot
+    // loads its own cuts from disk via CutList's loader, and we don't
+    // want a stale override from the previous plot bleeding into it.
+    setCutsOverride(undefined)
   }, [])
 
   const handleEnvelopeLoaded = useCallback((envelope: CutsFileEnvelope) => {
@@ -240,6 +259,13 @@ export function Workspace({ projectId }: Props): JSX.Element {
       if (result.adopted.length > 0) {
         const merged = mergeAdoptedRevisions(cutsRef.current, result.adopted)
         cutsRef.current = merged
+        // #278 RE1: push the merged array into CutList via the
+        // override prop BEFORE we persist + before we touch activeCut.
+        // The new array reference triggers CutList's update-cuts
+        // dispatch, so its internal state.cuts matches disk. Without
+        // this, the next CutList mutation would write its stale view
+        // back over the synced revisions.
+        setCutsOverride(merged)
         saveCuts(merged)
         if (activeCut) {
           const updated = merged.find((c) => c.id === activeCut.id)
@@ -410,6 +436,7 @@ export function Workspace({ projectId }: Props): JSX.Element {
             onCutsChanged={handleCutsChanged}
             onPlotChanged={handlePlotChanged}
             onEnvelopeLoaded={handleEnvelopeLoaded}
+            cutsOverride={cutsOverride}
           />
         </div>
 
