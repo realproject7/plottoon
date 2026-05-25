@@ -9,19 +9,31 @@ interface Props {
   projectId: string
 }
 
+type AgentKind = 'claude' | 'codex' | null
+type ExitState = 'exited' | 'resume-failed' | 'disconnected'
+
+/**
+ * #274: explicit session-lifecycle phases. `detached` is renderer-only:
+ * the PTY in main is still running, but the panel has stopped piping
+ * user input and shows a "Reattach" prompt. `resume-failed` is set when
+ * the main process classifies a quick exit during a resume launch (see
+ * `RESUME_QUICK_EXIT_MS` in terminalSession.ts) — the UX offers a
+ * fresh launch as the recovery path.
+ */
 type State =
   | { phase: 'init' }
   | {
       phase: 'ready'
       sessionId: string
-      state: 'disconnected' | 'exited'
+      state: 'disconnected' | 'exited' | 'resume-failed'
       exitCode: number | null
-      agentKind: 'claude' | 'codex' | null
+      agentKind: AgentKind
     }
   | {
       phase: 'connected'
       sessionId: string
-      agentKind: 'claude' | 'codex' | null
+      agentKind: AgentKind
+      detached: boolean
     }
   | { phase: 'error'; message: string }
 
@@ -29,13 +41,15 @@ type Action =
   | {
       type: 'session-created'
       sessionId: string
-      state: 'connected' | 'disconnected' | 'exited'
+      state: 'connected' | 'disconnected' | 'exited' | 'resume-failed'
       exitCode: number | null
-      agentKind: 'claude' | 'codex' | null
+      agentKind: AgentKind
     }
-  | { type: 'connected'; sessionId: string; agentKind: 'claude' | 'codex' | null }
-  | { type: 'exited'; code: number | null }
+  | { type: 'connected'; sessionId: string; agentKind: AgentKind }
+  | { type: 'exited'; code: number | null; exitState: ExitState }
   | { type: 'disconnected' }
+  | { type: 'detach' }
+  | { type: 'reattach' }
   | { type: 'error'; message: string }
 
 function reducer(state: State, action: Action): State {
@@ -45,13 +59,14 @@ function reducer(state: State, action: Action): State {
         return {
           phase: 'connected',
           sessionId: action.sessionId,
-          agentKind: action.agentKind
+          agentKind: action.agentKind,
+          detached: false
         }
       }
       return {
         phase: 'ready',
         sessionId: action.sessionId,
-        state: action.state as 'disconnected' | 'exited',
+        state: action.state as 'disconnected' | 'exited' | 'resume-failed',
         exitCode: action.exitCode,
         agentKind: action.agentKind
       }
@@ -59,17 +74,21 @@ function reducer(state: State, action: Action): State {
       return {
         phase: 'connected',
         sessionId: action.sessionId,
-        agentKind: action.agentKind
+        agentKind: action.agentKind,
+        detached: false
       }
-    case 'exited':
+    case 'exited': {
       if (state.phase !== 'connected') return state
+      const nextState: 'exited' | 'resume-failed' =
+        action.exitState === 'resume-failed' ? 'resume-failed' : 'exited'
       return {
         phase: 'ready',
         sessionId: state.sessionId,
-        state: 'exited',
+        state: nextState,
         exitCode: action.code,
         agentKind: state.agentKind
       }
+    }
     case 'disconnected':
       if (state.phase !== 'connected' && state.phase !== 'ready') return state
       return {
@@ -79,41 +98,83 @@ function reducer(state: State, action: Action): State {
         exitCode: null,
         agentKind: state.agentKind
       }
+    case 'detach':
+      if (state.phase !== 'connected') return state
+      return { ...state, detached: true }
+    case 'reattach':
+      if (state.phase !== 'connected') return state
+      return { ...state, detached: false }
     case 'error':
       return { phase: 'error', message: action.message }
   }
 }
 
-function panelTitle(agentKind: 'claude' | 'codex' | null): string {
-  if (agentKind === 'claude') return 'Claude session'
-  if (agentKind === 'codex') return 'Codex session'
-  // #272: legacy fallback when no agent CLI is installed — surfaces
-  // as "Agent session" rather than "Terminal" so the user still
-  // understands this is the agent panel.
-  return 'Agent session'
+function agentLabel(agentKind: AgentKind): string {
+  if (agentKind === 'claude') return 'Claude'
+  if (agentKind === 'codex') return 'Codex'
+  return 'No agent'
+}
+
+/**
+ * #274: human-readable lifecycle phrase shown next to the agent badge.
+ * Covers every renderer state the reducer can produce so the user
+ * always knows where they stand without inspecting xterm output.
+ */
+function phaseLabel(state: State): string {
+  switch (state.phase) {
+    case 'init':
+      return 'initializing…'
+    case 'connected':
+      return state.detached ? 'running (detached)' : 'running'
+    case 'ready':
+      if (state.state === 'disconnected') return 'stopped'
+      if (state.state === 'exited') return `exited (${state.exitCode ?? '?'})`
+      return 'resume failed'
+    case 'error':
+      return 'error'
+  }
+}
+
+/**
+ * #274: status-dot colour. Mirrors plotlink-ows's tab indicator pattern
+ * so users moving between the two apps can read state at a glance.
+ */
+function statusDotClass(state: State): string {
+  switch (state.phase) {
+    case 'connected':
+      return state.detached
+        ? 'terminal-panel__dot terminal-panel__dot--detached'
+        : 'terminal-panel__dot terminal-panel__dot--running'
+    case 'ready':
+      if (state.state === 'resume-failed') return 'terminal-panel__dot terminal-panel__dot--failed'
+      if (state.state === 'exited') return 'terminal-panel__dot terminal-panel__dot--exited'
+      return 'terminal-panel__dot terminal-panel__dot--stopped'
+    case 'error':
+      return 'terminal-panel__dot terminal-panel__dot--failed'
+    case 'init':
+    default:
+      return 'terminal-panel__dot terminal-panel__dot--init'
+  }
 }
 
 export function TerminalPanel({ projectId }: Props): JSX.Element {
   const [state, dispatch] = useReducer(reducer, { phase: 'init' })
   const [activeWallet, setActiveWallet] = useState<string | null>(null)
+  // #274: inline destroy confirmation. We key it on the current phase
+  // so a phase transition (e.g. PTY exit, restart) auto-clears the
+  // confirm without needing an effect that calls setState in response
+  // to phase changes. Derived value below.
+  const [confirmPhase, setConfirmPhase] = useState<State['phase'] | null>(null)
+  const confirmDestroy = confirmPhase === state.phase
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const inputDisposerRef = useRef<{ dispose(): void } | null>(null)
-  // #273: rolling scrollback buffer + debounced persister. We keep the
-  // tail (MAX_SCROLLBACK_BYTES, enforced inside writeScrollback) so a
-  // remount can paint history before the live PTY reattaches.
   const scrollbackRef = useRef<string>('')
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Tracks which (wallet, project) pair the current scrollback belongs
-  // to so a wallet switch clears the previous wallet's buffer instead
-  // of bleeding it into the next.
   const scrollbackOwnerRef = useRef<{ wallet: string; project: string } | null>(null)
 
-  // #273: track active wallet so scrollback persistence is wallet-
-  // scoped. Re-resolves on every WALLET_ACTIVE_CHANGED_EVENT so a
-  // wallet switch flips the scrollback key.
   useEffect(() => {
     let cancelled = false
     async function load(): Promise<void> {
@@ -135,7 +196,6 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     }
   }, [])
 
-  // Mount xterm once into the container; tear down on unmount.
   useEffect(() => {
     if (!containerRef.current) return
     const term = new Terminal({
@@ -155,16 +215,13 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     try {
       fit.fit()
     } catch {
-      // Container may not be sized yet; resize observer below handles it.
+      // Container may not be sized yet; ResizeObserver below handles it.
     }
     terminalRef.current = term
     fitRef.current = fit
     return () => {
       inputDisposerRef.current?.dispose()
       inputDisposerRef.current = null
-      // #273: flush any pending scrollback write so the next mount
-      // (window reopen) restores the latest bytes the user saw, not
-      // a stale snapshot from the previous debounce tick.
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current)
         persistTimerRef.current = null
@@ -177,8 +234,6 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     }
   }, [])
 
-  // Resize observer: fit xterm to container size + propagate the new
-  // (cols, rows) to the PTY so child processes see correct WINSIZE.
   useEffect(() => {
     if (!containerRef.current) return
     const ro = new ResizeObserver(() => {
@@ -198,13 +253,6 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     return () => ro.disconnect()
   }, [])
 
-  // Create / find the session on mount, then auto-start the agent
-  // process if it's not already connected. #272 acceptance: opening a
-  // project auto-starts the selected agent. We deliberately do NOT
-  // auto-connect when `agentKind === null` — that path would spawn the
-  // user's shell, which is not what the user clicked into the agent
-  // panel for. Instead the renderer shows a "No AI agent CLI
-  // available" hint and hides the Connect button (see render below).
   useEffect(() => {
     let cancelled = false
     async function init(): Promise<void> {
@@ -222,11 +270,12 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
           exitCode: session.exitCode,
           agentKind: session.agentKind
         })
-        // Auto-start when:
-        //  - we have an agent runtime (claude/codex), AND
-        //  - the session isn't already running, AND
-        //  - it hasn't crashed (we don't relaunch a crashed agent
-        //    automatically — the user clicks Restart explicitly).
+        // #274: auto-start preserves #272 behaviour — we connect a
+        // disconnected session with a known agent. The IPC picks
+        // mode='auto', which #273 resolves to 'resume' when a prior
+        // connection exists, else 'fresh'. We deliberately do NOT
+        // auto-relaunch resume-failed or exited sessions; the user
+        // sees the recovery prompt and clicks Start Fresh.
         if (session.agentKind !== null && session.state === 'disconnected') {
           const term = terminalRef.current
           const dims = term ? { cols: term.cols, rows: term.rows } : undefined
@@ -249,14 +298,10 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     }
   }, [projectId])
 
-  // Wire IPC → xterm buffer (+ #273 scrollback capture).
   useEffect(() => {
     const offData = window.plottoon.terminal.onData((sid, data) => {
       if (sid !== sessionIdRef.current) return
       terminalRef.current?.write(data)
-      // Append to in-memory scrollback and schedule a debounced
-      // persist. The store enforces the byte cap, so we just keep
-      // appending here and let the writer tail-trim.
       scrollbackRef.current += data
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
       persistTimerRef.current = setTimeout(() => {
@@ -264,10 +309,13 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
         if (owner) void writeScrollback(owner.wallet, owner.project, scrollbackRef.current)
       }, 400)
     })
-    const offExit = window.plottoon.terminal.onExit((sid, code) => {
+    const offExit = window.plottoon.terminal.onExit((sid, code, exitState) => {
       if (sid !== sessionIdRef.current) return
-      dispatch({ type: 'exited', code })
-      const note = `\r\n[process exited with code ${code ?? '?'}]`
+      dispatch({ type: 'exited', code, exitState })
+      const note =
+        exitState === 'resume-failed'
+          ? `\r\n[resume failed — agent exited with code ${code ?? '?'}]`
+          : `\r\n[process exited with code ${code ?? '?'}]`
       terminalRef.current?.writeln(note)
       scrollbackRef.current += note + '\n'
     })
@@ -277,33 +325,18 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     }
   }, [])
 
-  // #273: restore persisted scrollback on (wallet, project) change.
-  // Also flushes the previous owner's buffer to disk before swapping,
-  // and clears xterm so the next wallet's history doesn't leak.
-  //
-  // #273 RE1: the flush MUST happen before we reset
-  // scrollbackRef/scrollbackOwnerRef, otherwise any output received
-  // within the 400 ms debounce window prior to the wallet switch is
-  // dropped. We capture the previous owner+buffer, kick off the write
-  // for that pair, and only then swap to the new owner.
   useEffect(() => {
     const previousOwner = scrollbackOwnerRef.current
     const previousBuffer = scrollbackRef.current
-    // Cancel any pending debounce — we're about to write directly.
     if (persistTimerRef.current) {
       clearTimeout(persistTimerRef.current)
       persistTimerRef.current = null
     }
-    // Flush the previous owner's buffer before touching anything else.
-    // Best-effort: if the IDB write fails the user just loses recent
-    // history, never the new wallet's content.
     if (previousOwner && previousBuffer.length > 0) {
       void writeScrollback(previousOwner.wallet, previousOwner.project, previousBuffer)
     }
 
     if (!activeWallet) {
-      // Wallet unset: clear visible buffer + in-memory tail, but do
-      // NOT touch persisted scrollback — the wallet may come back.
       scrollbackOwnerRef.current = null
       scrollbackRef.current = ''
       terminalRef.current?.clear()
@@ -330,11 +363,14 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     }
   }, [activeWallet, projectId])
 
-  // Connect xterm input → IPC write while connected.
+  // #274: only pipe xterm input → IPC when connected AND attached.
+  // Detached panels keep showing PTY output but ignore typed input so
+  // the user can't accidentally feed the agent commands they didn't
+  // intend to send.
   useEffect(() => {
     inputDisposerRef.current?.dispose()
     inputDisposerRef.current = null
-    if (state.phase !== 'connected') return
+    if (state.phase !== 'connected' || state.detached) return
     const term = terminalRef.current
     if (!term) return
     const dispose = term.onData((data) => {
@@ -346,100 +382,223 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     }
   }, [state])
 
-  const handleConnect = useCallback(async () => {
+  /**
+   * #274: explicit Resume — sends `mode: 'resume'` so the main process
+   * launches Claude with `--resume <sessionId>` (or Codex's picker).
+   * If the agent rejects the resume, the IPC exit event arrives with
+   * `state: 'resume-failed'` and the reducer surfaces the fallback.
+   */
+  const handleResume = useCallback(async () => {
     if (state.phase !== 'ready') return
     const term = terminalRef.current
     const dims = term ? { cols: term.cols, rows: term.rows } : undefined
-    const ok = await window.plottoon.terminal.connect(state.sessionId, dims)
+    const ok = await window.plottoon.terminal.connect(state.sessionId, dims, { mode: 'resume' })
     if (ok) {
       dispatch({ type: 'connected', sessionId: state.sessionId, agentKind: state.agentKind })
     }
   }, [state])
 
-  const handleDisconnect = useCallback(async () => {
-    if (state.phase !== 'connected') return
-    await window.plottoon.terminal.disconnect(state.sessionId)
-    dispatch({ type: 'disconnected' })
-  }, [state])
-
-  const handleRestart = useCallback(async () => {
+  const handleStartFresh = useCallback(async () => {
     if (state.phase !== 'ready' && state.phase !== 'connected') return
     const sid = state.sessionId
     const term = terminalRef.current
     const dims = term ? { cols: term.cols, rows: term.rows } : undefined
     term?.clear()
-    // #273: restart wipes the agent session, so the persisted
-    // scrollback for the old session is no longer relevant.
     scrollbackRef.current = ''
     const owner = scrollbackOwnerRef.current
     if (owner) void clearScrollback(owner.wallet, owner.project)
-    const ok = await window.plottoon.terminal.restart(sid, dims)
+    // #274: explicit user choice — bypass the auto-resume heuristic.
+    // We use restart when the session is currently connected
+    // (kill + relaunch) so the user gets a clean slate; we use connect
+    // with mode='fresh' otherwise to avoid an unnecessary kill.
+    const ok =
+      state.phase === 'connected'
+        ? await window.plottoon.terminal.restart(sid, dims)
+        : await window.plottoon.terminal.connect(sid, dims, { mode: 'fresh' })
     if (ok) {
-      dispatch({
-        type: 'connected',
-        sessionId: sid,
-        agentKind: state.agentKind
-      })
+      dispatch({ type: 'connected', sessionId: sid, agentKind: state.agentKind })
     }
   }, [state])
 
-  const title =
-    state.phase === 'connected' || state.phase === 'ready'
-      ? panelTitle(state.agentKind)
-      : 'Agent session'
+  /**
+   * #274: detach is renderer-only — the IPC layer is untouched, so the
+   * PTY keeps running. We stop piping user input (the input-effect
+   * disposer runs because `detached` flipped) and surface a Reattach
+   * prompt. xterm continues rendering PTY output so the user sees
+   * what's happening while detached.
+   */
+  const handleDetach = useCallback(() => {
+    if (state.phase !== 'connected') return
+    dispatch({ type: 'detach' })
+  }, [state])
+
+  const handleReattach = useCallback(() => {
+    if (state.phase !== 'connected') return
+    dispatch({ type: 'reattach' })
+  }, [state])
+
+  /**
+   * #274: stop = kill the PTY, keep the session meta. The agent's
+   * persisted record (#273) survives so a later Resume can try again.
+   */
+  const handleStop = useCallback(async () => {
+    if (state.phase !== 'connected') return
+    await window.plottoon.terminal.disconnect(state.sessionId)
+    dispatch({ type: 'disconnected' })
+  }, [state])
+
+  /**
+   * #274: destroy = kill the PTY + drop the session meta. Used when
+   * the user wants to abandon the current agent state entirely (e.g.
+   * after a resume-failed they no longer want to recover from). Inline
+   * confirm so a misclick on the toolbar can't nuke session state.
+   */
+  const handleDestroy = useCallback(async () => {
+    if (state.phase === 'init') return
+    if (state.phase === 'error') return
+    if (!confirmDestroy) {
+      setConfirmPhase(state.phase)
+      return
+    }
+    const sid = state.phase === 'ready' || state.phase === 'connected' ? state.sessionId : null
+    if (!sid) return
+    const owner = scrollbackOwnerRef.current
+    if (owner) void clearScrollback(owner.wallet, owner.project)
+    terminalRef.current?.clear()
+    scrollbackRef.current = ''
+    await window.plottoon.terminal.destroy(sid)
+    // The session is gone in main; surface an explicit notice so the
+    // user knows to reload the panel.
+    dispatch({ type: 'error', message: 'Session destroyed. Reload the panel to start a new one.' })
+    setConfirmPhase(null)
+  }, [state, confirmDestroy])
+
+  const sessionStateLabel = phaseLabel(state)
+  const dotClass = statusDotClass(state)
+  const agentName =
+    state.phase === 'connected' || state.phase === 'ready' ? agentLabel(state.agentKind) : 'Agent'
+
+  // #274 helpers for the recovery section under the toolbar — we keep
+  // the markup grouped here rather than inline to keep the toolbar
+  // visually tight.
+  const showResumeFailedRecovery = state.phase === 'ready' && state.state === 'resume-failed'
+  const showExitedRecovery = state.phase === 'ready' && state.state === 'exited'
+  const showStoppedRecovery = state.phase === 'ready' && state.state === 'disconnected'
 
   return (
     <div className="terminal-panel" data-testid="agent-terminal-panel">
       <div className="terminal-panel__toolbar">
+        <span
+          className={dotClass}
+          data-testid="agent-terminal-status-dot"
+          data-state={
+            state.phase === 'connected'
+              ? state.detached
+                ? 'detached'
+                : 'running'
+              : state.phase === 'ready'
+                ? state.state
+                : state.phase
+          }
+          aria-hidden="true"
+        />
         <span className="terminal-panel__title" data-testid="agent-terminal-title">
-          {title}
+          {agentName} session
         </span>
-        <span className="terminal-panel__status">
-          {state.phase === 'connected' && 'connected'}
-          {state.phase === 'ready' && state.state === 'disconnected' && 'disconnected'}
-          {state.phase === 'ready' &&
-            state.state === 'exited' &&
-            `exited (${state.exitCode ?? '?'})`}
-          {state.phase === 'init' && 'initializing…'}
-          {state.phase === 'error' && 'error'}
+        <span className="terminal-panel__status" data-testid="agent-terminal-status">
+          {sessionStateLabel}
         </span>
         <div className="terminal-panel__actions">
           {/*
-            #272 RE1: when no agent runtime is installed (agentKind ===
-            null) we deliberately hide the Connect / Restart buttons.
-            The panel falls back to spawning the user's shell at the
-            service layer if asked, which is wrong UX for an agent
-            panel. Surfacing the no-agent hint below + hiding the
-            actions prevents the IPC connect path from running at all.
+            #274: a single toolbar that swaps actions per phase rather
+            than scattering buttons across multiple banners.
+            - connected + attached: Detach / Stop / Destroy
+            - connected + detached: Reattach / Stop / Destroy
+            - ready/disconnected: Resume / Start Fresh / Destroy
+            - ready/exited:        Start Fresh / Destroy
+            - ready/resume-failed: Start Fresh (highlighted) / Destroy
+            Connect/Restart from the pre-#274 UX are subsumed by
+            Resume / Start Fresh / Reattach respectively.
           */}
-          {state.phase === 'ready' && state.agentKind !== null && (
+          {state.phase === 'connected' && !state.detached && (
             <button
               type="button"
               className="terminal-action"
-              onClick={handleConnect}
-              data-testid="agent-terminal-connect"
+              onClick={handleDetach}
+              data-testid="agent-terminal-detach"
             >
-              connect
+              detach
+            </button>
+          )}
+          {state.phase === 'connected' && state.detached && (
+            <button
+              type="button"
+              className="terminal-action"
+              onClick={handleReattach}
+              data-testid="agent-terminal-reattach"
+            >
+              reattach
             </button>
           )}
           {state.phase === 'connected' && (
             <button
               type="button"
               className="terminal-action"
-              onClick={handleDisconnect}
-              data-testid="agent-terminal-disconnect"
+              onClick={handleStop}
+              data-testid="agent-terminal-stop"
             >
-              disconnect
+              stop
             </button>
           )}
-          {(state.phase === 'ready' || state.phase === 'connected') && state.agentKind !== null && (
+          {state.phase === 'connected' && state.agentKind !== null && (
             <button
               type="button"
               className="terminal-action"
-              onClick={handleRestart}
-              data-testid="agent-terminal-restart"
+              onClick={handleStartFresh}
+              data-testid="agent-terminal-start-fresh"
             >
-              restart
+              start fresh
+            </button>
+          )}
+          {showStoppedRecovery && state.agentKind !== null && (
+            <>
+              <button
+                type="button"
+                className="terminal-action"
+                onClick={handleResume}
+                data-testid="agent-terminal-resume"
+              >
+                resume
+              </button>
+              <button
+                type="button"
+                className="terminal-action"
+                onClick={handleStartFresh}
+                data-testid="agent-terminal-start-fresh"
+              >
+                start fresh
+              </button>
+            </>
+          )}
+          {(showExitedRecovery || showResumeFailedRecovery) && state.agentKind !== null && (
+            <button
+              type="button"
+              className="terminal-action"
+              onClick={handleStartFresh}
+              data-testid="agent-terminal-start-fresh"
+            >
+              start fresh
+            </button>
+          )}
+          {(state.phase === 'ready' || state.phase === 'connected') && (
+            <button
+              type="button"
+              className="terminal-action terminal-action--danger"
+              onClick={handleDestroy}
+              data-testid="agent-terminal-destroy"
+              aria-pressed={confirmDestroy}
+            >
+              {confirmDestroy ? 'confirm destroy' : 'destroy'}
             </button>
           )}
         </div>
@@ -454,18 +613,31 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
       {state.phase === 'init' && (
         <div className="terminal-panel__hint">Initializing agent session…</div>
       )}
-      {/*
-        #272 RE1: explicit no-agent hint. Surfaces both the cause and
-        the remediation so the user doesn't think the panel is broken
-        when neither Claude nor Codex is installed. Hidden by design
-        when agentKind is non-null (legacy null-agent sessions from
-        tests don't render this in production because the IPC path
-        only produces null agentKind when no runtime was detected).
-      */}
       {(state.phase === 'ready' || state.phase === 'connected') && state.agentKind === null && (
         <div className="terminal-panel__hint" data-testid="agent-terminal-no-agent">
           No AI agent CLI available. Install Claude or Codex on your PATH and restart PlotToon to
           enable this session.
+        </div>
+      )}
+      {showResumeFailedRecovery && (
+        <div
+          className="terminal-panel__hint terminal-panel__hint--warn"
+          data-testid="agent-terminal-resume-failed-hint"
+          role="status"
+          aria-live="polite"
+        >
+          The agent rejected the resume (exited quickly with code {state.exitCode ?? '?'}). Try
+          “start fresh” to begin a new session.
+        </div>
+      )}
+      {state.phase === 'connected' && state.detached && (
+        <div
+          className="terminal-panel__hint"
+          data-testid="agent-terminal-detached-hint"
+          role="status"
+          aria-live="polite"
+        >
+          Detached — the agent is still running. Click “reattach” to send input again.
         </div>
       )}
       {state.phase === 'error' && (

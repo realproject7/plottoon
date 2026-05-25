@@ -511,7 +511,8 @@ describe('App', () => {
     render(<App />)
     await waitFor(() => screen.getByRole('button', { name: 'Workspace' }))
     fireEvent.click(screen.getByRole('button', { name: 'Workspace' }))
-    expect(screen.getByText('Open a project to start editing.')).toBeDefined()
+    // #274: copy updated to mention the sidebar + AI-agent context.
+    expect(screen.getByText(/Open a project from the sidebar to start editing/)).toBeDefined()
   })
 
   it('navigates back to projects when clicking Projects nav', async () => {

@@ -123,7 +123,8 @@ interface TerminalSessionMeta {
   id: string
   projectId: string
   cwd: string
-  state: 'connected' | 'disconnected' | 'exited'
+  /** #274: resume-failed = a session launched with mode='resume' that exited within the quick-exit window. */
+  state: 'connected' | 'disconnected' | 'exited' | 'resume-failed'
   createdAt: string
   exitCode: number | null
   /** #272: which agent runtime the PTY launches (claude/codex), or null for legacy shell. */
@@ -134,14 +135,24 @@ interface PlottoonTerminal {
   create(projectId: string): Promise<TerminalSessionMeta>
   getSession(sessionId: string): Promise<TerminalSessionMeta | null>
   findByProject(projectId: string): Promise<TerminalSessionMeta | null>
-  connect(sessionId: string, dims?: { cols?: number; rows?: number }): Promise<boolean>
+  connect(
+    sessionId: string,
+    dims?: { cols?: number; rows?: number },
+    opts?: { mode?: 'fresh' | 'resume' | 'auto' }
+  ): Promise<boolean>
   write(sessionId: string, data: string): Promise<boolean>
   resize(sessionId: string, cols: number, rows: number): Promise<boolean>
   disconnect(sessionId: string): Promise<boolean>
   restart(sessionId: string, dims?: { cols?: number; rows?: number }): Promise<boolean>
   destroy(sessionId: string): Promise<boolean>
   onData(callback: (sessionId: string, data: string) => void): () => void
-  onExit(callback: (sessionId: string, code: number | null) => void): () => void
+  onExit(
+    callback: (
+      sessionId: string,
+      code: number | null,
+      state: 'exited' | 'resume-failed' | 'disconnected'
+    ) => void
+  ): () => void
 }
 
 type CheckStatus = 'pass' | 'fail' | 'info'

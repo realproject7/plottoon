@@ -401,8 +401,18 @@ export function Workspace({ projectId }: Props): JSX.Element {
 
   if (!projectId) {
     return (
-      <div className="workspace__empty">
-        <p>Open a project to start editing.</p>
+      <div className="workspace__empty" data-testid="workspace-no-project">
+        {/*
+          #274: explain the AI-agent flow on the empty state. Users
+          coming from plotlink-ows expect the terminal to be visible
+          at all times; PlotToon hides the panel until a project is
+          open. The hint sets that expectation so a first-time user
+          doesn't wonder where the agent went.
+        */}
+        <p>Open a project from the sidebar to start editing.</p>
+        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 8 }}>
+          Opening a project also launches the AI agent session for that project.
+        </p>
       </div>
     )
   }

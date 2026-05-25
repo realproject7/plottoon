@@ -164,11 +164,21 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
 
   ipcMain.handle(
     'terminal:connect',
-    async (event, sessionId: string, dims?: { cols?: number; rows?: number }) => {
+    async (
+      event,
+      sessionId: string,
+      dims?: { cols?: number; rows?: number },
+      opts?: { mode?: 'fresh' | 'resume' | 'auto' }
+    ) => {
+      // #274: caller may force `fresh` or `resume` — the new lifecycle
+      // UX surfaces both as explicit user actions. `auto` (or no opts)
+      // preserves the #273 behaviour of picking based on persisted
+      // session state.
       const win = BrowserWindow.fromWebContents(event.sender)
       const deps = await connectDeps()
       const meta = getSession(sessionId)
-      const mode = meta ? await resumeModeFor(meta) : 'fresh'
+      const requested = opts?.mode ?? 'auto'
+      const mode = requested === 'auto' ? (meta ? await resumeModeFor(meta) : 'fresh') : requested
       const ok = await connectSession(
         sessionId,
         (data) => {
@@ -178,7 +188,11 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
         },
         (code) => {
           if (win && !win.isDestroyed()) {
-            win.webContents.send('terminal:exit', sessionId, code)
+            // #274: include the post-exit state so the renderer can
+            // distinguish a normal exit from a resume failure without a
+            // follow-up `getSession` round-trip.
+            const updated = getSession(sessionId)
+            win.webContents.send('terminal:exit', sessionId, code, updated?.state ?? 'exited')
           }
           const updated = getSession(sessionId)
           if (updated) void persistMeta(updated, new Date().toISOString())
@@ -226,7 +240,8 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
         },
         (code) => {
           if (win && !win.isDestroyed()) {
-            win.webContents.send('terminal:exit', sessionId, code)
+            const updated = getSession(sessionId)
+            win.webContents.send('terminal:exit', sessionId, code, updated?.state ?? 'exited')
           }
           const updated = getSession(sessionId)
           if (updated) void persistMeta(updated, new Date().toISOString())
