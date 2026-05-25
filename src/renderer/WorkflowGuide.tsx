@@ -1,4 +1,4 @@
-import type { WorkflowState } from './workflowGuide'
+import type { WorkflowState } from './workflowState'
 
 interface Props {
   state: WorkflowState

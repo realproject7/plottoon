@@ -27,7 +27,7 @@ import {
 } from './agentImageSync'
 import { AgentImageSyncBadge } from './AgentImageSyncBadge'
 import { WorkflowGuide } from './WorkflowGuide'
-import { allCutsApproved, deriveWorkflowState } from './workflowGuide'
+import { allCutsApproved, deriveWorkflowState } from './workflowState'
 
 interface Props {
   projectId?: string

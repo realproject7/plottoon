@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { allCutsApproved, deriveWorkflowState } from '../workflowGuide'
+import { allCutsApproved, deriveWorkflowState } from '../workflowState'
 import type { Cut } from '../CutList'
 
 function cut(id: string, overrides: Partial<Cut> = {}): Cut {
