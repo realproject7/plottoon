@@ -1065,6 +1065,71 @@
 }
 
 /*
+ * #274: warn variant for the resume-failed recovery banner. Uses the
+ * same accent the status dot picks so the user can connect the dot
+ * colour to the hint copy at a glance.
+ */
+.terminal-panel__hint--warn {
+  color: #c97a00;
+}
+
+/*
+ * #274 RE1: status-dot indicator. The TerminalPanel toolbar emits one
+ * of these classes per lifecycle phase so the user can read state at
+ * a glance without parsing the status text. Colours match the
+ * plotlink-ows convention referenced in the ticket: green = running,
+ * grey = stopped, amber = detached / init, red = failed.
+ */
+.terminal-panel__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--muted);
+}
+
+.terminal-panel__dot--running {
+  background: #2ea043;
+  box-shadow: 0 0 0 2px rgba(46, 160, 67, 0.15);
+}
+
+.terminal-panel__dot--detached {
+  background: #c97a00;
+}
+
+.terminal-panel__dot--stopped {
+  background: var(--muted);
+}
+
+.terminal-panel__dot--exited {
+  background: #6e7681;
+}
+
+.terminal-panel__dot--failed {
+  background: var(--danger);
+}
+
+.terminal-panel__dot--init {
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+/*
+ * #274: danger variant for the Destroy action. Inherits .terminal-action
+ * sizing/typography and swaps the accent for the warning colour so it
+ * reads as a destructive operation distinct from Stop / Detach.
+ */
+.terminal-action--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.terminal-action--danger:hover:not(:disabled) {
+  background: rgba(218, 54, 51, 0.08);
+}
+
+/*
  * Generic screen scaffold — Dashboard / Status / Guides share this header.
  */
 .screen {

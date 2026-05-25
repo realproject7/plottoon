@@ -18,6 +18,7 @@ import { detectAgentRuntimes, type AgentKind } from '../services/agentRuntime'
 import { buildBridgedEnv, readEnvBridgeConfig } from '../services/agentEnvBridge'
 import {
   loadPersistedSession,
+  removePersistedSession,
   upsertPersistedSession,
   type PersistedSession
 } from '../services/terminalSessionStore'
@@ -256,7 +257,18 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
     }
   )
 
-  ipcMain.handle('terminal:destroy', (_event, sessionId: string) => {
-    return destroySession(sessionId)
+  ipcMain.handle('terminal:destroy', async (_event, sessionId: string) => {
+    // #274 RE1: destroy must also remove the persisted (wallet, project)
+    // session record. Without this, a later `terminal:create` could
+    // adopt the same old agent sessionId via `loadPersistedSession`,
+    // making destroy non-destructive for wallet-scoped sessions.
+    // Capture wallet+project from the live meta BEFORE the in-memory
+    // entry is dropped — destroySession removes it from the map.
+    const meta = getSession(sessionId)
+    const ok = destroySession(sessionId)
+    if (ok && meta?.walletAddress && meta?.projectId) {
+      await removePersistedSession(meta.walletAddress, meta.projectId)
+    }
+    return ok
   })
 }

@@ -218,6 +218,54 @@ describe('#273 terminalHandlers — restore persisted session metadata across re
     expect(bSession.walletAddress).toBe(normalizeWalletAddress(WALLET_B))
   })
 
+  it('#274 RE1: terminal:destroy removes the persisted record so reload does NOT re-adopt the old sessionId', async () => {
+    const fakeClaudeResolver = async (): Promise<'claude'> => 'claude'
+    registerTerminalHandlers({
+      walletIdentityStore: storeReturning(identity(WALLET_A)),
+      agentResolver: fakeClaudeResolver
+    })
+    const projectId = registerProject(tmpDir)
+
+    // Create + connect a session so the persisted record exists with
+    // lastConnectedAt set.
+    const first = (await ipcHandlers['terminal:create']({}, projectId)) as {
+      id: string
+      sessionId: string
+    }
+    expect(first.sessionId).toBeTruthy()
+    const persistedBefore = await fs.readFile(
+      path.join(mockUserData, 'config', 'terminal-sessions.json'),
+      'utf-8'
+    )
+    expect(persistedBefore).toContain(first.sessionId)
+
+    // Destroy via the new IPC path.
+    const destroyed = await ipcHandlers['terminal:destroy']({}, first.id)
+    expect(destroyed).toBe(true)
+
+    // Persisted record must be gone — adopting the old sessionId after
+    // a destroy would defeat the user's intent to abandon the session.
+    const persistedAfter = await fs.readFile(
+      path.join(mockUserData, 'config', 'terminal-sessions.json'),
+      'utf-8'
+    )
+    expect(persistedAfter).not.toContain(first.sessionId)
+
+    // Simulate the renderer remounting after destroy. terminal:create
+    // must NOT adopt the old sessionId — it should allocate a fresh one.
+    clearSessionsForTesting()
+    Object.keys(ipcHandlers).forEach((k) => delete ipcHandlers[k])
+    registerTerminalHandlers({
+      walletIdentityStore: storeReturning(identity(WALLET_A)),
+      agentResolver: fakeClaudeResolver
+    })
+    const reborn = (await ipcHandlers['terminal:create']({}, projectId)) as {
+      sessionId: string
+    }
+    expect(reborn.sessionId).toBeTruthy()
+    expect(reborn.sessionId).not.toBe(first.sessionId)
+  })
+
   it('persisted session file holds no secrets, env vars, or wallet material', async () => {
     const SECRET = 'fake-test-distinctive-atlas-secret-uvwx-9988'
     const ORIGINAL = process.env.ATLASCLOUD_API_KEY
