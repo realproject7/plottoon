@@ -280,7 +280,27 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
   // #273: restore persisted scrollback on (wallet, project) change.
   // Also flushes the previous owner's buffer to disk before swapping,
   // and clears xterm so the next wallet's history doesn't leak.
+  //
+  // #273 RE1: the flush MUST happen before we reset
+  // scrollbackRef/scrollbackOwnerRef, otherwise any output received
+  // within the 400 ms debounce window prior to the wallet switch is
+  // dropped. We capture the previous owner+buffer, kick off the write
+  // for that pair, and only then swap to the new owner.
   useEffect(() => {
+    const previousOwner = scrollbackOwnerRef.current
+    const previousBuffer = scrollbackRef.current
+    // Cancel any pending debounce — we're about to write directly.
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current)
+      persistTimerRef.current = null
+    }
+    // Flush the previous owner's buffer before touching anything else.
+    // Best-effort: if the IDB write fails the user just loses recent
+    // history, never the new wallet's content.
+    if (previousOwner && previousBuffer.length > 0) {
+      void writeScrollback(previousOwner.wallet, previousOwner.project, previousBuffer)
+    }
+
     if (!activeWallet) {
       // Wallet unset: clear visible buffer + in-memory tail, but do
       // NOT touch persisted scrollback — the wallet may come back.
@@ -292,11 +312,6 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
     let cancelled = false
     const owner = { wallet: activeWallet, project: projectId }
     async function restore(): Promise<void> {
-      // Flush any in-flight write before swapping owners.
-      if (persistTimerRef.current) {
-        clearTimeout(persistTimerRef.current)
-        persistTimerRef.current = null
-      }
       scrollbackRef.current = ''
       scrollbackOwnerRef.current = owner
       const restored = await readScrollback(owner.wallet, owner.project)

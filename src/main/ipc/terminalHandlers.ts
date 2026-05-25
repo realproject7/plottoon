@@ -31,10 +31,18 @@ export interface RegisterTerminalHandlersOptions {
    * sessions (#221 migration).
    */
   walletIdentityStore?: WalletIdentityStore
+  /**
+   * Test seam (#273 RE1): inject a deterministic agent resolver instead
+   * of running real CLI detection. Production callers omit this and the
+   * default `detectAgentRuntimes()` runs. CI machines without Claude/
+   * Codex installed need this to produce stable test fixtures.
+   */
+  agentResolver?: () => Promise<AgentKind | null>
 }
 
 export function registerTerminalHandlers(options: RegisterTerminalHandlersOptions = {}): void {
   const walletStore = options.walletIdentityStore
+  const agentResolver = options.agentResolver
 
   async function activeWalletAddress(): Promise<string | null> {
     if (!walletStore) return null
@@ -43,6 +51,7 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
   }
 
   async function resolveDefaultAgentKind(): Promise<AgentKind | null> {
+    if (agentResolver) return agentResolver()
     // #272: pick the agent runtime for new sessions. Falls back to null
     // (no agent → shell) when neither Claude nor Codex is installed,
     // matching the user-visible "no agent CLI available" state the

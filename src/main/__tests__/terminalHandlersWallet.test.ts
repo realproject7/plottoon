@@ -146,12 +146,22 @@ describe('terminalHandlers (#221 wallet scoping)', () => {
 })
 
 describe('#273 terminalHandlers — restore persisted session metadata across restarts', () => {
+  // #273 RE1: CI has no Claude/Codex CLI installed, so the real
+  // `detectAgentRuntimes()` returns `defaultAgent: null` and the
+  // handler skips persistence entirely. Tests inject a deterministic
+  // resolver so the persisted-state assertions don't depend on the
+  // host machine's installed CLIs.
+  const fakeClaudeResolver = async (): Promise<'claude'> => 'claude'
+
   it('terminal:create returns a session adopted from the persisted store after restart', async () => {
     // First boot: create a wallet-A session for the project. This
     // persists the metadata (sessionId, agentKind, cwd, createdAt) to
     // <userData>/config/terminal-sessions.json under the (walletA,
     // projectId) key.
-    registerTerminalHandlers({ walletIdentityStore: storeReturning(identity(WALLET_A)) })
+    registerTerminalHandlers({
+      walletIdentityStore: storeReturning(identity(WALLET_A)),
+      agentResolver: fakeClaudeResolver
+    })
     const projectId = registerProject(tmpDir)
     const first = (await ipcHandlers['terminal:create']({}, projectId)) as {
       id: string
@@ -160,12 +170,16 @@ describe('#273 terminalHandlers — restore persisted session metadata across re
       agentKind: 'claude' | 'codex' | null
     }
     expect(first.sessionId).toBeTruthy()
+    expect(first.agentKind).toBe('claude')
 
     // Simulate app restart: drop the in-memory session table and
     // re-register the IPC handlers. The persisted file survives.
     clearSessionsForTesting()
     Object.keys(ipcHandlers).forEach((k) => delete ipcHandlers[k])
-    registerTerminalHandlers({ walletIdentityStore: storeReturning(identity(WALLET_A)) })
+    registerTerminalHandlers({
+      walletIdentityStore: storeReturning(identity(WALLET_A)),
+      agentResolver: fakeClaudeResolver
+    })
 
     const restored = (await ipcHandlers['terminal:create']({}, projectId)) as {
       sessionId: string
@@ -179,7 +193,10 @@ describe('#273 terminalHandlers — restore persisted session metadata across re
 
   it('wallet B does NOT receive wallet A’s persisted session for the same project', async () => {
     // Boot 1 under wallet A — persist that wallet's session.
-    registerTerminalHandlers({ walletIdentityStore: storeReturning(identity(WALLET_A)) })
+    registerTerminalHandlers({
+      walletIdentityStore: storeReturning(identity(WALLET_A)),
+      agentResolver: fakeClaudeResolver
+    })
     const projectId = registerProject(tmpDir)
     const aSession = (await ipcHandlers['terminal:create']({}, projectId)) as {
       sessionId: string
@@ -188,7 +205,10 @@ describe('#273 terminalHandlers — restore persisted session metadata across re
     // Boot 2 under wallet B — must NOT see A's persisted session.
     clearSessionsForTesting()
     Object.keys(ipcHandlers).forEach((k) => delete ipcHandlers[k])
-    registerTerminalHandlers({ walletIdentityStore: storeReturning(identity(WALLET_B)) })
+    registerTerminalHandlers({
+      walletIdentityStore: storeReturning(identity(WALLET_B)),
+      agentResolver: fakeClaudeResolver
+    })
 
     const bSession = (await ipcHandlers['terminal:create']({}, projectId)) as {
       sessionId: string
@@ -203,7 +223,10 @@ describe('#273 terminalHandlers — restore persisted session metadata across re
     const ORIGINAL = process.env.ATLASCLOUD_API_KEY
     process.env.ATLASCLOUD_API_KEY = SECRET
     try {
-      registerTerminalHandlers({ walletIdentityStore: storeReturning(identity(WALLET_A)) })
+      registerTerminalHandlers({
+        walletIdentityStore: storeReturning(identity(WALLET_A)),
+        agentResolver: fakeClaudeResolver
+      })
       const projectId = registerProject(tmpDir)
       await ipcHandlers['terminal:create']({}, projectId)
       const raw = await fs.readFile(

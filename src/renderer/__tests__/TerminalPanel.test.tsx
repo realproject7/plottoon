@@ -271,6 +271,87 @@ describe('#273 TerminalPanel — scrollback restore (uses fake content only)', (
     expect(container.textContent ?? '').not.toContain('WALLET_A_PRIVATE_FAKE_SCROLLBACK')
   })
 
+  it('flushes the previous wallet’s in-flight scrollback (debounce-tail data) before swapping owners', async () => {
+    // #273 RE1 regression: data received within the 400 ms debounce
+    // window before a wallet switch must be persisted to the previous
+    // wallet's row, not lost. Test installs a custom onData that
+    // captures the panel's data handler, fires fake content, then
+    // immediately dispatches WALLET_ACTIVE_CHANGED_EVENT so the
+    // restore effect runs before the debounce timer would fire.
+    const session: MockSession = {
+      id: 'term_switch',
+      projectId: 'proj_switch',
+      cwd: '/tmp/fake-project',
+      state: 'connected',
+      createdAt: '2026-05-25T00:00:00.000Z',
+      exitCode: null,
+      agentKind: 'claude'
+    }
+    let panelDataHandler: ((sid: string, data: string) => void) | null = null
+    // Dynamic active wallet — flips from A to B when the test wants.
+    let active: string | null = WALLET_A
+    const findByProject = vi.fn(async () => session)
+    const create = vi.fn(async () => session)
+    const connect = vi.fn(async () => true)
+    ;(
+      window as unknown as { plottoon: { terminal: Record<string, unknown>; wallet: unknown } }
+    ).plottoon = {
+      terminal: {
+        create,
+        getSession: vi.fn(),
+        findByProject,
+        connect,
+        write: vi.fn().mockResolvedValue(true),
+        resize: vi.fn().mockResolvedValue(true),
+        disconnect: vi.fn().mockResolvedValue(true),
+        restart: vi.fn().mockResolvedValue(true),
+        destroy: vi.fn(),
+        onData: vi.fn((handler: (sid: string, data: string) => void) => {
+          panelDataHandler = handler
+          return () => {}
+        }),
+        onExit: vi.fn(() => () => {})
+      },
+      wallet: {
+        getActiveIdentity: vi.fn(async () =>
+          active ? { address: active, source: 'plottoon-writer' } : null
+        )
+      }
+    }
+
+    render(<TerminalPanel projectId="proj_switch" />)
+
+    // Wait for the panel to mount + register its data handler.
+    await waitFor(() => {
+      expect(panelDataHandler).not.toBeNull()
+    })
+    // Also wait for the wallet-A scrollback restore effect to complete
+    // so the in-flight content we're about to send belongs to A.
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-terminal-title').textContent).toBe('Claude session')
+    })
+
+    // Fire fake content from the agent. Since the debounce is 400 ms,
+    // this content sits in scrollbackRef but is NOT yet persisted.
+    const FAKE_IN_FLIGHT = 'fake-debounced-content-must-not-be-lost-on-wallet-switch'
+    panelDataHandler!('term_switch', FAKE_IN_FLIGHT)
+
+    // Immediately switch wallets before the 400 ms debounce can fire.
+    active = WALLET_B
+    window.dispatchEvent(new CustomEvent('plottoon:wallet:active-changed'))
+
+    // Wait for the IDB row to materialise under wallet A.
+    const { readScrollback } = await import('../terminalScrollback')
+    await waitFor(async () => {
+      const got = await readScrollback(WALLET_A, 'proj_switch')
+      expect(got).not.toBeNull()
+      expect(got).toContain(FAKE_IN_FLIGHT)
+    })
+    // And wallet B's row never received any of A's content.
+    const bGot = await readScrollback(WALLET_B, 'proj_switch')
+    expect(bGot ?? '').not.toContain(FAKE_IN_FLIGHT)
+  })
+
   it('renders an empty terminal when no scrollback was persisted for (wallet, project)', async () => {
     const session: MockSession = {
       id: 'term_empty',
