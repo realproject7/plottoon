@@ -227,6 +227,64 @@ describe('#274 TerminalPanel — destroy requires explicit confirm', () => {
   })
 })
 
+describe('#291 TerminalPanel — restored resume-failed session does not auto-resume', () => {
+  it('mounting with an initial session in state=resume-failed does NOT auto-call terminal.connect', async () => {
+    // Simulates the post-restart path: terminal:create adopted a
+    // persisted record whose lastState was resume-failed (#291). The
+    // session payload returned to the renderer carries state=resume-
+    // failed. The renderer must show the Start Fresh recovery surface
+    // and skip the auto-connect-on-mount path entirely — otherwise the
+    // app would loop on the same rejected --resume <uuid>.
+    const restored: MockSession = {
+      id: 'term_restored_rf',
+      projectId: 'proj_restored_rf',
+      cwd: '/tmp/fake-project',
+      state: 'resume-failed',
+      createdAt: '2026-05-25T00:00:00.000Z',
+      exitCode: 1,
+      agentKind: 'claude'
+    }
+    const api = install({ initial: restored })
+    render(<TerminalPanel projectId="proj_restored_rf" />)
+
+    // Recovery surface renders.
+    expect(await screen.findByTestId('agent-terminal-resume-failed-hint')).toBeDefined()
+    expect(screen.getByTestId('agent-terminal-start-fresh')).toBeDefined()
+    // Status label reflects the resume-failed state.
+    expect(screen.getByTestId('agent-terminal-status').textContent).toMatch(/resume failed/i)
+    // Give the auto-connect effect a chance to fire — it must NOT.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(api.connect).not.toHaveBeenCalled()
+  })
+
+  it('Start Fresh from a restored resume-failed session calls connect with mode:fresh', async () => {
+    // The recovery path: user clicks Start Fresh on the restored
+    // resume-failed panel. Since the session is in 'ready' phase
+    // (not 'connected'), handleStartFresh routes through connect
+    // with mode:fresh (not restart). This is the explicit way out
+    // of the restart loop.
+    const restored: MockSession = {
+      id: 'term_restored_rf_2',
+      projectId: 'proj_restored_rf_2',
+      cwd: '/tmp/fake-project',
+      state: 'resume-failed',
+      createdAt: '2026-05-25T00:00:00.000Z',
+      exitCode: 1,
+      agentKind: 'claude'
+    }
+    const api = install({ initial: restored })
+    render(<TerminalPanel projectId="proj_restored_rf_2" />)
+    const fresh = await screen.findByTestId('agent-terminal-start-fresh')
+    fireEvent.click(fresh)
+    await waitFor(() => {
+      expect(api.connect).toHaveBeenCalledTimes(1)
+    })
+    const [, , opts] = api.connect.mock.calls[0]
+    expect(opts).toEqual({ mode: 'fresh' })
+    expect(api.restart).not.toHaveBeenCalled()
+  })
+})
+
 describe('#274 TerminalPanel — resume-failed fallback', () => {
   it('IPC exit event with state=resume-failed flips the panel into the recovery surface', async () => {
     const session: MockSession = {

@@ -43,8 +43,16 @@ export interface PersistedSession {
    * Snapshot of last known UI state. Restored when the renderer
    * remounts; not authoritative — the live PTY state in
    * `terminalSession.ts` wins once connected.
+   *
+   * #291: `resume-failed` is first-class so a rejected resume survives
+   * an app restart. Without persistence, the sanitizer would coerce
+   * this to `disconnected`, the renderer's auto-connect would fire,
+   * `resumeModeFor` would re-pick resume (lastConnectedAt was non-null
+   * before the failure), and the agent would reject the same UUID
+   * again — a restart loop. Restored resume-failed sessions render
+   * the explicit Start Fresh recovery surface instead.
    */
-  lastState: 'connected' | 'disconnected' | 'exited'
+  lastState: 'connected' | 'disconnected' | 'exited' | 'resume-failed'
   /**
    * Per #271 `codexResumeLimitations`. Renderer can surface a warning
    * when Codex resume isn't deterministic.
@@ -116,7 +124,10 @@ function sanitize(value: unknown): PersistedSession | null {
   const lastConnectedAt =
     typeof v.lastConnectedAt === 'string' || v.lastConnectedAt === null ? v.lastConnectedAt : null
   const lastState =
-    v.lastState === 'connected' || v.lastState === 'disconnected' || v.lastState === 'exited'
+    v.lastState === 'connected' ||
+    v.lastState === 'disconnected' ||
+    v.lastState === 'exited' ||
+    v.lastState === 'resume-failed'
       ? v.lastState
       : 'disconnected'
   const resumeSupported = v.resumeSupported === true

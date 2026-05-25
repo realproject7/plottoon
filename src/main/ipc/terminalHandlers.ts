@@ -66,9 +66,25 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
    * Only called when there's a non-null wallet AND an agent runtime —
    * legacy null paths don't get persisted (the renderer can't restore
    * them either).
+   *
+   * #291: when the meta's state is `resume-failed`, we must NOT bump
+   * `lastConnectedAt` to "now". The failure is technically a brief
+   * connect followed by an immediate exit, but persisting the timestamp
+   * as a successful connect would let `resumeModeFor` pick resume
+   * again on the next launch — looping on the same rejected UUID. We
+   * reuse the previous record's `lastConnectedAt` so the next attempt
+   * still tries resume IF the user explicitly opts in (the resumeFailed
+   * guard in `resumeModeFor` blocks the auto path), but the auto path
+   * sees the historical timestamp only — never a fresh one from a
+   * failed connect.
    */
   async function persistMeta(meta: SessionMeta, lastConnectedAt: string | null): Promise<void> {
     if (!meta.walletAddress || !meta.agentKind) return
+    let effectiveLastConnectedAt = lastConnectedAt
+    if (meta.state === 'resume-failed') {
+      const previous = await loadPersistedSession(meta.walletAddress, meta.projectId)
+      effectiveLastConnectedAt = previous?.lastConnectedAt ?? null
+    }
     const record: PersistedSession = {
       walletAddress: meta.walletAddress,
       projectId: meta.projectId,
@@ -76,7 +92,7 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
       cwd: meta.cwd,
       sessionId: meta.sessionId,
       createdAt: meta.createdAt,
-      lastConnectedAt,
+      lastConnectedAt: effectiveLastConnectedAt,
       lastState: meta.state,
       // Claude exposes deterministic resume via --resume <uuid>; Codex
       // currently only supports the picker (`codex resume`) per the
@@ -106,7 +122,11 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
             walletAddress,
             agentKind: persisted.agentKind,
             sessionId: persisted.sessionId,
-            createdAt: persisted.createdAt
+            createdAt: persisted.createdAt,
+            // #291: thread the persisted lastState through so a
+            // resume-failed record surfaces the recovery state instead
+            // of collapsing to disconnected and triggering auto-resume.
+            lastState: persisted.lastState
           })
           // Don't update lastConnectedAt — we're only adopting metadata.
           return adopted
@@ -160,6 +180,11 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
     if (!persisted) return 'fresh'
     if (persisted.sessionId !== meta.sessionId) return 'fresh'
     if (!persisted.lastConnectedAt) return 'fresh'
+    // #291: a previously-failed resume must never re-pick resume. The
+    // user explicitly needs to choose Start Fresh; without this guard a
+    // rejected --resume <uuid> would loop on every app open because
+    // lastConnectedAt was set right before the failure.
+    if (persisted.lastState === 'resume-failed') return 'fresh'
     return 'resume'
   }
 

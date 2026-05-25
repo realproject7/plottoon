@@ -543,15 +543,34 @@ export function adoptPersistedSession(input: {
   agentKind: AgentKind
   sessionId: string
   createdAt: string
+  /**
+   * #291: optional restored state. Pre-#291 every adopted session
+   * came back as `disconnected`, which let a previously resume-failed
+   * record auto-connect → resume → fail → loop. Callers (the IPC
+   * `terminal:create` handler) now pass `lastState` through so a
+   * persisted `resume-failed` carries into the in-memory meta and the
+   * renderer's auto-connect path skips it. Defaults to `disconnected`
+   * for back-compat.
+   */
+  lastState?: SessionState
 }): SessionMeta {
   const key = normalizeOrNull(input.walletAddress)
   const id = `term_${nextId++}`
+  // Only certain restored states make sense in memory: `connected` is
+  // not adoptable because the live PTY is gone after a restart, so
+  // collapse to `disconnected` for that case. `resume-failed` and
+  // `exited` are restored as-is so the renderer surfaces the recovery
+  // affordance.
+  const adoptedState: SessionState =
+    input.lastState === 'resume-failed' || input.lastState === 'exited'
+      ? input.lastState
+      : 'disconnected'
   const meta: SessionMeta = {
     id,
     projectId: input.projectId,
     walletAddress: key,
     cwd: input.cwd,
-    state: 'disconnected',
+    state: adoptedState,
     createdAt: input.createdAt,
     exitCode: null,
     agentKind: input.agentKind,
