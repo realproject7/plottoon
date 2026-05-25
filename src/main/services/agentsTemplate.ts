@@ -36,6 +36,13 @@ export function generateProjectAgentsMd(projectName: string): string {
 
 Instructions for AI agents working on this project.
 
+> **Read \`PLOTTOON_AGENT_GUIDE.md\` first.** That file is auto-generated
+> by PlotToon and describes the live app workflow (cuts.json, image
+> generation, AtlasCloud env bridge, manual editor handoff). It is
+> refreshed when its version stamp differs from the running PlotToon
+> build. This static file pins the never-touch rules; the generated
+> guide pins the active flow.
+
 ## Project Context
 
 This is a webtoon project managed by PlotToon.
