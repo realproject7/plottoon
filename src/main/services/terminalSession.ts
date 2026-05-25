@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { platform } from 'node:os'
 import { buildAgentEnv } from './agentEnv'
 import { normalizeWalletAddress } from '../../shared/walletIdentity'
+import { buildLaunchCommand, type AgentKind, type LaunchCommand } from './agentRuntime'
 
 export type SessionState = 'connected' | 'disconnected' | 'exited'
 
@@ -19,21 +19,150 @@ export interface SessionMeta {
   state: SessionState
   createdAt: string
   exitCode: number | null
+  /**
+   * #272: which AI agent runtime this session spawns. `null` when no
+   * runtime was selected at creation time (legacy fallback to shell —
+   * preserved so existing tests and one-off recoveries still work).
+   * The agent kind drives the launch command + the UI label.
+   */
+  agentKind: AgentKind | null
 }
+
+/**
+ * #272: minimal PTY surface used by the agent spawner. node-pty exposes
+ * a superset; this interface keeps the spawner testable without
+ * importing the real binding (which can't compile in some dev /
+ * sandbox environments).
+ */
+export interface PtyHandle {
+  onData(handler: (data: string) => void): void
+  onExit(handler: (event: { exitCode: number | null }) => void): void
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  kill(): void
+}
+
+export interface PtySpawnOptions {
+  command: string
+  args: string[]
+  cwd: string
+  env: Record<string, string>
+  cols?: number
+  rows?: number
+}
+
+export type PtySpawner = (options: PtySpawnOptions) => PtyHandle
 
 let nextId = 1
 
 const sessions = new Map<string, SessionMeta>()
-const processes = new Map<string, ChildProcess>()
+const handles = new Map<string, PtyHandle | ChildHandle>()
 const generations = new Map<string, number>()
 
-function defaultShell(): string {
-  if (platform() === 'win32') return 'cmd.exe'
-  return process.env.SHELL || '/bin/sh'
+// `ChildHandle` is the degraded-mode fallback we use when node-pty is
+// unavailable at runtime (no native build on this platform). It wraps
+// the same minimal surface so the caller doesn't need to special-case.
+interface ChildHandle extends PtyHandle {
+  __kind: 'child'
+  process: ChildProcess
 }
 
 function normalizeOrNull(address: string | null | undefined): string | null {
   return address ? normalizeWalletAddress(address) : null
+}
+
+/**
+ * Try to load node-pty at runtime. Returns null when the module isn't
+ * installed (CI compile failure on platforms without `make`) or when
+ * the binding rejects the current Node/Electron ABI. Callers fall
+ * through to the ChildProcess fallback in that case.
+ *
+ * The dynamic import keeps node-pty an *optional* runtime dep —
+ * package.json's `optionalDependencies` block lets `npm install`
+ * succeed even when compile fails locally.
+ */
+let cachedPtyModule: { spawn: (cmd: string, args: string[], opts: unknown) => unknown } | null =
+  null
+let ptyModuleLoaded = false
+async function tryLoadNodePty(): Promise<{
+  spawn: (cmd: string, args: string[], opts: unknown) => unknown
+} | null> {
+  if (ptyModuleLoaded) return cachedPtyModule
+  ptyModuleLoaded = true
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = (await import('node-pty' as string)) as any
+    cachedPtyModule = mod && typeof mod.spawn === 'function' ? mod : (mod?.default ?? null)
+    return cachedPtyModule
+  } catch {
+    cachedPtyModule = null
+    return null
+  }
+}
+
+/**
+ * Default PTY spawner — uses node-pty when available, otherwise falls
+ * back to `child_process.spawn` with piped stdio (no TTY allocation,
+ * degraded TUI behaviour but still spawns the agent command).
+ */
+export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<PtyHandle> {
+  const ptyModule = await tryLoadNodePty()
+  if (ptyModule) {
+    const pty = ptyModule.spawn(options.command, options.args, {
+      name: 'xterm-256color',
+      cols: options.cols ?? 80,
+      rows: options.rows ?? 24,
+      cwd: options.cwd,
+      env: options.env
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any
+    return {
+      onData: (handler) => pty.onData(handler),
+      onExit: (handler) => pty.onExit(handler),
+      write: (data) => pty.write(data),
+      resize: (cols, rows) => pty.resize(cols, rows),
+      kill: () => {
+        try {
+          pty.kill()
+        } catch {
+          // node-pty throws when killing an already-exited process; safe to ignore.
+        }
+      }
+    }
+  }
+  // Fallback: child_process.spawn with no PTY. Better than nothing —
+  // the agent runs in the project cwd with sanitized env; interactive
+  // TUI features will be degraded.
+  const child = spawn(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    shell: false
+  })
+  const handle: ChildHandle = {
+    __kind: 'child',
+    process: child,
+    onData: (handler) => {
+      child.stdout?.on('data', (chunk: Buffer) => handler(chunk.toString('utf-8')))
+      child.stderr?.on('data', (chunk: Buffer) => handler(chunk.toString('utf-8')))
+    },
+    onExit: (handler) => {
+      child.on('exit', (code) => handler({ exitCode: code }))
+    },
+    write: (data) => {
+      if (child.stdin?.writable) child.stdin.write(data)
+    },
+    resize: () => {
+      // No-op: ChildProcess pipes don't support TTY resize.
+    },
+    kill: () => {
+      child.removeAllListeners('exit')
+      child.stdout?.removeAllListeners('data')
+      child.stderr?.removeAllListeners('data')
+      child.kill()
+    }
+  }
+  return handle
 }
 
 /**
@@ -48,16 +177,11 @@ export function findSessionByProjectAndWallet(
   walletAddress: string | null
 ): SessionMeta | null {
   const key = normalizeOrNull(walletAddress)
-  // Exact-match pass first: a session that already owns the (project, wallet)
-  // pair wins over any legacy session, so a wallet that already migrated its
-  // own session never accidentally claims another.
   for (const meta of sessions.values()) {
     if (meta.state === 'exited') continue
     if (meta.projectId !== projectId) continue
     if (meta.walletAddress === key) return meta
   }
-  // Legacy migration pass: only for a non-null caller. A null caller has no
-  // wallet to claim with, so it must not silently take over a legacy session.
   if (key !== null) {
     for (const meta of sessions.values()) {
       if (meta.state === 'exited') continue
@@ -72,27 +196,55 @@ export function findSessionByProjectAndWallet(
   return null
 }
 
+export interface CreateSessionInput {
+  projectId: string
+  cwd: string
+  walletAddress: string | null
+  /**
+   * #272: agent kind for new sessions. When null, no agent is bound
+   * (legacy fallback used by tests that pre-date #271). Production
+   * wiring resolves this from `detectAgentRuntimes().defaultAgent`.
+   */
+  agentKind?: AgentKind | null
+}
+
+export function createSession(input: CreateSessionInput): SessionMeta
+// Back-compat overload used by tests that pre-date the kind argument.
 export function createSession(
   projectId: string,
   cwd: string,
   walletAddress: string | null
+): SessionMeta
+export function createSession(
+  inputOrProjectId: CreateSessionInput | string,
+  cwd?: string,
+  walletAddress?: string | null
 ): SessionMeta {
-  const key = normalizeOrNull(walletAddress)
-  const existing = findSessionByProjectAndWallet(projectId, key)
-  if (existing && existing.state === 'connected') {
-    return existing
-  }
+  const input: CreateSessionInput =
+    typeof inputOrProjectId === 'string'
+      ? {
+          projectId: inputOrProjectId,
+          cwd: cwd!,
+          walletAddress: walletAddress ?? null,
+          agentKind: null
+        }
+      : inputOrProjectId
+
+  const key = normalizeOrNull(input.walletAddress)
+  const existing = findSessionByProjectAndWallet(input.projectId, key)
+  if (existing && existing.state === 'connected') return existing
   if (existing) return existing
 
   const id = `term_${nextId++}`
   const meta: SessionMeta = {
     id,
-    projectId,
+    projectId: input.projectId,
     walletAddress: key,
-    cwd,
+    cwd: input.cwd,
     state: 'disconnected',
     createdAt: new Date().toISOString(),
-    exitCode: null
+    exitCode: null,
+    agentKind: input.agentKind ?? null
   }
   sessions.set(id, meta)
   generations.set(id, 0)
@@ -103,12 +255,6 @@ export function getSession(id: string): SessionMeta | null {
   return sessions.get(id) ?? null
 }
 
-/**
- * @deprecated Project-only lookup that ignores wallet scope. Retained for
- * tests that pre-date #221 wallet-keyed sessions. New callers must use
- * `findSessionByProjectAndWallet` so wallet A and wallet B never reattach
- * to each other's terminal.
- */
 export function findSessionByProject(projectId: string): SessionMeta | null {
   for (const meta of sessions.values()) {
     if (meta.projectId === projectId && meta.state !== 'exited') {
@@ -122,49 +268,91 @@ export function listSessions(): SessionMeta[] {
   return [...sessions.values()]
 }
 
-function killProcess(id: string): void {
-  const child = processes.get(id)
-  if (child) {
-    child.removeAllListeners('exit')
-    child.stdout?.removeAllListeners('data')
-    child.stderr?.removeAllListeners('data')
-    child.kill()
-    processes.delete(id)
+function killHandle(id: string): void {
+  const handle = handles.get(id)
+  if (handle) {
+    try {
+      handle.kill()
+    } catch {
+      // ignore
+    }
+    handles.delete(id)
   }
 }
 
-export function connectSession(
+export interface ConnectSessionDeps {
+  /**
+   * #272: spawner override for tests. Production callers pass
+   * `defaultAgentPtySpawner`.
+   */
+  spawner?: (options: PtySpawnOptions) => PtyHandle | Promise<PtyHandle>
+  /**
+   * #276: additional env to forward (e.g. ATLASCLOUD_API_KEY when the
+   * user enabled the bridge). Caller computes this via
+   * `buildBridgedEnv(config, hostEnv)`; we never read process.env
+   * here for secret-looking keys.
+   */
+  bridgedEnv?: Record<string, string>
+  /** Optional initial PTY dimensions. */
+  cols?: number
+  rows?: number
+}
+
+export async function connectSession(
   id: string,
   onData: (data: string) => void,
-  onExit: (code: number | null) => void
-): boolean {
+  onExit: (code: number | null) => void,
+  deps: ConnectSessionDeps = {}
+): Promise<boolean> {
   const meta = sessions.get(id)
   if (!meta || meta.state === 'connected') return false
 
   const gen = (generations.get(id) ?? 0) + 1
   generations.set(id, gen)
 
-  const shell = defaultShell()
-  const child = spawn(shell, [], {
-    cwd: meta.cwd,
-    env: buildAgentEnv(process.env, { TERM: 'dumb' }),
-    stdio: ['pipe', 'pipe', 'pipe'],
-    shell: false
-  })
+  // #272 + #271: prefer the configured agent command. Legacy sessions
+  // (no agentKind) fall through to the previous shell launch so old
+  // tests + recovery flows still work.
+  let launch: LaunchCommand
+  if (meta.agentKind) {
+    launch = buildLaunchCommand({
+      kind: meta.agentKind,
+      mode: 'fresh',
+      projectRoot: meta.cwd
+    })
+  } else {
+    // Legacy: spawn the user's shell. Preserves the pre-#272 behavior
+    // for any consumer that opts out by passing agentKind: null.
+    const shellCmd = process.platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/sh'
+    launch = { command: shellCmd, args: [], cwd: meta.cwd }
+  }
 
-  processes.set(id, child)
+  const env = buildAgentEnv(
+    process.env,
+    { TERM: 'xterm-256color' },
+    { bridgedEnv: deps.bridgedEnv }
+  )
+
+  const spawner = deps.spawner ?? defaultAgentPtySpawner
+  const handle = await spawner({
+    command: launch.command,
+    args: launch.args,
+    cwd: launch.cwd,
+    env,
+    cols: deps.cols,
+    rows: deps.rows
+  })
+  handles.set(id, handle)
   sessions.set(id, { ...meta, state: 'connected', exitCode: null })
 
-  child.stdout?.on('data', (chunk: Buffer) => onData(chunk.toString('utf-8')))
-  child.stderr?.on('data', (chunk: Buffer) => onData(chunk.toString('utf-8')))
-
-  child.on('exit', (code) => {
+  handle.onData(onData)
+  handle.onExit((event) => {
     if (generations.get(id) !== gen) return
-    processes.delete(id)
+    handles.delete(id)
     const current = sessions.get(id)
     if (current && current.state === 'connected') {
-      sessions.set(id, { ...current, state: 'exited', exitCode: code })
-      onExit(code)
+      sessions.set(id, { ...current, state: 'exited', exitCode: event.exitCode })
+      onExit(event.exitCode)
     }
   })
 
@@ -172,43 +360,56 @@ export function connectSession(
 }
 
 export function writeToSession(id: string, data: string): boolean {
-  const child = processes.get(id)
-  if (!child || !child.stdin?.writable) return false
-  child.stdin.write(data)
-  return true
+  const handle = handles.get(id)
+  if (!handle) return false
+  try {
+    handle.write(data)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function resizeSession(id: string, cols: number, rows: number): boolean {
+  const handle = handles.get(id)
+  if (!handle) return false
+  try {
+    handle.resize(cols, rows)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function disconnectSession(id: string): boolean {
-  const child = processes.get(id)
+  const handle = handles.get(id)
   const meta = sessions.get(id)
-  if (!child || !meta) return false
+  if (!handle || !meta) return false
 
   const gen = (generations.get(id) ?? 0) + 1
   generations.set(id, gen)
 
-  killProcess(id)
+  killHandle(id)
   sessions.set(id, { ...meta, state: 'disconnected' })
   return true
 }
 
-export function restartSession(
+export async function restartSession(
   id: string,
   onData: (data: string) => void,
-  onExit: (code: number | null) => void
-): boolean {
+  onExit: (code: number | null) => void,
+  deps: ConnectSessionDeps = {}
+): Promise<boolean> {
   const meta = sessions.get(id)
   if (!meta) return false
 
-  if (meta.state === 'connected') {
-    killProcess(id)
-  }
-
+  if (meta.state === 'connected') killHandle(id)
   sessions.set(id, { ...meta, state: 'disconnected', exitCode: null })
-  return connectSession(id, onData, onExit)
+  return connectSession(id, onData, onExit, deps)
 }
 
 export function destroySession(id: string): boolean {
-  killProcess(id)
+  killHandle(id)
   generations.delete(id)
   return sessions.delete(id)
 }
@@ -222,4 +423,6 @@ export function destroyAllSessions(): void {
 export function clearSessionsForTesting(): void {
   destroyAllSessions()
   nextId = 1
+  cachedPtyModule = null
+  ptyModuleLoaded = false
 }

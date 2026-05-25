@@ -40,7 +40,7 @@ describe('createSession', () => {
 
   it('returns existing connected session for same project', async () => {
     const session = createSession('proj_1', tmpDir, null)
-    connectSession(
+    await connectSession(
       session.id,
       () => {},
       () => {}
@@ -52,7 +52,7 @@ describe('createSession', () => {
 
   it('creates new session if existing is exited', async () => {
     const session = createSession('proj_1', tmpDir, null)
-    connectSession(
+    await connectSession(
       session.id,
       () => {},
       () => {}
@@ -97,9 +97,9 @@ describe('listSessions', () => {
 })
 
 describe('connectSession / disconnectSession', () => {
-  it('connects and transitions to connected state', () => {
+  it('connects and transitions to connected state', async () => {
     const session = createSession('proj_1', tmpDir, null)
-    const ok = connectSession(
+    const ok = await connectSession(
       session.id,
       () => {},
       () => {}
@@ -109,36 +109,34 @@ describe('connectSession / disconnectSession', () => {
     disconnectSession(session.id)
   })
 
-  it('returns false for unknown session', () => {
-    expect(
-      connectSession(
-        'bad',
-        () => {},
-        () => {}
-      )
-    ).toBe(false)
+  it('returns false for unknown session', async () => {
+    const result = await connectSession(
+      'bad',
+      () => {},
+      () => {}
+    )
+    expect(result).toBe(false)
   })
 
-  it('returns false if already connected', () => {
+  it('returns false if already connected', async () => {
     const session = createSession('proj_1', tmpDir, null)
-    connectSession(
+    await connectSession(
       session.id,
       () => {},
       () => {}
     )
-    expect(
-      connectSession(
-        session.id,
-        () => {},
-        () => {}
-      )
-    ).toBe(false)
+    const second = await connectSession(
+      session.id,
+      () => {},
+      () => {}
+    )
+    expect(second).toBe(false)
     disconnectSession(session.id)
   })
 
-  it('disconnectSession transitions to disconnected', () => {
+  it('disconnectSession transitions to disconnected', async () => {
     const session = createSession('proj_1', tmpDir, null)
-    connectSession(
+    await connectSession(
       session.id,
       () => {},
       () => {}
@@ -155,9 +153,9 @@ describe('writeToSession', () => {
     expect(writeToSession(session.id, 'test')).toBe(false)
   })
 
-  it('returns true for connected session', () => {
+  it('returns true for connected session', async () => {
     const session = createSession('proj_1', tmpDir, null)
-    connectSession(
+    await connectSession(
       session.id,
       () => {},
       () => {}
@@ -168,9 +166,9 @@ describe('writeToSession', () => {
 })
 
 describe('restartSession', () => {
-  it('restarts a disconnected session', () => {
+  it('restarts a disconnected session', async () => {
     const session = createSession('proj_1', tmpDir, null)
-    const ok = restartSession(
+    const ok = await restartSession(
       session.id,
       () => {},
       () => {}
@@ -180,14 +178,14 @@ describe('restartSession', () => {
     disconnectSession(session.id)
   })
 
-  it('restarts a connected session', () => {
+  it('restarts a connected session', async () => {
     const session = createSession('proj_1', tmpDir, null)
-    connectSession(
+    await connectSession(
       session.id,
       () => {},
       () => {}
     )
-    const ok = restartSession(
+    const ok = await restartSession(
       session.id,
       () => {},
       () => {}
@@ -197,14 +195,13 @@ describe('restartSession', () => {
     disconnectSession(session.id)
   })
 
-  it('returns false for unknown session', () => {
-    expect(
-      restartSession(
-        'bad',
-        () => {},
-        () => {}
-      )
-    ).toBe(false)
+  it('returns false for unknown session', async () => {
+    const result = await restartSession(
+      'bad',
+      () => {},
+      () => {}
+    )
+    expect(result).toBe(false)
   })
 })
 
@@ -215,9 +212,9 @@ describe('destroySession', () => {
     expect(getSession(session.id)).toBeNull()
   })
 
-  it('kills connected process', () => {
+  it('kills connected process', async () => {
     const session = createSession('proj_1', tmpDir, null)
-    connectSession(
+    await connectSession(
       session.id,
       () => {},
       () => {}

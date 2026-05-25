@@ -6,11 +6,15 @@ contextBridge.exposeInMainWorld('plottoon', {
     create: (projectId: string) => ipcRenderer.invoke('terminal:create', projectId),
     getSession: (sessionId: string) => ipcRenderer.invoke('terminal:getSession', sessionId),
     findByProject: (projectId: string) => ipcRenderer.invoke('terminal:findByProject', projectId),
-    connect: (sessionId: string) => ipcRenderer.invoke('terminal:connect', sessionId),
+    connect: (sessionId: string, dims?: { cols?: number; rows?: number }) =>
+      ipcRenderer.invoke('terminal:connect', sessionId, dims),
     write: (sessionId: string, data: string) =>
       ipcRenderer.invoke('terminal:write', sessionId, data),
+    resize: (sessionId: string, cols: number, rows: number) =>
+      ipcRenderer.invoke('terminal:resize', sessionId, cols, rows),
     disconnect: (sessionId: string) => ipcRenderer.invoke('terminal:disconnect', sessionId),
-    restart: (sessionId: string) => ipcRenderer.invoke('terminal:restart', sessionId),
+    restart: (sessionId: string, dims?: { cols?: number; rows?: number }) =>
+      ipcRenderer.invoke('terminal:restart', sessionId, dims),
     destroy: (sessionId: string) => ipcRenderer.invoke('terminal:destroy', sessionId),
     onData: (callback: (sessionId: string, data: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, sessionId: string, data: string) =>
