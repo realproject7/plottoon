@@ -137,26 +137,36 @@ async function tryLoadNodePty(): Promise<{
 export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<PtyHandle> {
   const ptyModule = await tryLoadNodePty()
   if (ptyModule) {
-    const pty = ptyModule.spawn(options.command, options.args, {
-      name: 'xterm-256color',
-      cols: options.cols ?? 80,
-      rows: options.rows ?? 24,
-      cwd: options.cwd,
-      env: options.env
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }) as any
-    return {
-      onData: (handler) => pty.onData(handler),
-      onExit: (handler) => pty.onExit(handler),
-      write: (data) => pty.write(data),
-      resize: (cols, rows) => pty.resize(cols, rows),
-      kill: () => {
-        try {
-          pty.kill()
-        } catch {
-          // node-pty throws when killing an already-exited process; safe to ignore.
+    // #290: `node-pty` can load successfully but `pty.spawn(...)` may
+    // still throw (e.g. `posix_spawnp failed` when the configured agent
+    // CLI isn't on PATH, or the platform's pty allocation refuses the
+    // request). Catching here lets us fall through to the child_process
+    // path instead of crashing the whole session setup — matches the
+    // ticket's "degrade predictably" requirement.
+    try {
+      const pty = ptyModule.spawn(options.command, options.args, {
+        name: 'xterm-256color',
+        cols: options.cols ?? 80,
+        rows: options.rows ?? 24,
+        cwd: options.cwd,
+        env: options.env
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any
+      return {
+        onData: (handler) => pty.onData(handler),
+        onExit: (handler) => pty.onExit(handler),
+        write: (data) => pty.write(data),
+        resize: (cols, rows) => pty.resize(cols, rows),
+        kill: () => {
+          try {
+            pty.kill()
+          } catch {
+            // node-pty throws when killing an already-exited process; safe to ignore.
+          }
         }
       }
+    } catch {
+      // fall through to the child_process fallback
     }
   }
   // Fallback: child_process.spawn with no PTY. Better than nothing —
@@ -168,6 +178,18 @@ export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<
     stdio: ['pipe', 'pipe', 'pipe'],
     shell: false
   })
+  // #290 RE1: attach an `error` listener BEFORE returning the handle
+  // so a synchronous-tick `error` emission (e.g. ENOENT when the
+  // configured command isn't on PATH) can't bubble up as an unhandled
+  // error and crash the app. We buffer the early errors so we can
+  // replay them through the caller's onExit handler once it's wired,
+  // since Node fires `error` and `exit` at different times depending
+  // on platform — and on missing-command ENOENT, sometimes only
+  // `error` fires.
+  let earlyError: Error | null = null
+  child.on('error', (err) => {
+    if (earlyError === null) earlyError = err
+  })
   const handle: ChildHandle = {
     __kind: 'child',
     process: child,
@@ -176,7 +198,20 @@ export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<
       child.stderr?.on('data', (chunk: Buffer) => handler(chunk.toString('utf-8')))
     },
     onExit: (handler) => {
+      // If an error already fired before the caller hooked onExit
+      // (ENOENT is typically delivered on the next tick after spawn),
+      // replay it as exit-code-1 so the lifecycle path proceeds.
+      if (earlyError !== null) {
+        queueMicrotask(() => handler({ exitCode: 1 }))
+        return
+      }
       child.on('exit', (code) => handler({ exitCode: code }))
+      child.on('error', () => {
+        // Late error after a successful spawn — synthesise an exit so
+        // the caller still gets a signal even if Node skips the
+        // `exit` emission on this platform.
+        handler({ exitCode: 1 })
+      })
     },
     write: (data) => {
       if (child.stdin?.writable) child.stdin.write(data)
@@ -186,6 +221,7 @@ export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<
     },
     kill: () => {
       child.removeAllListeners('exit')
+      child.removeAllListeners('error')
       child.stdout?.removeAllListeners('data')
       child.stderr?.removeAllListeners('data')
       child.kill()
@@ -390,14 +426,28 @@ export async function connectSession(
   )
 
   const spawner = deps.spawner ?? defaultAgentPtySpawner
-  const handle = await spawner({
-    command: launch.command,
-    args: launch.args,
-    cwd: launch.cwd,
-    env,
-    cols: deps.cols,
-    rows: deps.rows
-  })
+  let handle: PtyHandle
+  try {
+    handle = await spawner({
+      command: launch.command,
+      args: launch.args,
+      cwd: launch.cwd,
+      env,
+      cols: deps.cols,
+      rows: deps.rows
+    })
+  } catch {
+    // #290: spawner failures (`posix_spawnp failed`, missing CLI on
+    // PATH, PTY allocation refused) must not crash the whole session
+    // setup. Roll the generation back so a later connect doesn't see a
+    // stale handler, leave the session metadata in `disconnected` so
+    // the renderer surfaces the "couldn't connect" lifecycle state,
+    // and return false so callers can react. The error is swallowed
+    // intentionally — the spawner already has the detail; the
+    // renderer only needs to know connect didn't succeed.
+    generations.set(id, gen - 1)
+    return false
+  }
   handles.set(id, handle)
   // #274: record launch info BEFORE setting state to 'connected' so a
   // race-fast exit handler always sees a valid info record.

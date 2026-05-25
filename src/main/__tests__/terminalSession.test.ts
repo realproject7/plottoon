@@ -12,10 +12,38 @@ import {
   disconnectSession,
   restartSession,
   destroySession,
-  clearSessionsForTesting
+  clearSessionsForTesting,
+  defaultAgentPtySpawner,
+  type PtyHandle
 } from '../services/terminalSession'
 
 let tmpDir: string
+
+/**
+ * #290: shared fake spawner so every connect/restart call goes through
+ * a deterministic handle instead of `defaultAgentPtySpawner`. Without
+ * this, environments where `node-pty` is installed try to spawn a real
+ * PTY for the user's shell (or the configured agent), which is
+ * fragile in CI (no `claude`/`codex` on PATH) and on developer
+ * machines (PTY allocation can refuse with `posix_spawnp failed`).
+ *
+ * The handle is intentionally inert: data/exit handlers are stored but
+ * never fired automatically. Tests that need to assert specific PTY
+ * behaviour (input round-trip, exit events) live in
+ * `terminalSessionAgent.test.ts` / `terminalSessionResumeFailed.test.ts`
+ * and use a more capable fake there.
+ */
+function makeInertPty(): PtyHandle {
+  return {
+    onData() {},
+    onExit() {},
+    write() {},
+    resize() {},
+    kill() {}
+  }
+}
+
+const fakeSpawner = (): PtyHandle => makeInertPty()
 
 beforeEach(async () => {
   clearSessionsForTesting()
@@ -43,7 +71,8 @@ describe('createSession', () => {
     await connectSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     const second = createSession('proj_1', tmpDir, null)
     expect(second.id).toBe(session.id)
@@ -55,7 +84,8 @@ describe('createSession', () => {
     await connectSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     disconnectSession(session.id)
     destroySession(session.id)
@@ -102,7 +132,8 @@ describe('connectSession / disconnectSession', () => {
     const ok = await connectSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     expect(ok).toBe(true)
     expect(getSession(session.id)?.state).toBe('connected')
@@ -113,7 +144,8 @@ describe('connectSession / disconnectSession', () => {
     const result = await connectSession(
       'bad',
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     expect(result).toBe(false)
   })
@@ -123,12 +155,14 @@ describe('connectSession / disconnectSession', () => {
     await connectSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     const second = await connectSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     expect(second).toBe(false)
     disconnectSession(session.id)
@@ -139,7 +173,8 @@ describe('connectSession / disconnectSession', () => {
     await connectSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     const ok = disconnectSession(session.id)
     expect(ok).toBe(true)
@@ -158,7 +193,8 @@ describe('writeToSession', () => {
     await connectSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     expect(writeToSession(session.id, 'echo hi\n')).toBe(true)
     disconnectSession(session.id)
@@ -171,7 +207,8 @@ describe('restartSession', () => {
     const ok = await restartSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     expect(ok).toBe(true)
     expect(getSession(session.id)?.state).toBe('connected')
@@ -183,12 +220,14 @@ describe('restartSession', () => {
     await connectSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     const ok = await restartSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     expect(ok).toBe(true)
     expect(getSession(session.id)?.state).toBe('connected')
@@ -199,7 +238,8 @@ describe('restartSession', () => {
     const result = await restartSession(
       'bad',
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     expect(result).toBe(false)
   })
@@ -217,7 +257,8 @@ describe('destroySession', () => {
     await connectSession(
       session.id,
       () => {},
-      () => {}
+      () => {},
+      { spawner: fakeSpawner }
     )
     expect(destroySession(session.id)).toBe(true)
     expect(getSession(session.id)).toBeNull()
@@ -235,5 +276,125 @@ describe('session metadata persists across navigation', () => {
     expect(found?.id).toBe(session.id)
     expect(found?.cwd).toBe(tmpDir)
     expect(found?.projectId).toBe('proj_1')
+  })
+})
+
+/**
+ * #290: degrade-predictably guarantee. When the configured spawner
+ * throws (e.g. node-pty's `pty.spawn(...)` rejecting the command with
+ * `posix_spawnp failed`), `connectSession` must not bubble the error
+ * out — the renderer relies on it returning a bool so it can show the
+ * "couldn't connect" lifecycle state instead of crashing the panel.
+ */
+describe('#290 connectSession — spawner failure surfaces as a controlled false return', () => {
+  it('returns false when the spawner throws synchronously, leaving the session in disconnected state', async () => {
+    const session = createSession('proj_1', tmpDir, null)
+    const throwingSpawner = (): PtyHandle => {
+      throw new Error('posix_spawnp failed: ENOENT (test fixture)')
+    }
+    const ok = await connectSession(
+      session.id,
+      () => {},
+      () => {},
+      { spawner: throwingSpawner }
+    )
+    expect(ok).toBe(false)
+    // Session state stays disconnected — no half-connected zombie that
+    // a later disconnect would try to clean up.
+    expect(getSession(session.id)?.state).toBe('disconnected')
+  })
+
+  it('returns false when the async spawner rejects, leaving the session in disconnected state', async () => {
+    const session = createSession('proj_2', tmpDir, null)
+    const asyncRejector = async (): Promise<PtyHandle> => {
+      throw new Error('node-pty allocation refused (test fixture)')
+    }
+    const ok = await connectSession(
+      session.id,
+      () => {},
+      () => {},
+      { spawner: asyncRejector }
+    )
+    expect(ok).toBe(false)
+    expect(getSession(session.id)?.state).toBe('disconnected')
+  })
+
+  it('a failed connect does not block a subsequent successful connect on the same session', async () => {
+    // Proves the gen-rollback above keeps the session usable: a later
+    // connect with a working spawner must still transition to connected.
+    const session = createSession('proj_3', tmpDir, null)
+    const fail = (): PtyHandle => {
+      throw new Error('first attempt fails')
+    }
+    const firstOk = await connectSession(
+      session.id,
+      () => {},
+      () => {},
+      { spawner: fail }
+    )
+    expect(firstOk).toBe(false)
+    const secondOk = await connectSession(
+      session.id,
+      () => {},
+      () => {},
+      { spawner: fakeSpawner }
+    )
+    expect(secondOk).toBe(true)
+    expect(getSession(session.id)?.state).toBe('connected')
+    disconnectSession(session.id)
+  })
+})
+
+/**
+ * #290 RE1: direct coverage of `defaultAgentPtySpawner` going through
+ * the child_process fallback with a command that can't spawn. Without
+ * the new `error` listener on the ChildProcess, Node emits an unhandled
+ * `error` event and the test runner crashes (the EXACT failure mode the
+ * ticket warns about). With the listener:
+ *   - the spawner returns a usable handle (no throw),
+ *   - the caller's onExit handler is invoked with a non-null code,
+ *   - no unhandled error escapes the test.
+ *
+ * Note: on this developer sandbox `node-pty` doesn't compile, so the
+ * spawner already takes the child_process path. CI installs node-pty,
+ * and there the new try/catch in `defaultAgentPtySpawner` (#290) sends
+ * us into the same fallback when the wrapped `pty.spawn(...)` throws,
+ * so this test exercises the same code path either way.
+ */
+describe('#290 RE1 defaultAgentPtySpawner — child_process fallback handles spawn errors', () => {
+  it('a bogus command does NOT throw an unhandled error; onExit fires with a non-null code', async () => {
+    // Path that definitely doesn't exist; spawn returns a ChildProcess
+    // whose `error` event fires synchronously on the next tick with ENOENT.
+    const bogus = '/nonexistent-binary-for-#290-test'
+    const exitCodes: Array<number | null> = []
+    const handle = await defaultAgentPtySpawner({
+      command: bogus,
+      args: [],
+      cwd: tmpDir,
+      env: {}
+    })
+    handle.onExit((evt) => exitCodes.push(evt.exitCode))
+    // Give Node a tick to fire the error event.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(exitCodes.length).toBeGreaterThan(0)
+    // Our error-listener synthesises an exit code of 1 when ENOENT
+    // fires before any natural exit. Some platforms may also emit a
+    // real exit afterwards; either way the first signal arrives.
+    expect(exitCodes[0]).not.toBeNull()
+  })
+
+  it('a bogus command does NOT throw out of defaultAgentPtySpawner (no unhandled error)', async () => {
+    // The spawner itself must resolve to a handle — if it rejected,
+    // connectSession's catch would log a generic error instead of the
+    // specific lifecycle state. We just await the spawner directly to
+    // pin "no throw" as the contract.
+    await expect(
+      defaultAgentPtySpawner({
+        command: '/nonexistent-binary-for-#290-test-2',
+        args: [],
+        cwd: tmpDir,
+        env: {}
+      })
+    ).resolves.toBeDefined()
   })
 })
