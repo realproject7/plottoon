@@ -163,7 +163,7 @@ describe('#272 RE1 TerminalPanel — auto-start agent session on mount', () => {
 })
 
 describe('#272 RE1 TerminalPanel — no-agent UX (production path when no CLI detected)', () => {
-  it('renders the no-agent hint AND hides Connect / Restart buttons when agentKind is null', async () => {
+  it('renders the no-agent hint AND hides lifecycle controls when agentKind is null', async () => {
     const session: MockSession = {
       id: 'term_no_agent_2',
       projectId: 'proj_no_agent_2',
@@ -178,13 +178,14 @@ describe('#272 RE1 TerminalPanel — no-agent UX (production path when no CLI de
     const hint = await screen.findByTestId('agent-terminal-no-agent')
     expect(hint.textContent).toMatch(/No AI agent CLI available/i)
     expect(hint.textContent).toMatch(/install Claude or Codex/i)
-    // Crucially: Connect + Restart buttons are NOT in the DOM, so a
+    // #274: Resume / Start Fresh / Stop are NOT in the DOM, so a
     // user click can't trigger the shell fallback at the IPC layer.
-    expect(screen.queryByTestId('agent-terminal-connect')).toBeNull()
-    expect(screen.queryByTestId('agent-terminal-restart')).toBeNull()
+    expect(screen.queryByTestId('agent-terminal-resume')).toBeNull()
+    expect(screen.queryByTestId('agent-terminal-start-fresh')).toBeNull()
+    expect(screen.queryByTestId('agent-terminal-stop')).toBeNull()
   })
 
-  it('renders Connect AND Restart buttons when agentKind is non-null (Claude/Codex)', async () => {
+  it('renders Resume + Start Fresh when agentKind is non-null and session is stopped', async () => {
     const session: MockSession = {
       id: 'term_claude',
       projectId: 'proj_claude',
@@ -194,15 +195,14 @@ describe('#272 RE1 TerminalPanel — no-agent UX (production path when no CLI de
       exitCode: null,
       agentKind: 'claude'
     }
-    // Stub `connect` to fail so the session stays in 'ready' phase
-    // and the buttons render. (Auto-start fires `connect` on mount; if
-    // it succeeds we'd be in 'connected' phase + see disconnect/
-    // restart instead.)
+    // #274: stub `connect` to fail so the session stays in 'ready'
+    // phase (auto-start fires; on failure reducer stays in ready) and
+    // the disconnected toolbar renders.
     installApi({ initial: session, connectOk: false })
     render(<TerminalPanel projectId="proj_claude" />)
     await waitFor(() => {
-      expect(screen.getByTestId('agent-terminal-connect')).toBeDefined()
-      expect(screen.getByTestId('agent-terminal-restart')).toBeDefined()
+      expect(screen.getByTestId('agent-terminal-resume')).toBeDefined()
+      expect(screen.getByTestId('agent-terminal-start-fresh')).toBeDefined()
     })
     expect(screen.queryByTestId('agent-terminal-no-agent')).toBeNull()
   })

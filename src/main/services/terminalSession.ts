@@ -3,7 +3,22 @@ import { buildAgentEnv } from './agentEnv'
 import { normalizeWalletAddress } from '../../shared/walletIdentity'
 import { buildLaunchCommand, type AgentKind, type LaunchCommand } from './agentRuntime'
 
-export type SessionState = 'connected' | 'disconnected' | 'exited'
+/**
+ * #274: `resume-failed` is set when a session launched with `mode:
+ * 'resume'` exits inside RESUME_QUICK_EXIT_MS — the agent rejected the
+ * resume (e.g. Claude can't find a session matching `--resume <uuid>`).
+ * The renderer surfaces a fallback prompt offering a fresh launch.
+ */
+export type SessionState = 'connected' | 'disconnected' | 'exited' | 'resume-failed'
+
+/**
+ * #274: how quickly a resumed agent must exit for us to treat it as
+ * "resume failed" rather than "exited normally". Claude/Codex usually
+ * print an error and exit within ~1 s when the resume target doesn't
+ * exist; a real interactive session lasts at least seconds before the
+ * user could quit it. 5 s is a comfortable buffer.
+ */
+export const RESUME_QUICK_EXIT_MS = 5000
 
 export interface SessionMeta {
   id: string
@@ -68,6 +83,10 @@ let nextId = 1
 const sessions = new Map<string, SessionMeta>()
 const handles = new Map<string, PtyHandle | ChildHandle>()
 const generations = new Map<string, number>()
+// #274: per-generation launch info. Used to attribute a quick exit
+// after `mode: 'resume'` to a resume failure rather than a normal
+// agent shutdown. Cleared on disconnect / restart / destroy.
+const launchInfo = new Map<string, { mode: 'fresh' | 'resume'; connectedAt: number; gen: number }>()
 
 // `ChildHandle` is the degraded-mode fallback we use when node-pty is
 // unavailable at runtime (no native build on this platform). It wraps
@@ -380,15 +399,30 @@ export async function connectSession(
     rows: deps.rows
   })
   handles.set(id, handle)
+  // #274: record launch info BEFORE setting state to 'connected' so a
+  // race-fast exit handler always sees a valid info record.
+  const launchMode = meta.agentKind ? (deps.mode ?? 'fresh') : 'fresh'
+  launchInfo.set(id, { mode: launchMode, connectedAt: Date.now(), gen })
   sessions.set(id, { ...meta, state: 'connected', exitCode: null })
 
   handle.onData(onData)
   handle.onExit((event) => {
     if (generations.get(id) !== gen) return
     handles.delete(id)
+    const info = launchInfo.get(id)
+    launchInfo.delete(id)
     const current = sessions.get(id)
     if (current && current.state === 'connected') {
-      sessions.set(id, { ...current, state: 'exited', exitCode: event.exitCode })
+      // #274: classify a quick exit during resume as 'resume-failed' so
+      // the renderer can prompt for a fresh launch instead of leaving
+      // the user on a generic "exited" state. The threshold matches
+      // RESUME_QUICK_EXIT_MS — long enough to catch CLI-rejected resumes
+      // but short enough to avoid mis-attributing a real session that
+      // happened to be short.
+      const elapsed = info ? Date.now() - info.connectedAt : Infinity
+      const isResumeFailed = info?.mode === 'resume' && elapsed < RESUME_QUICK_EXIT_MS
+      const newState: SessionState = isResumeFailed ? 'resume-failed' : 'exited'
+      sessions.set(id, { ...current, state: newState, exitCode: event.exitCode })
       onExit(event.exitCode)
     }
   })
@@ -427,6 +461,7 @@ export function disconnectSession(id: string): boolean {
   generations.set(id, gen)
 
   killHandle(id)
+  launchInfo.delete(id)
   sessions.set(id, { ...meta, state: 'disconnected' })
   return true
 }
@@ -480,6 +515,7 @@ export function adoptPersistedSession(input: {
 export function destroySession(id: string): boolean {
   killHandle(id)
   generations.delete(id)
+  launchInfo.delete(id)
   return sessions.delete(id)
 }
 
@@ -494,4 +530,5 @@ export function clearSessionsForTesting(): void {
   nextId = 1
   cachedPtyModule = null
   ptyModuleLoaded = false
+  launchInfo.clear()
 }

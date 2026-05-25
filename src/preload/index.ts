@@ -6,8 +6,11 @@ contextBridge.exposeInMainWorld('plottoon', {
     create: (projectId: string) => ipcRenderer.invoke('terminal:create', projectId),
     getSession: (sessionId: string) => ipcRenderer.invoke('terminal:getSession', sessionId),
     findByProject: (projectId: string) => ipcRenderer.invoke('terminal:findByProject', projectId),
-    connect: (sessionId: string, dims?: { cols?: number; rows?: number }) =>
-      ipcRenderer.invoke('terminal:connect', sessionId, dims),
+    connect: (
+      sessionId: string,
+      dims?: { cols?: number; rows?: number },
+      opts?: { mode?: 'fresh' | 'resume' | 'auto' }
+    ) => ipcRenderer.invoke('terminal:connect', sessionId, dims, opts),
     write: (sessionId: string, data: string) =>
       ipcRenderer.invoke('terminal:write', sessionId, data),
     resize: (sessionId: string, cols: number, rows: number) =>
@@ -22,9 +25,23 @@ contextBridge.exposeInMainWorld('plottoon', {
       ipcRenderer.on('terminal:data', handler)
       return () => ipcRenderer.removeListener('terminal:data', handler)
     },
-    onExit: (callback: (sessionId: string, code: number | null) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, sessionId: string, code: number | null) =>
-        callback(sessionId, code)
+    onExit: (
+      callback: (
+        sessionId: string,
+        code: number | null,
+        state: 'exited' | 'resume-failed' | 'disconnected'
+      ) => void
+    ) => {
+      // #274: payload now includes the post-exit state so the renderer
+      // can distinguish a resume failure from a normal exit without an
+      // extra IPC round-trip. Older callbacks taking 2 args still work
+      // because the extra positional arg is ignored.
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        sessionId: string,
+        code: number | null,
+        state: 'exited' | 'resume-failed' | 'disconnected'
+      ) => callback(sessionId, code, state ?? 'exited')
       ipcRenderer.on('terminal:exit', handler)
       return () => ipcRenderer.removeListener('terminal:exit', handler)
     }
