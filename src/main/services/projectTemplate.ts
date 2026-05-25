@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { generateProjectAgentsMd } from './agentsTemplate'
+import { writeOrRefreshProjectAgentGuide, PLOTTOON_AGENT_GUIDE_FILENAME } from './agentGuide'
 
 const DIRS = ['characters', 'plots']
 
@@ -53,9 +54,17 @@ export async function scaffoldProjectTemplate(
     created.push(file.name)
   }
 
+  // #277: write the versioned PlotToon agent guide alongside the
+  // static AGENTS.md. The static file pins the never-touch rules; the
+  // generated guide carries the live workflow (cuts.json, image
+  // generation, AtlasCloud bridge, manual editor handoff) and
+  // refreshes when its version stamp changes.
+  await writeOrRefreshProjectAgentGuide(projectRoot, { projectName })
+  created.push(PLOTTOON_AGENT_GUIDE_FILENAME)
+
   return created
 }
 
 export function getExpectedTemplatePaths(): string[] {
-  return [...DIRS.map((d) => d + '/'), ...FILES.map((f) => f.name)]
+  return [...DIRS.map((d) => d + '/'), ...FILES.map((f) => f.name), PLOTTOON_AGENT_GUIDE_FILENAME]
 }

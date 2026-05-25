@@ -95,6 +95,22 @@ describe('scaffoldProjectTemplate', () => {
     expect(agents).toContain('cuts.json')
     expect(agents).toContain('canonical')
   })
+
+  // #277: project scaffold now also drops the generated PlotToon agent
+  // guide alongside the static AGENTS.md so Claude/Codex pick up the
+  // live workflow rules (cuts.json convention, AtlasCloud bridge,
+  // manual editor handoff). The static AGENTS.md gains a pointer to
+  // the new file.
+  it('writes PLOTTOON_AGENT_GUIDE.md at the project root and AGENTS.md points at it', async () => {
+    await scaffoldProjectTemplate(tmpDir, 'Guide Project')
+
+    const guide = await fs.readFile(path.join(tmpDir, 'PLOTTOON_AGENT_GUIDE.md'), 'utf-8')
+    expect(guide).toContain('PlotToon — Agent Guide for Guide Project')
+    expect(guide).toContain('cuts.json')
+    expect(guide).toContain('AtlasCloud')
+    const agents = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf-8')
+    expect(agents).toContain('PLOTTOON_AGENT_GUIDE.md')
+  })
 })
 
 describe('getExpectedTemplatePaths', () => {
