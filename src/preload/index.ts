@@ -55,6 +55,10 @@ contextBridge.exposeInMainWorld('plottoon', {
   capability: {
     getReport: () => ipcRenderer.invoke('capability:getReport')
   },
+  agentEnvBridge: {
+    getStatus: () => ipcRenderer.invoke('agentEnvBridge:getStatus'),
+    setConfig: (next: unknown) => ipcRenderer.invoke('agentEnvBridge:setConfig', next)
+  },
   actionLog: {
     log: (action: string, detail: string, projectId?: string, plotId?: string) =>
       ipcRenderer.invoke('actionLog:log', action, detail, projectId, plotId),

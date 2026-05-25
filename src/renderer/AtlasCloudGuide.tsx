@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 export function AtlasCloudGuide(): JSX.Element {
   return (
     <div className="screen screen--narrow">
@@ -5,11 +7,14 @@ export function AtlasCloudGuide(): JSX.Element {
         <div>
           <h2 className="screen__title">AtlasCloud Backend Guide</h2>
           <p className="screen__subtitle">
-            Advanced image generation using AtlasCloud-style API backends, managed entirely by your
-            connected Claude or Codex agent.
+            Advanced image generation using AtlasCloud-style API backends. The provider account +
+            API key are entirely user-owned — PlotToon never stores them. When you opt in below, the
+            key in your shell is bridged into the agent process only.
           </p>
         </div>
       </div>
+
+      <AtlasCloudBridgeCard />
 
       <GuideSection title="API Key Configuration">
         <p>
@@ -25,8 +30,9 @@ export function AtlasCloudGuide(): JSX.Element {
             <strong>CLI config:</strong> set the key in your Claude or Codex CLI configuration file
           </li>
           <li>
-            <strong>Agent environment:</strong> pass the key via the agent&apos;s environment
-            variables when launching
+            <strong>Agent environment bridge:</strong> use the opt-in toggle above so the agent
+            process inherits <Code>ATLASCLOUD_API_KEY</Code> from your shell. The toggle defaults to
+            off; the key value never crosses any renderer-facing IPC, log, or project file.
           </li>
         </ul>
         <WarningBox>
@@ -139,6 +145,112 @@ function WarningBox({ children }: { children: React.ReactNode }): JSX.Element {
   return (
     <div role="alert" className="warning-box">
       {children}
+    </div>
+  )
+}
+
+/**
+ * #276: opt-in toggle for the ATLASCLOUD_API_KEY env bridge. Reads
+ * the renderer-safe status (enabled / configured booleans only — never
+ * the key value) and lets the user flip the per-backend toggle.
+ */
+function AtlasCloudBridgeCard(): JSX.Element {
+  const [status, setStatus] = useState<AgentEnvBridgeStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    // Defensive: older preloads (or test fixtures that mock a smaller
+    // subset of `window.plottoon`) may not expose the bridge IPC.
+    // Skip without erroring — the rest of the guide still renders.
+    if (!window.plottoon?.agentEnvBridge?.getStatus) {
+      setStatus({ entries: [] })
+      return () => {
+        cancelled = true
+      }
+    }
+    window.plottoon.agentEnvBridge
+      .getStatus()
+      .then((s) => {
+        if (!cancelled) setStatus(s)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : 'Failed to load bridge status')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const atlasEntry = status?.entries.find((e) => e.bridgeKey === 'atlascloud')
+
+  const handleToggle = async (next: boolean): Promise<void> => {
+    setBusy(true)
+    setError(null)
+    try {
+      const refreshed = await window.plottoon.agentEnvBridge.setConfig({ atlascloud: next })
+      setStatus(refreshed)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update bridge')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="docs-section" data-testid="atlascloud-bridge-card">
+      <h3 className="docs-section__title">Env bridge (opt-in)</h3>
+      <div className="docs-section__body">
+        <p>
+          Forward <Code>ATLASCLOUD_API_KEY</Code> from your shell into the agent process. The toggle
+          is off by default; PlotToon stores only your on/off choice and never reads or persists the
+          key value.
+        </p>
+        {error && (
+          <div className="warning-box" role="alert" data-testid="atlascloud-bridge-error">
+            {error}
+          </div>
+        )}
+        {!status && !error && (
+          <div className="docs-section__body" data-testid="atlascloud-bridge-loading">
+            Loading…
+          </div>
+        )}
+        {atlasEntry && (
+          <div className="bridge-row" data-testid="atlascloud-bridge-row">
+            <div className="bridge-row__labels">
+              <span className="bridge-row__title">
+                ATLASCLOUD_API_KEY{' '}
+                <span
+                  className={`bridge-row__chip bridge-row__chip--${
+                    atlasEntry.configured ? 'configured' : 'missing'
+                  }`}
+                  data-testid="atlascloud-bridge-configured"
+                >
+                  {atlasEntry.configured ? 'configured in shell' : 'not set in shell'}
+                </span>
+              </span>
+              <span className="bridge-row__detail">
+                {atlasEntry.enabled
+                  ? 'Bridge is enabled. The agent process will receive the key while this toggle is on.'
+                  : 'Bridge is disabled. The agent process will not see this key.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy}
+              onClick={() => handleToggle(!atlasEntry.enabled)}
+              data-testid="atlascloud-bridge-toggle"
+              aria-pressed={atlasEntry.enabled}
+            >
+              {busy ? 'Updating…' : atlasEntry.enabled ? 'Disable bridge' : 'Enable bridge'}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

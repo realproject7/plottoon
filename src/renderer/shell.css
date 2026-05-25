@@ -1705,6 +1705,64 @@
   color: var(--fg);
 }
 
+/* #276: opt-in env bridge toggle inside the AtlasCloud guide. */
+.bridge-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-top: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+}
+
+.bridge-row__labels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bridge-row__title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.bridge-row__chip {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: var(--card-radius);
+  border: 1px solid;
+}
+
+.bridge-row__chip--configured {
+  color: var(--success);
+  border-color: var(--success);
+  background: oklch(45% 0.14 145 / 0.08);
+}
+
+.bridge-row__chip--missing {
+  color: var(--muted);
+  border-color: var(--border);
+  background: var(--surface-raised);
+}
+
+.bridge-row__detail {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nav-item,
   .btn-primary,
