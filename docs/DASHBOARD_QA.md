@@ -28,7 +28,8 @@ Each check from #252 mapped to the code path / test that demonstrates compliance
 - `grep -rn "api/royalty\|plotlink.*royalty" src/` returns only historical comments in `src/main/index.ts` and the regression test in `dashboardData.test.ts` (the test that asserts `globalThis.fetch` is never called) — both deliberately mention the removed endpoint to pin the constraint.
 - ERC-20 balances (`fetchUsdcBalance`, `fetchPlotBalance` in `registerDashboardHandlers`) go through `readErc20Balance` → viem `readContract` on Base RPC.
 - ETH balance uses viem `getBalance` directly (`fetchBalance:` callback in `registerDashboardHandlers`).
-- ETH/USD and PLOT/USD prices use CoinGecko public endpoints — not PlotLink.
+- ETH/USD uses the CoinGecko public endpoint — not PlotLink.
+- PLOT/USD uses `src/main/services/plotPrice.ts` `getPlotUsdPrice` (#264): GeckoTerminal `networks/base/tokens/<addr>` primary, CoinGecko `token_price/base` fallback, module-local 2-minute cache, graceful `null` when both sources are unavailable. Both endpoints are public; PlotLink hosts neither.
 
 **Regression pin:** `dashboardData.test.ts` "#249 buildDashboardData — no PlotLink HTTP for royalty" spies on `globalThis.fetch` and asserts it is never invoked for a direct-RPC `fetchRoyalty`.
 
@@ -190,11 +191,11 @@ Per the #248 spec, every parity row marked **Gap A–F** was closed by #249 + #2
 
 1. **Royalty-convention assumption against the deployed ABI**. #249 codified the plotlink-ows convention `(unclaimed, totalClaimed)`. Before live rollout, run a manual cross-check against the deployed `MCV2_BOND` contract on Base for one real wallet, comparing values shown in PlotToon's Dashboard against plotlink-ows. If the on-chain ABI differs, both clients need to update together — the divergence flagged in `docs/DASHBOARD_PARITY.md` Gap E remains a one-time QA gate.
 
-2. **PLOT/USD price source**. #249 ships best-effort CoinGecko `token_price/base` against the PLOT token contract. If CoinGecko has no coverage for PLOT on Base, `plotUsd` stays null and the PnL row hides gracefully — but the spec suggested porting plotlink-ows's HUNT-backed derivation as the canonical fallback. Deferred until either CoinGecko coverage is confirmed insufficient or plotlink-ows's helper is ported.
+2. **Activity feed**: only covers publishes + royalty claims today. The #251 issue mentioned indexing repairs as a separate activity kind, but the existing data model only carries the current `indexed` boolean, not a history of repair attempts. Adding repair-attempt history would need a small persistence change (append to a per-plot recovery log); deferred as scope-bound to its own ticket.
 
-3. **Activity feed**: only covers publishes + royalty claims today. The #251 issue mentioned indexing repairs as a separate activity kind, but the existing data model only carries the current `indexed` boolean, not a history of repair attempts. Adding repair-attempt history would need a small persistence change (append to a per-plot recovery log); deferred as scope-bound to its own ticket.
+3. **No real-app screenshot evidence**. The smoke environment has no real OWS wallet to populate balances/royalties. Renderer test assertions pin every data-testid for visual structure; future on-device QA (separate from this ticket) can attach sanitized screenshots from a wallet held by a contributor who explicitly consents.
 
-4. **No real-app screenshot evidence**. The smoke environment has no real OWS wallet to populate balances/royalties. Renderer test assertions pin every data-testid for visual structure; future on-device QA (separate from this ticket) can attach sanitized screenshots from a wallet held by a contributor who explicitly consents.
+> **No longer deferred (post-#264)**: PLOT/USD now uses `getPlotUsdPrice` with a GeckoTerminal → CoinGecko fallback chain and a module-local 2-minute cache. `tokenPrice.plotUsd` is null only when both public sources have no quote (the PnL row hides gracefully in that case). The HUNT-backed Mint Club derivation that plotlink-ows uses as its canonical fallback is intentionally NOT ported — see `docs/DASHBOARD_PARITY.md` § "Intentional implementation choices" for the rationale.
 
 ## Sensitive-data audit summary
 
@@ -210,4 +211,4 @@ The grep pattern for the wallet-secrets evidence cell is `vaultPath|privateKey|m
 
 ## Sign-off
 
-Parent EPIC #247 can be marked complete once #252 lands. All eleven required checks enumerated in #252 pass against the rebuilt UI (the audit above adds two extra sections — activity feed (#10) and retry-index (#11) — covering the implementations from #251 beyond the issue's verbatim list). The renderer + main-process implementations match the #248 spec; the only deferred items are the four carried items above (royalty-ABI on-chain cross-check, PLOT/USD HUNT-derivation fallback, recovery-attempt history in the activity feed, on-device screenshot evidence) — none blocking.
+Parent EPIC #247 can be marked complete once #252 lands. All eleven required checks enumerated in #252 pass against the rebuilt UI (the audit above adds two extra sections — activity feed (#10) and retry-index (#11) — covering the implementations from #251 beyond the issue's verbatim list). The renderer + main-process implementations match the #248 spec; the only deferred items are the three carried items above (royalty-ABI on-chain cross-check, recovery-attempt history in the activity feed, on-device screenshot evidence) — none blocking. (Pre-#264 this list included PLOT/USD HUNT-derivation fallback; #264 shipped the GeckoTerminal-primary / CoinGecko-fallback chain so that item moved to the "intentional implementation choices" section of `docs/DASHBOARD_PARITY.md`.)
