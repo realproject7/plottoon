@@ -187,6 +187,56 @@ describe('#291 resume-failed survives app restart', () => {
     expect(persisted?.lastState).toBe('connected')
   })
 
+  it('#297 RE1: on restart with persisted pty-unavailable, find/create return state=pty-unavailable (renderer Retry surface)', async () => {
+    // Boot 1: create + hand-write a pty-unavailable record. The
+    // failure path itself can't be exercised through the IPC layer in
+    // this sandbox (no node-pty), so we round-trip via the store API
+    // — same shape the connect IPC writes via `persistMeta(updated,
+    // null)` on PtyUnavailableError.
+    registerTerminalHandlers({
+      walletIdentityStore: storeReturning(identity(WALLET_A)),
+      agentResolver: fakeClaude
+    })
+    const projectId = registerProject(tmpDir)
+    const first = (await ipcHandlers['terminal:create']({}, projectId)) as {
+      sessionId: string
+    }
+    const storePath = path.join(mockUserData, 'config', 'terminal-sessions.json')
+    const raw = await fs.readFile(storePath, 'utf-8')
+    const file = JSON.parse(raw) as { sessions: Record<string, Record<string, unknown>> }
+    const key = Object.keys(file.sessions)[0]
+    file.sessions[key].lastState = 'pty-unavailable'
+    file.sessions[key].lastConnectedAt = null
+    await fs.writeFile(storePath, JSON.stringify(file, null, 2), 'utf-8')
+
+    // Boot 2: restart, re-register handlers, re-seed registry.
+    clearSessionsForTesting()
+    Object.keys(ipcHandlers).forEach((k) => delete ipcHandlers[k])
+    registerTerminalHandlers({
+      walletIdentityStore: storeReturning(identity(WALLET_A)),
+      agentResolver: fakeClaude
+    })
+    const projectId2 = registerProject(tmpDir)
+    expect(projectId2).toBe(projectId)
+
+    // terminal:create adopts the persisted record AND preserves the
+    // pty-unavailable state — not collapsed to disconnected.
+    const adopted = (await ipcHandlers['terminal:create']({}, projectId)) as {
+      sessionId: string
+      state: string
+    }
+    expect(adopted.sessionId).toBe(first.sessionId)
+    expect(adopted.state).toBe('pty-unavailable')
+
+    // findByProject also returns pty-unavailable so the renderer's
+    // auto-connect check (gated on `state === 'disconnected'`) cannot
+    // fire — preventing the restart loop @re1 flagged.
+    const found = (await ipcHandlers['terminal:findByProject']({}, projectId)) as {
+      state: string
+    }
+    expect(found.state).toBe('pty-unavailable')
+  })
+
   it('on restart with persisted resume-failed, find/create return state=resume-failed (renderer auto-connect skips)', async () => {
     // Boot 1: create + persist with resume-failed handwritten.
     registerTerminalHandlers({

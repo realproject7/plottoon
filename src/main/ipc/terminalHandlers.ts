@@ -228,6 +228,17 @@ export function registerTerminalHandlers(options: RegisterTerminalHandlersOption
       if (ok) {
         const updated = getSession(sessionId)
         if (updated) await persistMeta(updated, new Date().toISOString())
+      } else {
+        // #297 RE1: connect failed; if the service flipped the session
+        // to `pty-unavailable`, persist that state so the renderer
+        // surfaces the recovery banner after an app restart instead
+        // of silently re-attempting and looping. Other failure modes
+        // (state still `disconnected`) skip persistence — same path
+        // as before.
+        const updated = getSession(sessionId)
+        if (updated && updated.state === 'pty-unavailable') {
+          await persistMeta(updated, null)
+        }
       }
       return ok
     }

@@ -621,11 +621,13 @@ export function adoptPersistedSession(input: {
   const id = `term_${nextId++}`
   // Only certain restored states make sense in memory: `connected` is
   // not adoptable because the live PTY is gone after a restart, so
-  // collapse to `disconnected` for that case. `resume-failed` and
-  // `exited` are restored as-is so the renderer surfaces the recovery
-  // affordance.
+  // collapse to `disconnected` for that case. `resume-failed`,
+  // `exited`, and `pty-unavailable` (#297 RE1) are restored as-is so
+  // the renderer surfaces the recovery affordance.
   const adoptedState: SessionState =
-    input.lastState === 'resume-failed' || input.lastState === 'exited'
+    input.lastState === 'resume-failed' ||
+    input.lastState === 'exited' ||
+    input.lastState === 'pty-unavailable'
       ? input.lastState
       : 'disconnected'
   const meta: SessionMeta = {
