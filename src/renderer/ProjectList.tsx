@@ -351,9 +351,38 @@ function NewProjectDialog({ onCancel, onSubmit }: NewProjectDialogProps): JSX.El
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // #269: track whether the workspace folder is already configured.
+  // - `null` while loading (don't render either branch yet so the
+  //    explanation banner doesn't flash for established users).
+  // - `false` → first-run; show the in-app explanation so the user
+  //    knows the upcoming native folder picker is asking for the
+  //    PARENT workspace folder, not the per-project folder.
+  // - `true`  → silent path; never re-show this on every project
+  //    creation once a workspace is configured.
+  const [workspaceConfigured, setWorkspaceConfigured] = useState<boolean | null>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function load(): Promise<void> {
+      try {
+        const dir = await window.plottoon.project.getProjectsDir()
+        if (!cancelled) setWorkspaceConfigured(dir !== null)
+      } catch {
+        // If the read fails (rare; fs error in the config dir), assume
+        // first-run so the user gets the more-informative copy. Worst
+        // case: they see the explanation once even though they had a
+        // workspace configured — better than the opposite mistake.
+        if (!cancelled) setWorkspaceConfigured(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -403,6 +432,21 @@ function NewProjectDialog({ onCancel, onSubmit }: NewProjectDialogProps): JSX.El
           <h2 id="new-project-dialog-title" className="dialog__title">
             New project
           </h2>
+          {workspaceConfigured === false && (
+            <div className="dialog__hint" data-testid="new-project-workspace-explainer" role="note">
+              {/*
+                #269: first-run explainer. After Create, the native
+                folder picker asks for the WORKSPACE folder where
+                PlotToon will store every project — not the folder
+                for this single project. The new project folder
+                (named after the project slug) is created inside it.
+                Without this hint the picker can read as "pick the
+                folder for this project" and users land in confusion.
+              */}
+              After you click <strong>Create</strong>, choose a workspace folder where PlotToon will
+              store all your webtoon projects. Your new project folder will be created inside it.
+            </div>
+          )}
           <label className="dialog__field">
             <span className="dialog__label">Project name</span>
             <input

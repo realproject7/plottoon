@@ -149,9 +149,18 @@ export function registerProjectHandlers(options: RegisterProjectHandlersOptions 
     let projectsDir = await getProjectsDir()
 
     if (!projectsDir) {
+      // #269: title/message reflect that this is the PARENT workspace
+      // folder, not the per-project folder. The renderer also shows an
+      // in-app explanation (`NewProjectDialog` banner) before this
+      // dialog opens, so by the time the user sees this picker they
+      // should already understand the contract. Title-bar copy is
+      // belt-and-suspenders.
       const win = BrowserWindow.fromWebContents(event.sender)
       const result = await dialog.showOpenDialog(win ?? BrowserWindow.getFocusedWindow()!, {
-        title: 'Choose projects folder',
+        title: 'Choose your PlotToon workspace folder',
+        message:
+          'PlotToon will store all your webtoon projects inside this folder. The new project folder will be created here.',
+        buttonLabel: 'Use this workspace',
         properties: ['openDirectory', 'createDirectory']
       })
       if (result.canceled || result.filePaths.length === 0) return null
