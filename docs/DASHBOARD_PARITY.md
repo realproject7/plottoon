@@ -20,7 +20,7 @@ This doc maps every Dashboard / Wallet / Settings / Royalty feature exposed by `
 
 These are still load-bearing for any future Dashboard work:
 
-1. **No new PlotLink API endpoint** is allowed for Dashboard profile/story/royalty data. Every value the Dashboard displays comes from (a) local PlotToon project files, or (b) Base mainnet RPC.
+1. **No new PlotLink API endpoint** is allowed for Dashboard profile/story/royalty data. The Dashboard's profile/story/royalty values come from (a) local PlotToon project files, or (b) Base mainnet RPC. Auxiliary price quotes (ETH/USD via CoinGecko, PLOT/USD via the #264 GeckoTerminal → CoinGecko chain) reach keyless public endpoints — never a PlotLink HTTP surface, and never required for the Dashboard to render: when those public price endpoints have no quote the renderer hides the leg gracefully.
 2. **No external PlotLink-only story listing** in the PlotToon Dashboard. The Dashboard only shows stories that map to local PlotToon project/publish metadata.
 3. **A story is PlotToon-managed** only when local PlotToon `publish-status.json` carries a `storylineId` (and/or the project's `storylineId` metadata) — i.e. it was published from this PlotToon install. A bare PlotLink story that exists on-chain but has no local mapping is **not** rendered in PlotToon's Dashboard.
 4. **PlotToon-managed stories get a local project/workspace action** (Open in workspace) — not just an external link.

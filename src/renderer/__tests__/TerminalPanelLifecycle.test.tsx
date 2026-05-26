@@ -349,7 +349,15 @@ describe('#274 TerminalPanel — agent identity badge', () => {
     }
     install({ initial: session })
     render(<TerminalPanel projectId="proj_c" />)
-    expect((await screen.findByTestId('agent-terminal-title')).textContent).toBe('Claude session')
+    // #290 RE1: the title element exists immediately as "Agent session"
+    // during the init phase, before the init effect resolves and the
+    // reducer flips to a `connected`/`ready` state with the agent
+    // identity. `findByTestId` returned the still-`init` element on
+    // slow CI runs, so we poll the textContent with `waitFor` until the
+    // post-dispatch text settles.
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-terminal-title').textContent).toBe('Claude session')
+    })
   })
 
   it('shows "Codex session" when agentKind is codex', async () => {
@@ -364,7 +372,9 @@ describe('#274 TerminalPanel — agent identity badge', () => {
     }
     install({ initial: session })
     render(<TerminalPanel projectId="proj_cx" />)
-    expect((await screen.findByTestId('agent-terminal-title')).textContent).toBe('Codex session')
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-terminal-title').textContent).toBe('Codex session')
+    })
   })
 
   it('status-dot data-state attribute reflects the current phase', async () => {
