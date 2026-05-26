@@ -51,8 +51,15 @@ export interface PersistedSession {
    * before the failure), and the agent would reject the same UUID
    * again — a restart loop. Restored resume-failed sessions render
    * the explicit Start Fresh recovery surface instead.
+   *
+   * #297 RE1: `pty-unavailable` is also first-class for the same
+   * reason. The renderer surfaces a Retry button explaining the PTY
+   * allocation failure; without persistence, a restart would adopt
+   * the record as `disconnected`, auto-connect would fire, the
+   * spawner would re-throw PtyUnavailableError, and the user would
+   * be stuck in a silent loop instead of seeing the recovery prompt.
    */
-  lastState: 'connected' | 'disconnected' | 'exited' | 'resume-failed'
+  lastState: 'connected' | 'disconnected' | 'exited' | 'resume-failed' | 'pty-unavailable'
   /**
    * Per #271 `codexResumeLimitations`. Renderer can surface a warning
    * when Codex resume isn't deterministic.
@@ -127,7 +134,8 @@ function sanitize(value: unknown): PersistedSession | null {
     v.lastState === 'connected' ||
     v.lastState === 'disconnected' ||
     v.lastState === 'exited' ||
-    v.lastState === 'resume-failed'
+    v.lastState === 'resume-failed' ||
+    v.lastState === 'pty-unavailable'
       ? v.lastState
       : 'disconnected'
   const resumeSupported = v.resumeSupported === true

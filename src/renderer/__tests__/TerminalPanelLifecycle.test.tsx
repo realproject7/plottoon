@@ -8,7 +8,7 @@ interface MockSession {
   id: string
   projectId: string
   cwd: string
-  state: 'connected' | 'disconnected' | 'exited' | 'resume-failed'
+  state: 'connected' | 'disconnected' | 'exited' | 'resume-failed' | 'pty-unavailable'
   createdAt: string
   exitCode: number | null
   agentKind: 'claude' | 'codex' | null
@@ -24,7 +24,17 @@ interface InstallResult {
   >
 }
 
-function install(opts: { initial: MockSession | null; connectOk?: boolean }): InstallResult {
+function install(opts: {
+  initial: MockSession | null
+  connectOk?: boolean
+  /**
+   * #297: when connect resolves to false, TerminalPanel re-fetches the
+   * session via getSession to learn the post-failure state (e.g.
+   * `pty-unavailable`). Tests that exercise that path pass this to
+   * override what `getSession` returns.
+   */
+  refreshedAfterConnectFailure?: MockSession
+}): InstallResult {
   const exitHandlers: InstallResult['exitHandlers'] = []
   const findByProject = vi.fn(async () => opts.initial)
   const create = vi.fn(async () => opts.initial)
@@ -32,12 +42,13 @@ function install(opts: { initial: MockSession | null; connectOk?: boolean }): In
   const disconnect = vi.fn(async () => true)
   const destroy = vi.fn(async () => true)
   const restart = vi.fn(async () => true)
+  const getSession = vi.fn(async () => opts.refreshedAfterConnectFailure ?? opts.initial)
   ;(
     window as unknown as { plottoon: { terminal: Record<string, unknown>; wallet?: unknown } }
   ).plottoon = {
     terminal: {
       create,
-      getSession: vi.fn(),
+      getSession,
       findByProject,
       connect,
       write: vi.fn().mockResolvedValue(true),
@@ -391,5 +402,86 @@ describe('#274 TerminalPanel — agent identity badge', () => {
     render(<TerminalPanel projectId="proj_dot" />)
     const dot = await screen.findByTestId('agent-terminal-status-dot')
     expect(dot.getAttribute('data-state')).toBe('running')
+  })
+})
+
+describe('#297 TerminalPanel — PTY-unavailable recovery surface', () => {
+  it('auto-start that fails with pty-unavailable surfaces the recovery banner + Retry button', async () => {
+    // Simulates the real bug: main process refused to allocate a PTY
+    // (node-pty failed to load or `pty.spawn(...)` threw). The
+    // auto-start path's `connect` returns false; TerminalPanel
+    // re-fetches the session via getSession and sees state=
+    // 'pty-unavailable'. The recovery surface renders.
+    const initial: MockSession = {
+      id: 'term_pty',
+      projectId: 'proj_pty',
+      cwd: '/tmp/fake-project',
+      state: 'disconnected',
+      createdAt: '2026-05-25T00:00:00.000Z',
+      exitCode: null,
+      agentKind: 'claude'
+    }
+    const refreshed: MockSession = { ...initial, state: 'pty-unavailable' }
+    install({ initial, connectOk: false, refreshedAfterConnectFailure: refreshed })
+    render(<TerminalPanel projectId="proj_pty" />)
+    expect(await screen.findByTestId('agent-terminal-pty-unavailable-hint')).toBeDefined()
+    expect(screen.getByTestId('agent-terminal-pty-retry')).toBeDefined()
+    // Status label reflects the state.
+    expect(screen.getByTestId('agent-terminal-status').textContent).toMatch(/PTY unavailable/i)
+    // Status dot is the "failed" colour (red).
+    expect(screen.getByTestId('agent-terminal-status-dot').getAttribute('data-state')).toBe(
+      'pty-unavailable'
+    )
+  })
+
+  it('Retry from a pty-unavailable surface calls connect with mode:fresh', async () => {
+    // The Retry button on pty-unavailable wires through handleStartFresh
+    // (same code path as Start Fresh from exited/resume-failed) which
+    // sends mode:'fresh' — the only useful recovery once PTY is back.
+    const initial: MockSession = {
+      id: 'term_pty_retry',
+      projectId: 'proj_pty_retry',
+      cwd: '/tmp/fake-project',
+      state: 'disconnected',
+      createdAt: '2026-05-25T00:00:00.000Z',
+      exitCode: null,
+      agentKind: 'claude'
+    }
+    const refreshed: MockSession = { ...initial, state: 'pty-unavailable' }
+    const api = install({ initial, connectOk: false, refreshedAfterConnectFailure: refreshed })
+    render(<TerminalPanel projectId="proj_pty_retry" />)
+    const retry = await screen.findByTestId('agent-terminal-pty-retry')
+    api.connect.mockClear()
+    fireEvent.click(retry)
+    await waitFor(() => {
+      expect(api.connect).toHaveBeenCalledTimes(1)
+    })
+    const [, , opts] = api.connect.mock.calls[0]
+    expect(opts).toEqual({ mode: 'fresh' })
+    // restart MUST NOT be called — the session never reached connected,
+    // so there's nothing to kill + relaunch.
+    expect(api.restart).not.toHaveBeenCalled()
+  })
+
+  it('mounting with initial state=pty-unavailable does NOT auto-call terminal.connect', async () => {
+    // Same guarantee as the resume-failed restored case: an explicit
+    // recoverable state must require user action to retry. Without
+    // this, the renderer would loop on the same PTY-allocation
+    // failure repeatedly.
+    const restored: MockSession = {
+      id: 'term_pty_restored',
+      projectId: 'proj_pty_restored',
+      cwd: '/tmp/fake-project',
+      state: 'pty-unavailable',
+      createdAt: '2026-05-25T00:00:00.000Z',
+      exitCode: null,
+      agentKind: 'claude'
+    }
+    const api = install({ initial: restored })
+    render(<TerminalPanel projectId="proj_pty_restored" />)
+    expect(await screen.findByTestId('agent-terminal-pty-unavailable-hint')).toBeDefined()
+    // Allow the auto-connect effect a chance to fire — it must NOT.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(api.connect).not.toHaveBeenCalled()
   })
 })

@@ -85,22 +85,26 @@ describe('#272 connectSession — spawns the configured agent command, not a pla
     expect(ok).toBe(true)
     expect(calls).toHaveLength(1)
     const call = calls[0]
-    expect(call.command).toBe('claude')
-    // #273: createSession now allocates a UUID for new Claude
-    // sessions and passes it via `--session-id <uuid>`.
-    expect(call.args[0]).toBe('--session-id')
-    expect(call.args[1]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    // #297: the spawn command is now the user's login shell so the
+    // agent picks up PATH from rc files; the inner command runs via
+    // `<shell> -l -c "claude --session-id '<uuid>'"`.
+    const expectedShell = process.platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/zsh'
+    expect(call.command).toBe(expectedShell)
+    expect(call.args[0]).toBe('-l')
+    expect(call.args[1]).toBe('-c')
+    expect(call.args[2]).toMatch(
+      /^claude --session-id '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'$/
+    )
     expect(call.cwd).toBe(tmpDir)
     expect(call.env.TERM).toBe('xterm-256color')
 
-    // CRITICAL: the spawned command is NOT the user's shell.
-    expect(call.command).not.toBe(process.env.SHELL || '/bin/sh')
-    expect(call.command).not.toBe('cmd.exe')
+    // #297: agent sessions MUST require a real PTY.
+    expect(call.requirePty).toBe(true)
 
     destroySession(session.id)
   })
 
-  it('spawns Codex (codex -C <projectRoot>) when agentKind=codex on fresh session', async () => {
+  it('spawns Codex via `<shell> -l -c "codex -C <projectRoot>"` when agentKind=codex on fresh session', async () => {
     const calls: PtySpawnOptions[] = []
     const session = createSession({
       projectId: 'proj_codex',
@@ -121,9 +125,11 @@ describe('#272 connectSession — spawns the configured agent command, not a pla
       }
     )
 
-    expect(calls[0].command).toBe('codex')
-    expect(calls[0].args).toEqual(['-C', tmpDir])
+    const expectedShell = process.platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/zsh'
+    expect(calls[0].command).toBe(expectedShell)
+    expect(calls[0].args).toEqual(['-l', '-c', `codex -C '${tmpDir}'`])
     expect(calls[0].cwd).toBe(tmpDir)
+    expect(calls[0].requirePty).toBe(true)
     destroySession(session.id)
   })
 
@@ -151,8 +157,13 @@ describe('#272 connectSession — spawns the configured agent command, not a pla
       }
     )
 
+    // Legacy null-agent path still uses the pre-#297 shell selection
+    // (no `-l -c` wrapper) since interactive shells don't need it.
     const expectedShell = process.platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/sh'
     expect(calls[0].command).toBe(expectedShell)
+    // #297: legacy path does NOT require a real PTY — it can still
+    // fall back to child_process pipes for tests / one-off recoveries.
+    expect(calls[0].requirePty).toBe(false)
     destroySession(session.id)
   })
 

@@ -73,22 +73,23 @@ describe('#271 detectAgentRuntimes', () => {
   })
 })
 
-describe('#271 buildLaunchCommand — Claude', () => {
+describe('#297 buildLaunchCommand — Claude (shell-wrapped)', () => {
   const projectRoot = '/tmp/fake-project'
   const sessionId = '00000000-0000-4000-8000-000000000001'
+  const expectedShell = process.env.SHELL || '/bin/zsh'
 
-  it('builds a fresh Claude launch with --session-id when sessionId is provided', () => {
+  it('builds a fresh Claude launch wrapped in `<shell> -l -c "claude --session-id ..."`', () => {
     const cmd = buildLaunchCommand({
       kind: 'claude',
       mode: 'fresh',
       projectRoot,
       sessionId
     })
-    expect(cmd).toEqual({
-      command: 'claude',
-      args: ['--session-id', sessionId],
-      cwd: projectRoot
-    })
+    expect(cmd.command).toBe(expectedShell)
+    expect(cmd.args[0]).toBe('-l')
+    expect(cmd.args[1]).toBe('-c')
+    expect(cmd.args[2]).toBe(`claude --session-id '${sessionId}'`)
+    expect(cmd.cwd).toBe(projectRoot)
   })
 
   it('builds a fresh Claude launch with no flag when sessionId is omitted (CLI mints its own id)', () => {
@@ -97,25 +98,21 @@ describe('#271 buildLaunchCommand — Claude', () => {
       mode: 'fresh',
       projectRoot
     })
-    expect(cmd).toEqual({
-      command: 'claude',
-      args: [],
-      cwd: projectRoot
-    })
+    expect(cmd.command).toBe(expectedShell)
+    expect(cmd.args).toEqual(['-l', '-c', 'claude'])
+    expect(cmd.cwd).toBe(projectRoot)
   })
 
-  it('builds a Claude resume launch with --resume <sessionId>', () => {
+  it('builds a Claude resume launch wrapped in `<shell> -l -c "claude --resume ..."`', () => {
     const cmd = buildLaunchCommand({
       kind: 'claude',
       mode: 'resume',
       projectRoot,
       sessionId
     })
-    expect(cmd).toEqual({
-      command: 'claude',
-      args: ['--resume', sessionId],
-      cwd: projectRoot
-    })
+    expect(cmd.command).toBe(expectedShell)
+    expect(cmd.args).toEqual(['-l', '-c', `claude --resume '${sessionId}'`])
+    expect(cmd.cwd).toBe(projectRoot)
   })
 
   it('throws AgentLaunchError when resume is requested without a sessionId', () => {
@@ -129,34 +126,31 @@ describe('#271 buildLaunchCommand — Claude', () => {
   })
 })
 
-describe('#271 buildLaunchCommand — Codex', () => {
+describe('#297 buildLaunchCommand — Codex (shell-wrapped)', () => {
   const projectRoot = '/tmp/fake-project'
+  const expectedShell = process.env.SHELL || '/bin/zsh'
 
-  it('builds a fresh Codex launch with -C <projectRoot> + cwd', () => {
+  it('builds a fresh Codex launch wrapped in `<shell> -l -c "codex -C ..."`', () => {
     const cmd = buildLaunchCommand({
       kind: 'codex',
       mode: 'fresh',
       projectRoot
     })
-    expect(cmd).toEqual({
-      command: 'codex',
-      args: ['-C', projectRoot],
-      cwd: projectRoot
-    })
+    expect(cmd.command).toBe(expectedShell)
+    expect(cmd.args).toEqual(['-l', '-c', `codex -C '${projectRoot}'`])
+    expect(cmd.cwd).toBe(projectRoot)
   })
 
-  it('builds a Codex resume launch as `codex resume` (interactive picker per documented limitation)', () => {
+  it('builds a Codex resume launch as `<shell> -l -c "codex resume"` (interactive picker per documented limitation)', () => {
     const cmd = buildLaunchCommand({
       kind: 'codex',
       mode: 'resume',
       projectRoot,
       sessionId: 'opaque-session-token'
     })
-    expect(cmd).toEqual({
-      command: 'codex',
-      args: ['resume'],
-      cwd: projectRoot
-    })
+    expect(cmd.command).toBe(expectedShell)
+    expect(cmd.args).toEqual(['-l', '-c', 'codex resume'])
+    expect(cmd.cwd).toBe(projectRoot)
   })
 
   it('still requires a sessionId on resume so callers can persist intent (even though Codex ignores it today)', () => {

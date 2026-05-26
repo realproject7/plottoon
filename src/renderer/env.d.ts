@@ -123,8 +123,14 @@ interface TerminalSessionMeta {
   id: string
   projectId: string
   cwd: string
-  /** #274: resume-failed = a session launched with mode='resume' that exited within the quick-exit window. */
-  state: 'connected' | 'disconnected' | 'exited' | 'resume-failed'
+  /**
+   * #274: resume-failed = a session launched with mode='resume' that
+   * exited within the quick-exit window.
+   * #297: pty-unavailable = an agent session asked for a real PTY and
+   * the platform refused (node-pty failed). Renderer surfaces a
+   * recoverable error.
+   */
+  state: 'connected' | 'disconnected' | 'exited' | 'resume-failed' | 'pty-unavailable'
   createdAt: string
   exitCode: number | null
   /** #272: which agent runtime the PTY launches (claude/codex), or null for legacy shell. */
