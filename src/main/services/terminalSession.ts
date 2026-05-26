@@ -8,8 +8,20 @@ import { buildLaunchCommand, type AgentKind, type LaunchCommand } from './agentR
  * 'resume'` exits inside RESUME_QUICK_EXIT_MS — the agent rejected the
  * resume (e.g. Claude can't find a session matching `--resume <uuid>`).
  * The renderer surfaces a fallback prompt offering a fresh launch.
+ *
+ * #297: `pty-unavailable` is set when an agent session asked for a
+ * real PTY and the platform refused (node-pty failed to load or
+ * `pty.spawn(...)` threw). Pre-#297 PlotToon silently degraded to a
+ * pipe-based child_process, which made Claude exit immediately with a
+ * `--print`/`-p` style error. Now the renderer surfaces a clear
+ * recoverable error with a Retry button instead.
  */
-export type SessionState = 'connected' | 'disconnected' | 'exited' | 'resume-failed'
+export type SessionState =
+  | 'connected'
+  | 'disconnected'
+  | 'exited'
+  | 'resume-failed'
+  | 'pty-unavailable'
 
 /**
  * #274: how quickly a resumed agent must exit for us to treat it as
@@ -74,6 +86,17 @@ export interface PtySpawnOptions {
   env: Record<string, string>
   cols?: number
   rows?: number
+  /**
+   * #297: when true, the spawner MUST allocate a real PTY (node-pty)
+   * and MUST throw if PTY allocation fails — no silent fallback to
+   * `child_process.spawn` with pipes. Interactive agents like Claude
+   * detect a pipe-stdio descriptor and exit with a "use --print" or
+   * `-p` error; falling through to the child_process path made the
+   * whole agent panel useless. Production callers set this for any
+   * non-null `agentKind` session. Test callers pass an inert fake
+   * spawner so the flag never affects them.
+   */
+  requirePty?: boolean
 }
 
 export type PtySpawner = (options: PtySpawnOptions) => PtyHandle
@@ -130,9 +153,25 @@ async function tryLoadNodePty(): Promise<{
 }
 
 /**
- * Default PTY spawner — uses node-pty when available, otherwise falls
- * back to `child_process.spawn` with piped stdio (no TTY allocation,
- * degraded TUI behaviour but still spawns the agent command).
+ * #297: signalled when an agent session asked for a PTY but the
+ * platform couldn't allocate one. Caller (`connectSession`) catches
+ * this and surfaces the failure as a controlled lifecycle state
+ * rather than crashing the session setup.
+ */
+export class PtyUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PtyUnavailableError'
+  }
+}
+
+/**
+ * Default PTY spawner — uses node-pty when available; for legacy
+ * non-agent sessions (`requirePty !== true`) falls back to
+ * `child_process.spawn` with piped stdio. Agent sessions
+ * (`requirePty === true`) NEVER fall through to the pipe path because
+ * interactive CLIs like Claude detect a non-TTY stdin and exit with a
+ * `--print`-style error — the bug #297 fixes.
  */
 export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<PtyHandle> {
   const ptyModule = await tryLoadNodePty()
@@ -140,9 +179,9 @@ export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<
     // #290: `node-pty` can load successfully but `pty.spawn(...)` may
     // still throw (e.g. `posix_spawnp failed` when the configured agent
     // CLI isn't on PATH, or the platform's pty allocation refuses the
-    // request). Catching here lets us fall through to the child_process
-    // path instead of crashing the whole session setup — matches the
-    // ticket's "degrade predictably" requirement.
+    // request). For agent sessions we re-throw as `PtyUnavailableError`
+    // so the caller surfaces a recoverable error; for legacy null-
+    // agent sessions we still fall through to child_process.
     try {
       const pty = ptyModule.spawn(options.command, options.args, {
         name: 'xterm-256color',
@@ -165,9 +204,22 @@ export async function defaultAgentPtySpawner(options: PtySpawnOptions): Promise<
           }
         }
       }
-    } catch {
-      // fall through to the child_process fallback
+    } catch (err) {
+      if (options.requirePty) {
+        throw new PtyUnavailableError(
+          `Could not allocate a PTY: ${err instanceof Error ? err.message : String(err)}`
+        )
+      }
+      // legacy non-agent path: fall through to the child_process fallback
     }
+  } else if (options.requirePty) {
+    // #297: node-pty isn't loadable at all. For agent sessions this is
+    // a terminal failure — the renderer surfaces "couldn't allocate a
+    // PTY" so the user can fix the dev environment instead of getting
+    // Claude's cryptic `--print` exit.
+    throw new PtyUnavailableError(
+      'node-pty is not installed or could not load. Reinstall PlotToon to rebuild native modules.'
+    )
   }
   // Fallback: child_process.spawn with no PTY. Better than nothing —
   // the agent runs in the project cwd with sanitized env; interactive
@@ -434,18 +486,29 @@ export async function connectSession(
       cwd: launch.cwd,
       env,
       cols: deps.cols,
-      rows: deps.rows
+      rows: deps.rows,
+      // #297: agent sessions MUST run under a real PTY — interactive
+      // CLIs detect a pipe-stdio descriptor and exit with `--print`.
+      // Legacy null-agent sessions can still fall back to pipes so
+      // existing tests + recovery flows keep working.
+      requirePty: meta.agentKind !== null
     })
-  } catch {
+  } catch (err) {
     // #290: spawner failures (`posix_spawnp failed`, missing CLI on
     // PATH, PTY allocation refused) must not crash the whole session
     // setup. Roll the generation back so a later connect doesn't see a
     // stale handler, leave the session metadata in `disconnected` so
     // the renderer surfaces the "couldn't connect" lifecycle state,
-    // and return false so callers can react. The error is swallowed
-    // intentionally — the spawner already has the detail; the
-    // renderer only needs to know connect didn't succeed.
+    // and return false so callers can react.
+    //
+    // #297: when the failure is specifically a PtyUnavailableError on
+    // an agent session, the session state flips to `pty-unavailable`
+    // so the renderer can surface a clear recoverable error with a
+    // Retry button — different from the regular "disconnected" state.
     generations.set(id, gen - 1)
+    if (err instanceof PtyUnavailableError && meta.agentKind) {
+      sessions.set(id, { ...meta, state: 'pty-unavailable', exitCode: null })
+    }
     return false
   }
   handles.set(id, handle)

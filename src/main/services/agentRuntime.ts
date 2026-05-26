@@ -138,6 +138,29 @@ export const codexResumeLimitations = {
     'Local Codex CLI exposes only an interactive `codex resume` picker; no stable session-id resume path is supported at this time. PlotToon launches the picker.'
 } as const
 
+/**
+ * #297: shell-safe single-quote escape. We wrap each agent invocation
+ * in `'...'` inside a `shell -l -c '...'` so the user's login shell
+ * loads `.bashrc` / `.zshrc` (which is where most contributors
+ * actually have `claude` / `codex` on PATH). plotlink-ows uses the
+ * same wrapper. The escape rule for POSIX single quotes is:
+ * close quote, insert `'\''`, reopen quote.
+ */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`
+}
+
+/**
+ * #297: default user shell. plotlink-ows defaults to `/bin/zsh` when
+ * `process.env.SHELL` is unset; we follow the same convention so a
+ * fresh install behaves identically across the two clients. On
+ * Windows we fall back to `cmd.exe` since `bash -l -c` doesn't apply.
+ */
+function defaultUserShell(): string {
+  if (process.platform === 'win32') return 'cmd.exe'
+  return process.env.SHELL || '/bin/zsh'
+}
+
 export function buildLaunchCommand(input: BuildLaunchCommandInput): LaunchCommand {
   if (!input.projectRoot || typeof input.projectRoot !== 'string') {
     throw new AgentLaunchError('projectRoot is required to build an agent launch command')
@@ -146,46 +169,44 @@ export function buildLaunchCommand(input: BuildLaunchCommandInput): LaunchComman
     throw new AgentLaunchError('sessionId is required for resume mode')
   }
 
+  // #297: build the inner agent invocation, then wrap it in
+  // `<shell> -l -c '<inner>'` so the login shell loads the user's
+  // rc files. Without this wrapper, Claude often can't find tools
+  // its plugins depend on (PATH set in `.zshrc` etc.) and it's the
+  // proximate cause of the `--print`/`-p` stdin error the agent
+  // exits with when it sees a non-interactive descriptor.
+  const inner = buildInnerAgentCommand(input)
+  return {
+    command: defaultUserShell(),
+    args: ['-l', '-c', inner],
+    cwd: input.projectRoot
+  }
+}
+
+/**
+ * #297 helper: returns the bare agent invocation (without the
+ * surrounding shell wrapper). Useful for tests that want to verify
+ * the agent flags without re-parsing through the shell.
+ */
+export function buildInnerAgentCommand(input: BuildLaunchCommandInput): string {
   if (input.kind === 'claude') {
     if (input.mode === 'fresh') {
-      // The Claude CLI accepts `--session-id <uuid>` so the host can
-      // record the id before the session starts. We delegate uuid
-      // generation to the caller so tests can pin a deterministic
-      // value; if it's missing the caller is opting out of session
-      // tracking and we let the CLI mint its own id by passing no
-      // flag.
+      // Claude CLI accepts `--session-id <uuid>` so the host can
+      // record the id before the session starts. Missing id ⇒ let
+      // the CLI mint its own.
       if (input.sessionId) {
-        return {
-          command: 'claude',
-          args: ['--session-id', input.sessionId],
-          cwd: input.projectRoot
-        }
+        return `claude --session-id ${shellQuote(input.sessionId)}`
       }
-      return { command: 'claude', args: [], cwd: input.projectRoot }
+      return 'claude'
     }
-    // mode === 'resume'
-    return {
-      command: 'claude',
-      args: ['--resume', input.sessionId!],
-      cwd: input.projectRoot
-    }
+    // resume mode
+    return `claude --resume ${shellQuote(input.sessionId!)}`
   }
 
   // input.kind === 'codex'
   if (input.mode === 'fresh') {
-    // `-C <dir>` is the cwd-pinning flag the local CLI accepts; we
-    // pass it explicitly even though `cwd` is already set so the
-    // command line itself records the project root for debugging.
-    return {
-      command: 'codex',
-      args: ['-C', input.projectRoot],
-      cwd: input.projectRoot
-    }
+    return `codex -C ${shellQuote(input.projectRoot)}`
   }
-  // mode === 'resume' — see codexResumeLimitations.
-  return {
-    command: 'codex',
-    args: ['resume'],
-    cwd: input.projectRoot
-  }
+  // resume — interactive picker (see codexResumeLimitations).
+  return 'codex resume'
 }

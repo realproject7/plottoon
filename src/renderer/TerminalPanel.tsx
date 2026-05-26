@@ -25,7 +25,7 @@ type State =
   | {
       phase: 'ready'
       sessionId: string
-      state: 'disconnected' | 'exited' | 'resume-failed'
+      state: 'disconnected' | 'exited' | 'resume-failed' | 'pty-unavailable'
       exitCode: number | null
       agentKind: AgentKind
     }
@@ -41,7 +41,7 @@ type Action =
   | {
       type: 'session-created'
       sessionId: string
-      state: 'connected' | 'disconnected' | 'exited' | 'resume-failed'
+      state: 'connected' | 'disconnected' | 'exited' | 'resume-failed' | 'pty-unavailable'
       exitCode: number | null
       agentKind: AgentKind
     }
@@ -66,7 +66,7 @@ function reducer(state: State, action: Action): State {
       return {
         phase: 'ready',
         sessionId: action.sessionId,
-        state: action.state as 'disconnected' | 'exited' | 'resume-failed',
+        state: action.state as 'disconnected' | 'exited' | 'resume-failed' | 'pty-unavailable',
         exitCode: action.exitCode,
         agentKind: action.agentKind
       }
@@ -129,6 +129,7 @@ function phaseLabel(state: State): string {
     case 'ready':
       if (state.state === 'disconnected') return 'stopped'
       if (state.state === 'exited') return `exited (${state.exitCode ?? '?'})`
+      if (state.state === 'pty-unavailable') return 'PTY unavailable'
       return 'resume failed'
     case 'error':
       return 'error'
@@ -147,6 +148,8 @@ function statusDotClass(state: State): string {
         : 'terminal-panel__dot terminal-panel__dot--running'
     case 'ready':
       if (state.state === 'resume-failed') return 'terminal-panel__dot terminal-panel__dot--failed'
+      if (state.state === 'pty-unavailable')
+        return 'terminal-panel__dot terminal-panel__dot--failed'
       if (state.state === 'exited') return 'terminal-panel__dot terminal-panel__dot--exited'
       return 'terminal-panel__dot terminal-panel__dot--stopped'
     case 'error':
@@ -280,10 +283,27 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
           const term = terminalRef.current
           const dims = term ? { cols: term.cols, rows: term.rows } : undefined
           const ok = await window.plottoon.terminal.connect(session.id, dims)
-          if (!cancelled && ok) {
+          if (cancelled) return
+          if (ok) {
             dispatch({
               type: 'connected',
               sessionId: session.id,
+              agentKind: session.agentKind
+            })
+          } else {
+            // #297: connect returned false — the main process either
+            // hit a PtyUnavailableError (agent session, no real PTY)
+            // or some other spawner failure. Refetch the session to
+            // learn the post-failure state so the renderer surfaces
+            // the right recovery copy (pty-unavailable banner vs the
+            // generic stopped state).
+            const refreshed = await window.plottoon.terminal.getSession(session.id)
+            if (cancelled) return
+            dispatch({
+              type: 'session-created',
+              sessionId: session.id,
+              state: refreshed?.state ?? 'disconnected',
+              exitCode: refreshed?.exitCode ?? null,
               agentKind: session.agentKind
             })
           }
@@ -484,6 +504,13 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
   const showResumeFailedRecovery = state.phase === 'ready' && state.state === 'resume-failed'
   const showExitedRecovery = state.phase === 'ready' && state.state === 'exited'
   const showStoppedRecovery = state.phase === 'ready' && state.state === 'disconnected'
+  // #297: PTY-unavailable recovery surface — distinct from "stopped"
+  // so the renderer can explain WHY the agent couldn't start (PTY
+  // allocation refused; node-pty load failed) and offer a Retry that
+  // re-runs the connect. We don't show Resume here because the
+  // session never reached the point where a session-id would be
+  // meaningful; Retry is the only useful action.
+  const showPtyUnavailableRecovery = state.phase === 'ready' && state.state === 'pty-unavailable'
 
   return (
     <div className="terminal-panel" data-testid="agent-terminal-panel">
@@ -590,6 +617,16 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
               start fresh
             </button>
           )}
+          {showPtyUnavailableRecovery && state.agentKind !== null && (
+            <button
+              type="button"
+              className="terminal-action"
+              onClick={handleStartFresh}
+              data-testid="agent-terminal-pty-retry"
+            >
+              retry
+            </button>
+          )}
           {(state.phase === 'ready' || state.phase === 'connected') && (
             <button
               type="button"
@@ -628,6 +665,17 @@ export function TerminalPanel({ projectId }: Props): JSX.Element {
         >
           The agent rejected the resume (exited quickly with code {state.exitCode ?? '?'}). Try
           “start fresh” to begin a new session.
+        </div>
+      )}
+      {showPtyUnavailableRecovery && (
+        <div
+          className="terminal-panel__hint terminal-panel__hint--error"
+          data-testid="agent-terminal-pty-unavailable-hint"
+          role="status"
+          aria-live="polite"
+        >
+          Couldn’t allocate a terminal (PTY) for the agent. Make sure native modules built correctly
+          during install (reinstall PlotToon if needed), then click “retry” above.
         </div>
       )}
       {state.phase === 'connected' && state.detached && (
