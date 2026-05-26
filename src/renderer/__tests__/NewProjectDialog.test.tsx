@@ -244,3 +244,78 @@ describe('#246 New project dialog — replaces window.prompt', () => {
     expect(screen.queryByTestId('new-project-dialog')).toBeNull()
   })
 })
+
+describe('#269 first-run workspace explainer', () => {
+  it('renders the workspace explainer banner when no projects dir is configured (getProjectsDir → null)', async () => {
+    installProjectApi(makePartition({ activeAddress: WALLET_A }), {
+      getProjectsDir: vi.fn(async () => null)
+    })
+    render(<ProjectList />)
+    await waitFor(() => expect(screen.getByText('No projects yet')).toBeDefined())
+    fireEvent.click(screen.getByText('New Project'))
+    const explainer = await screen.findByTestId('new-project-workspace-explainer')
+    // Copy explicitly mentions the workspace + that the project folder
+    // is created INSIDE it — the contract the ticket calls out.
+    expect(explainer.textContent).toMatch(/workspace folder/i)
+    expect(explainer.textContent).toMatch(/inside it/i)
+    expect(explainer.textContent).toMatch(/PlotToon will store all your webtoon projects/i)
+  })
+
+  it('does NOT render the explainer when a projects dir is already configured', async () => {
+    installProjectApi(makePartition({ activeAddress: WALLET_A }), {
+      getProjectsDir: vi.fn(async () => '/Users/fake/PlotToon')
+    })
+    render(<ProjectList />)
+    await waitFor(() => expect(screen.getByText('No projects yet')).toBeDefined())
+    fireEvent.click(screen.getByText('New Project'))
+    await screen.findByTestId('new-project-dialog')
+    // Give the getProjectsDir load + state update a chance to settle
+    // before asserting absence.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByTestId('new-project-workspace-explainer')).toBeNull()
+  })
+
+  it('treats a failed getProjectsDir read as first-run (shows the explainer as a safe default)', async () => {
+    installProjectApi(makePartition({ activeAddress: WALLET_A }), {
+      getProjectsDir: vi.fn(async () => {
+        throw new Error('mock fs error reading projects-dir config')
+      })
+    })
+    render(<ProjectList />)
+    await waitFor(() => expect(screen.getByText('No projects yet')).toBeDefined())
+    fireEvent.click(screen.getByText('New Project'))
+    const explainer = await screen.findByTestId('new-project-workspace-explainer')
+    expect(explainer.textContent).toMatch(/workspace folder/i)
+  })
+
+  it('cancelling project.create (user backed out of folder picker) closes the dialog without leaving it spinning', async () => {
+    // Pre-#269 the dialog already handled this (project:create returns
+    // null on cancel). The test pins the post-#269 surface still
+    // closes cleanly when the in-app explainer is showing — so the
+    // explainer banner doesn't accidentally trap focus or keep the
+    // dialog open. We pass `create` as an override so the test mock
+    // returns null (user cancelled the native picker) AND capture
+    // the same reference so the call assertion fires.
+    const cancelCreate = vi.fn(async () => null)
+    installProjectApi(makePartition({ activeAddress: WALLET_A }), {
+      getProjectsDir: vi.fn(async () => null),
+      create: cancelCreate
+    })
+    render(<ProjectList />)
+    await waitFor(() => expect(screen.getByText('No projects yet')).toBeDefined())
+    fireEvent.click(screen.getByText('New Project'))
+    await screen.findByTestId('new-project-workspace-explainer')
+
+    const input = screen.getByTestId('new-project-name-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'My First Toon' } })
+    fireEvent.click(screen.getByTestId('new-project-submit'))
+
+    await waitFor(() => {
+      expect(cancelCreate).toHaveBeenCalledWith('My First Toon')
+    })
+    // Dialog closed cleanly even though the user cancelled the picker.
+    await waitFor(() => {
+      expect(screen.queryByTestId('new-project-dialog')).toBeNull()
+    })
+  })
+})
